@@ -1,3 +1,6 @@
+# data_processing 클래스를 생성했음, 
+# data_processing 인스턴스가 선언, 사용되어야 할 이유가 있나...
+
 import numpy as np
 
 class data_processing:
