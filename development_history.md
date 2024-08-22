@@ -8,4 +8,12 @@
 
     - data_processing decorator 작성 : 일단 numpy 형태가 맞는지만 향후 기능이 추가되어야 함 - 08/21
 
-## 2. 
+## 2. 모델 모듈 개발
+
+- init 파일의 작성 : 08/22
+
+- moodel 클래스 정의 (model.py 파일의 작성 - Model 클래스 정의)
+
+    - model 클래스 내용 확인 - keras
+ 
+    -   
