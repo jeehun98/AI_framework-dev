@@ -7,6 +7,8 @@
 - 데코레이터, 데이터 검증, 논리적 경로명
 
     - data_processing decorator 작성 : 일단 numpy 형태가 맞는지만 향후 기능이 추가되어야 함 - 08/21
+ 
+    - dacorators 폴더 이동 - 08/21
 
 ## 2. 모델 모듈 개발
 
@@ -15,8 +17,9 @@
 - moodel 클래스 정의 (model.py 파일의 작성 - Model 클래스 정의)
 
     - model 클래스 내용 확인 - keras
- 
+
     - model 클래스 필수 구현 method 작성
     
         - layer 는 참조 역할만??, 단순 인터페이스로 작용
 
+    - layer 기능 구현, layers 속성은 해당 정보를 읽기 전용으로 제공하는 역할 수행
