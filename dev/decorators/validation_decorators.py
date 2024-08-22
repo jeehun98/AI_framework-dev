@@ -18,3 +18,12 @@ def data_validation(func):
         # 원래 함수 호출
         return func(data, *args, **kwargs)
     return wrapper
+
+def check_layer_type(func):
+    def wrapper(self, layer, *args, **kwargs):
+        if not isinstance(layer, Layer):
+            raise TypeError(f"Expected an instance of Layer, got {type(layer).__name__}")
+        # 원하는 추가 검사를 여기에 추가할 수 있습니다.
+        print(f"Adding layer: {layer.name}")
+        return func(self, layer, *args, **kwargs)
+    return wrapper
