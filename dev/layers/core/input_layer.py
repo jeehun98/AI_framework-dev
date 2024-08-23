@@ -5,7 +5,7 @@
 
 import warnings
 
-from layers.layer import Layer
+from dev.layers.layer import Layer
 
 class InputLayer(Layer):
     def __init__(

@@ -1,10 +1,10 @@
 import typing
 
-from models.model import Model
-from layers.layer import Layer
-from layers.core.input_layer import InputLayer
+from dev.models.model import Model
+from dev.layers.layer import Layer
+from dev.layers.core.input_layer import InputLayer
 
-class Seuquential(Model):
+class Sequential(Model):
     def __new__(cls, *args, **kwargs):
         # 부모 클래스의 __new__ 메서드 호출, 인스턴스 생성 
         # typing.cast 를 통해 반환된 인스턴스 타입을 자식 클래스로 명시적 지정
