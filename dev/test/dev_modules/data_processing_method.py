@@ -1,7 +1,7 @@
 # data_processing 클래스로 관리하는 것이 아닌, method 로 호출하도록 
 
 import numpy as np
-from utils.decorators import data_validation  # 데코레이터 함수 임포트
+from decorators.validation_decorators import data_validation
 
 # 데이터 검증 데코레이터
 @data_validation
