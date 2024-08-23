@@ -1,2 +1,3 @@
 from dev.models.model import Model
-from dev.models.layer import Layer
+from layers.layer import Layer
+from dev.models.sequential import Sequential
