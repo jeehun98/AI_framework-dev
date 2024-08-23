@@ -2,6 +2,7 @@ import typing
 
 from models.model import Model
 from layers.layer import Layer
+from layers.core.input_layer import InputLayer
 
 class Seuquential(Model):
     def __new__(cls, *args, **kwargs):
@@ -31,7 +32,8 @@ class Seuquential(Model):
             if getattr(layer, "_input_shape_arg", None) is not None:
                 # 인스턴스가 전달됨
                 self.add(InputLayer(shape=layer._input_shape_arg))
-
+        
+        # 입력 형태가 layer 인스턴스가 아닐 경우 
         if not isinstance(layer, Layer):
             raise ValueError(
                 "Only instances of Layer can be "
