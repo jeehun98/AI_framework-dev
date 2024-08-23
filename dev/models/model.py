@@ -1,4 +1,4 @@
-from layer import Layer
+from layers.layer import Layer
 from decorators import check_layer_type
 
 
