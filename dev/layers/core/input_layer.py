@@ -23,7 +23,7 @@ class InputLayer(Layer):
         
 # 부모 클래스 Layer 가 상속 받는 부모 클래스에서 output 이 정의되어 있음...
 # 레이어 선언, 및 모델 구성의 다양한 방식으로의 구현 허용을 위해 추가되는 것 같은데...
-
+"""
 def Input(
     shape=None,
     name=None,
@@ -33,3 +33,5 @@ def Input(
         name=name
     )
     return layer.output
+    
+"""
