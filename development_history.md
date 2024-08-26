@@ -26,7 +26,9 @@
 
         - model.add 메서드 구현
 
-        - 여러 레이어가 모델 인스턴스에 쌓이는
+        - 여러 레이어가 모델 인스턴스에 쌓이는,
+
+        - fit, predict 의 경우 model 의 부모 클래스, Trainer 에서 구현
 
     - layer 기능 구현, layers 속성은 해당 정보를 읽기 전용으로 제공하는 역할 수행
         
@@ -38,6 +40,24 @@
 
         - layer 가 쌓이면서 병행되는 연산이 무엇인지, 그것을 어디서 구현할 것인가 (interpreter 처럼 생각?)
 
+        - init
+
+        - build 함수 : 가중치 초기화 함수, 
+
+        - call 함수 : 연산의 수행
+
+        - get_config : 레이어의 구성 정보 반환
+
+        - compute_coutput_shape : 출력 shape 계산
+
         - 중요한 점으로 어떤 차이를 두고 만들 것인지에 대한 고민을 해야 하는데 따라치지말고 이를 계속 생각해보자
+
+    - Dense : 사용될 수 있는 parameter 에 대한 구현
+    
+        - activation : 
+
+            - ops 내에서 해당 연산을 실제 수행, 일단 python 코드 내에서 구현하는 걸로 해보자
+
+        - quantization_mode??
 
 - 연산의 정의, 관리를 수행하는 Operation 클래스 해당 클래스가 왜 layer 클래스의 부모 클래스가 되는지 생각부터
