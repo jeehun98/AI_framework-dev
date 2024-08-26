@@ -40,6 +40,8 @@
 
         - layer 가 쌓이면서 병행되는 연산이 무엇인지, 그것을 어디서 구현할 것인가 (interpreter 처럼 생각?)
 
+        - layer 로 구현된 activation
+
         - init
 
         - build 함수 : 가중치 초기화 함수, 
