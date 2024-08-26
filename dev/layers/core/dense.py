@@ -2,7 +2,7 @@ from dev.layers.layer import Layer
 import numpy as np
 
 class Dense(Layer):
-    def __init__(self, units, activation=None, name=None):
+    def __init__(self, units, activation=None, name=None, **kwargs  ):
         super().__init__(name)
         self.units = units
         self.activation = activation
