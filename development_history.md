@@ -56,7 +56,7 @@
 
     - Dense : 사용될 수 있는 parameter 에 대한 구현
     
-        - activation : 
+        - activation - parameter
 
             - ops 내에서 해당 연산을 실제 수행, 일단 python 코드 내에서 구현하는 걸로 해보자
 
