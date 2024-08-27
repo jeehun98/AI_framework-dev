@@ -58,6 +58,8 @@
 
         - compute_coutput_shape : 출력 shape 계산
 
+        - 결국 이런 모든 정보가 layer 클래스의 인스턴스에 저장되고, build, fit, summery 등 model 의 메서드에서 이러한 인스턴스 정보를 사용한다.
+
         - 중요한 점으로 어떤 차이를 두고 만들 것인지에 대한 고민을 해야 하는데 따라치지말고 이를 계속 생각해보자
 
     - Dense : 사용될 수 있는 parameter 에 대한 구현
@@ -71,5 +73,11 @@
             - ops 내에서 해당 연산을 실제 수행, 일단 python 코드 내에서 구현하는 걸로 해보자
 
         - quantization_mode??
+
+    - layers Layer 클래스를 상속받는 layer 들의 구현
+
+        - activation 08/27
+
+        - flatten 08/27
 
 - 연산의 정의, 관리를 수행하는 Operation 클래스 해당 클래스가 왜 layer 클래스의 부모 클래스가 되는지 생각부터

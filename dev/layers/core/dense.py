@@ -1,11 +1,12 @@
 from dev.layers.layer import Layer
+from dev import activations
 import numpy as np
 
 class Dense(Layer):
-    def __init__(self, units, activation=None, name=None, **kwargs  ):
+    def __init__(self, units, activation=None, name=None, **kwargs):
         super().__init__(name)
         self.units = units
-        self.activation = activation
+        self.activation = activations.get(activation)
         self.weights = None
         self.bias = None
 
