@@ -26,6 +26,8 @@
 
         - model.add 메서드 구현
 
+            - 각 layer 인스턴스가 저장되어야 함
+
         - 여러 레이어가 모델 인스턴스에 쌓이는,
 
         - fit, predict 의 경우 model 의 부모 클래스, Trainer 에서 구현
@@ -35,18 +37,22 @@
         - layer 층을 쌓는, 어떤 방법을 사용할 것인지 정의 - Sequential 형태 결정 : 08/23
 
         - src/layers - 실제 기능, 이것부터 개발을 해야겠다.
+        
+            - layer 내 메서드, 속성의 regularizor 작성
 
         - 레이어가 처음 생성되는 Input_layer, 여기에서만 구현되어야 하는 기능이 무엇일지
 
         - layer 가 쌓이면서 병행되는 연산이 무엇인지, 그것을 어디서 구현할 것인가 (interpreter 처럼 생각?)
 
-        - layer 로 구현된 activation
+            - 쌓이는 layer 구조에 대한 검증이 병행되어야 하는지, model.add 에서 실제 데이터가 들어오기 전에도 알 수 잇는??
+
+        - layer 로 구현된 activation - activation method 와의 연동!!! 어떤 구존지 이해가 가버렷! 08/27
 
         - init
 
         - build 함수 : 가중치 초기화 함수, 
 
-        - call 함수 : 연산의 수행
+        - call 함수 : 실제 연산의 수행
 
         - get_config : 레이어의 구성 정보 반환
 
@@ -57,6 +63,10 @@
     - Dense : 사용될 수 있는 parameter 에 대한 구현
     
         - activation - parameter
+
+            - Layer 클래스를 상속받은 Dense 층에서 저장되는 속성값으로 activation, 
+
+            - activations __init__ 파일의 get 을 통해 해당 함수를 저장할 수 있음
 
             - ops 내에서 해당 연산을 실제 수행, 일단 python 코드 내에서 구현하는 걸로 해보자
 
