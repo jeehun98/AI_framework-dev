@@ -3,6 +3,7 @@ import typing
 from dev.models.model import Model
 from dev.layers.layer import Layer
 from dev.layers.core.input_layer import InputLayer
+from dev.layers.core.dense import Dense
 
 class Sequential(Model):
     def __new__(cls, *args, **kwargs):
@@ -38,9 +39,10 @@ class Sequential(Model):
         self._layers.append(layer)
 
 
-    # build 와 함께 가중치 초기화...
+    # build 와 함께 가중치 초기화
+
     def build(self, input_shape=None):
-        input_shape = input_shape
+        #input_shape = input_shape
 
         if not self._layers:
             raise ValueError(
@@ -48,17 +50,22 @@ class Sequential(Model):
                 "no layers. Call `model.add(layer)`."
             )
         
-        inputs = self._layers[0].output
-        x = inputs
+        if isinstance(self._layers[0], InputLayer):
+            input_shape = self._layers[0].input_shape
+
+        # 가중치 초기화만 시행할거야
 
         for layer in self._layers[1:]:
             try:
-                # call 메서드 실행, 레이어 출력이 x 에 저장
-                x = layer(x)
+                # build 메서드 실행, input_shape 와 해당 layer의 output_shape 크기
+                # 를 통해 임의의 가중치가 생성된다.
+                # 생성된 가중치는 해당 레이어 인스턴스에 저장,
+                layer.build(input_shape)
+                input_shape = layer.output_shape
+
             except NotImplementedError:
                 return         
         
-        outputs = x
         self.built = True
     
 
