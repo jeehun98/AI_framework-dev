@@ -17,7 +17,7 @@ class Trainer:
         x, y, sample_weight = unpack_x_y_sample_weight(data)
         
 
-    def fit(self, x=None, y=None):
+    def fit(self, x=None, y=None, epochs=1):
+        # Trainer 클래스를 상속받는 클래스들의 call 메서드 실행
         y_pred = self(x)
-        # build 의 구현 필요
-        pass
+

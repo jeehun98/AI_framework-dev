@@ -14,6 +14,9 @@ class Sequential(Model):
     # 레이어 객체 상태 초기화, 어떤 객체가 초기화 되어야 할 지에 대한 고민
     def __init__(self, layers=None, trainable=True, name=None):
         super().__init__(trainable=trainable, name=name)
+
+        self.built = False
+
         # Functional API 스타일 변환 여부 확인
         self._functional = None
         self._layers = []
@@ -74,4 +77,7 @@ class Sequential(Model):
             outputs = layer(inputs)
             inputs = outputs
 
-        return outputs
+        # fit sequential 클래스 fit 메서드 실행
+        # call 메서드 실행
+        # y_pred 값, outputs
+        return outputs   
