@@ -10,6 +10,15 @@ class Sequential(Model):
         # typing.cast 를 통해 반환된 인스턴스 타입을 자식 클래스로 명시적 지정
         return typing.cast(cls, super().__new__(cls))
     
+    def __call__(self, inputs):
+        # 모델에 add 되어 있는 각 layer 의 call 메서드 호출을 통한 연산
+        for layer in self.layers:
+            outputs = layer(inputs)
+            inputs = outputs
+
+        return outputs
+
+    
     # 레이어 객체 상태 초기화, 어떤 객체가 초기화 되어야 할 지에 대한 고민
     def __init__(self, layers=None, trainable=True, name=None):
         super().__init__(trainable=trainable, name=name)
@@ -25,14 +34,7 @@ class Sequential(Model):
             self._may_rebuild()
 
     # 레이어 추가
-    def add(self, layer, rebuild=True):
-        # 저장되어 있는 레이어가 없으면, 
-        # 입력된 layer 의 추가, 
-        if not self._layers:
-            if getattr(layer, "_input_shape_arg", None) is not None:
-                # 인스턴스가 전달됨
-                self.add(InputLayer(shape=layer._input_shape_arg))
-        
+    def add(self, layer):
         # 입력 형태가 layer 인스턴스가 아닐 경우 
         if not isinstance(layer, Layer):
             raise ValueError(
@@ -40,3 +42,6 @@ class Sequential(Model):
                 f"added to a Sequential model. Received: {layer} "
                 f"(of type {type(layer)})"
             )
+        
+        # 입력된 layer 의 추가, 
+        self._layers.append(layer)
