@@ -1,8 +1,9 @@
 from dev.layers.layer import Layer
+from dev.trainer.trainer import Trainer
 from dev.decorators import check_layer_type
 
 
-class Model():
+class Model(Trainer):
     
     def __new__(cls, *args, **kwargs):
         pass

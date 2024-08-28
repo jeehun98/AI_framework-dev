@@ -34,6 +34,8 @@ x = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
 result = activation_fn(x)
 
 """
+def serialize(activation):
+    pass
 
 def get(identifier):
 
