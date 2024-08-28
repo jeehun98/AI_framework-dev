@@ -18,4 +18,6 @@ class Trainer:
         
 
     def fit(self, x=None, y=None):
+        y_pred = self(x)
+        # build 의 구현 필요
         pass

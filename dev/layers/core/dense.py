@@ -28,12 +28,12 @@ class Dense(Layer):
         return (input_shape[0], self.units)
 
     def get_config(self):
-        config = super().get_config()
-        config.update({
-            'units': self.units,
-            'activation': self.activation.__name__ if self.activation else None,
+        base_config = super().get_config()
+        config = ({
+            'input_shape': self.input_shape,
+            'activation': self.activation,
         })
-        return config
+        return {**base_config, **config}
 
     @classmethod
     def from_config(cls, config):

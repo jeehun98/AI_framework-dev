@@ -30,7 +30,13 @@
 
         - 여러 레이어가 모델 인스턴스에 쌓이는,
 
-        - fit, predict 의 경우 model 의 부모 클래스, Trainer 에서 구현
+        - fit, predict 의 경우 model 의 부모 클래스, Trainer 에서 구현??
+
+        - model.fit 에서 빌드 수행 - 08/28
+
+            - build 의 역할이 가중치 초기화 하나라고 하면, fit 의 맨 처음 부분에서 build 를 수행해야 하겠네, model 클래스 내 is_build 속성 추가 - 08/28
+
+            - 모델의 상태를 저장하고, 복원 등의 기능을 수행하는 config 의 구현 - 08/28
 
     - layer 기능 구현, layers 속성은 해당 정보를 읽기 전용으로 제공하는 역할 수행
         
@@ -41,6 +47,8 @@
             - layer 내 메서드, 속성의 regularizor 작성
 
         - 레이어가 처음 생성되는 Input_layer, 여기에서만 구현되어야 하는 기능이 무엇일지
+
+            - Input_layer 의 구현, input_shape 의 정의, 등등 - 08/28
 
         - layer 가 쌓이면서 병행되는 연산이 무엇인지, 그것을 어디서 구현할 것인가 (interpreter 처럼 생각?)
 
@@ -92,6 +100,6 @@
 
         - Sequential 클래스 내 call 메서드와 관련 함수, 속성의 정의 - 08/28
 
-        - 각 layer 클래스 내 call 메서드 구현
+        - 각 layer 클래스 내 call 메서드 구현 (Dense)
 
     - data_adapter_util

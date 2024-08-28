@@ -23,17 +23,20 @@ class Layer():
         
         pass
     
-    # 연산
-    def call(self):
-        pass
+    # 연산이 실행되는 부분, layer 를 상속받는 클래스에서 이를 구현해야 한다. 
+    def call(self, *args, **kwargs):
+        raise NotImplementedError(
+            f"Layer {self.__class__.__name__} does not have a `call()` "
+            "method implemented."
+        )
 
     def get_config(self):
         # 레이어의 구성 정보 반환
-        return {
+        config = {
             'name': self.name,
-            'input_shape': self.input_shape,
-            'output_shape': self.output_shape,
         }
+
+        return {**config}
 
     @classmethod
     def from_config(cls, config):
