@@ -11,7 +11,9 @@ class Flatten(Layer):
     # 향후 from_config 를 통해 해당 객체를 복원할 수 있다. 
     def get_config(self):
         base_config = super().get_config()
+        print("flatten, get_config")
         config = {
+            "class_name": self.__class__.__name__,
             "input_shape": self.input_shape
         }
         return {**base_config, **config}

@@ -1,4 +1,4 @@
-from dev.optimizers import SGD
+from dev.optimizers.sgd import SGD
 
 
 ALL_OPTIMIZERS = {
