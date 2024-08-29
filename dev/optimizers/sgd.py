@@ -3,9 +3,20 @@ class SGD():
         self,
         learning_rate = 0.01,
         momentum = 0.0,
-        name = "SGD"
+        name = "SGD",
+        **kwargs,
     ):
         self.momentum = momentum
+        self.learning_rate = learning_rate
+        self.name = name
+
+    def get_config(self):
+        config = {
+            "learning_rate" : self.learning_rate,
+            "momentum" : self.momentum,
+            "name" : self.name
+        } 
+        return config
 
     # optimizer 변수 초기화
     def build(self, variables):
@@ -15,5 +26,3 @@ class SGD():
     def update_step(self, gradient, variable, learning_rate):
         pass
 
-    def get_config(self):
-        pass    

@@ -2,6 +2,9 @@ import typing
 
 from dev.layers.layer import Layer
 from dev.layers.core.input_layer import InputLayer
+from dev import optimizers
+from dev import losses
+from dev import metrics
 #from dev.layers.core.dense import Dense
 #from dev.models.model import Model
 
@@ -17,9 +20,7 @@ class Sequential(Layer):
     # 레이어 객체 상태 초기화, 어떤 객체가 초기화 되어야 할 지에 대한 고민
     def __init__(self, layers=None, trainable=True, name=None):
         #super().__init__(trainable=trainable, name=name)
-
         self.built = False
-
         # layer list
         self._layers = []
 
@@ -27,10 +28,9 @@ class Sequential(Layer):
     def get_config(self):
         layer_configs = []
         for layer in self._layers:
-            
             layer_configs.append(layer.get_config())
-
         return layer_configs
+
 
     # 레이어 추가
     def add(self, layer):
@@ -41,27 +41,35 @@ class Sequential(Layer):
                 f"added to a Sequential model. Received: {layer} "
                 f"(of type {type(layer)})"
             )
-        
         # 입력된 layer 의 추가, 
         self._layers.append(layer)
 
 
-    # build 와 함께 가중치 초기화
+    def compile(self, optimizer=None, loss=None, p_metrics=None):
+        self.optimizer = optimizers.get(optimizer)
+        self.loss = losses.get(loss)
+        self.metric = metrics.get(p_metrics)
 
+
+    def get_compile_config(self):
+        optimizer_config = self.optimizer.get_config()
+        loss_config = self.loss.get_config()
+        metrics_config = self.metric.get_config()
+        
+        return [optimizer_config, loss_config, metrics_config]
+
+
+    # build 와 함께 가중치 초기화
     def build(self, input_shape=None):
         #input_shape = input_shape
-
         if not self._layers:
             raise ValueError(
                 f"Sequential model {self.name} cannot be built because it has "
                 "no layers. Call `model.add(layer)`."
             )
-        
         if isinstance(self._layers[0], InputLayer):
             input_shape = self._layers[0].input_shape
-
         # 가중치 초기화만 시행할거야
-
         for layer in self._layers[1:]:
             try:
                 # build 메서드 실행, input_shape 와 해당 layer의 output_shape 크기

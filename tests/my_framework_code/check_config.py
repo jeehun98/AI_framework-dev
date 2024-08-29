@@ -13,4 +13,8 @@ model.add(Dense(128, activation='relu'))
 model.add(Dense(64, activation='relu'))
 model.add(Dense(10, activation='softmax'))
 
-print(model.get_config())
+model.compile(optimizer='sgd',
+              loss='categoricalcrossentropy',
+              p_metrics='accuracy')
+
+print(model.get_compile_config())

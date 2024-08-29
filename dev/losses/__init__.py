@@ -1,16 +1,16 @@
 import inspect
 
-from dev.optimizers.sgd import SGD
+from dev.losses.losses import CategoricalCrossentropy
 
-ALL_OPTIMIZERS = {
-    SGD,
+ALL_LOSSES= {
+    CategoricalCrossentropy,
 }
 
-ALL_OPTIMIZERS_DICT = {cls.__name__.lower(): cls for cls in ALL_OPTIMIZERS}
+ALL_LOSSES_DICT = {cls.__name__.lower(): cls for cls in ALL_LOSSES}
 
 def get(identifier):
     if isinstance(identifier, str):
-        obj = ALL_OPTIMIZERS_DICT.get(identifier, None)
+        obj = ALL_LOSSES_DICT.get(identifier, None)
 
     if callable(obj):
         # 클래스일 경우 클래스의 인스턴스화, 
