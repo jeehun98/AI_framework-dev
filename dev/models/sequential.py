@@ -1,15 +1,18 @@
 import typing
 
-from dev.models.model import Model
 from dev.layers.layer import Layer
 from dev.layers.core.input_layer import InputLayer
-from dev.layers.core.dense import Dense
+#from dev.layers.core.dense import Dense
+#from dev.models.model import Model
 
-class Sequential(Model):
+# Sequential 을 최상위 모델이라고 가정하고 해보자
+class Sequential():
     def __new__(cls, *args, **kwargs):
-        # 부모 클래스의 __new__ 메서드 호출, 인스턴스 생성 
+        # 부모 클래스의 __new__ 메서드 호출, 인스턴스 생성
         # typing.cast 를 통해 반환된 인스턴스 타입을 자식 클래스로 명시적 지정
+        # 기본 __new__ 메서드 구조랑 똑같음, typing.cast 가 추가됨
         return typing.cast(cls, super().__new__(cls))
+
     
     # 레이어 객체 상태 초기화, 어떤 객체가 초기화 되어야 할 지에 대한 고민
     def __init__(self, layers=None, trainable=True, name=None):

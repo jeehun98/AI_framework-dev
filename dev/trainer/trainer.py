@@ -18,6 +18,6 @@ class Trainer:
         
 
     def fit(self, x=None, y=None, epochs=1):
-        # Trainer 클래스를 상속받는 클래스들의 call 메서드 실행
+        # Trainer를 상속받는 클래스들의 call 메서드 실행
         y_pred = self(x)
 

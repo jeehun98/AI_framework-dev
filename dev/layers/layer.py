@@ -3,9 +3,11 @@ from dev import regularizers
 class Layer():
     
     def __new__(cls, *args, **kwargs):
+        obj = super().__new__(cls, *args, **kwargs)
         
-        # build_wrapper 의 구현??
-        pass
+        # 추가적인 동작 수행
+
+        return obj
     
     def __init__(self, name=None, regularizer=None,**kwargs):
         self.name = name
