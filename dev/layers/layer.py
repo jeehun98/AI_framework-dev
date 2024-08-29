@@ -1,9 +1,10 @@
 from dev import regularizers
+import collections
 
 class Layer():
     
     def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls, *args, **kwargs)
+        obj = super().__new__(cls)
         
         # 추가적인 동작 수행
 
@@ -13,11 +14,13 @@ class Layer():
         self.name = name
         self.input_shape = None
         self.output_shape = None
-        self.regularizer = regularizers.get(regularizer)
+        if regularizer is not None:
+            self.regularizer = regularizers.get(regularizer)
+        else:
+            self.regularizer = None
         input_dim_arg = kwargs.pop("input_dim", None)
         if input_dim_arg is not None:
             input_dim_arg = (input_dim_arg,)
-
 
     # 가중치 초기화
     def build(self):
@@ -34,6 +37,7 @@ class Layer():
 
     def get_config(self):
         # 레이어의 구성 정보 반환
+        print("Layer, get_config")
         config = {
             'name': self.name,
         }

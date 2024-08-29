@@ -17,16 +17,16 @@ ALL_REGULARIZERS = {
 
 ALL_REGULARIZERS_DICT = {cls.__name__: cls for cls in ALL_REGULARIZERS}
 
+
 def get(identifier):
-    if identifier is isinstance(str):
+    if isinstance(identifier, str):
+        # 예를 들어, identifier가 문자열인 경우, 이에 해당하는 regularizer 객체를 가져옴
         obj = ALL_REGULARIZERS_DICT.get(identifier, None)
-
-    if callable(obj):
-        if inspect.isclass(obj):
-            obj = obj()
-        return obj
-
     else:
-        raise ValueError(
-            f"Could not interpret regularizer identifier: {identifier}"
-        )
+        # identifier가 문자열이 아니면, identifier 자체가 regularizer 객체일 가능성
+        obj = identifier
+    
+    if callable(obj):
+        return obj
+    else:
+        raise ValueError(f"Could not interpret regularizer identifier: {identifier}")

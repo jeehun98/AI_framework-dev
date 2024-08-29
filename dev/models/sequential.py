@@ -6,7 +6,7 @@ from dev.layers.core.input_layer import InputLayer
 #from dev.models.model import Model
 
 # Sequential 을 최상위 모델이라고 가정하고 해보자
-class Sequential():
+class Sequential(Layer):
     def __new__(cls, *args, **kwargs):
         # 부모 클래스의 __new__ 메서드 호출, 인스턴스 생성
         # typing.cast 를 통해 반환된 인스턴스 타입을 자식 클래스로 명시적 지정
@@ -16,7 +16,7 @@ class Sequential():
     
     # 레이어 객체 상태 초기화, 어떤 객체가 초기화 되어야 할 지에 대한 고민
     def __init__(self, layers=None, trainable=True, name=None):
-        super().__init__(trainable=trainable, name=name)
+        #super().__init__(trainable=trainable, name=name)
 
         self.built = False
 
@@ -30,6 +30,14 @@ class Sequential():
             for layer in layers:
                 self.add(layer, rebuild=False)
             self._may_rebuild()
+
+    def get_config(self):
+        layer_configs = []
+        for layer in self._layers:
+            
+            layer_configs.append(layer.get_config())
+
+        return layer_configs
 
     # 레이어 추가
     def add(self, layer):

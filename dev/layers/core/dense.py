@@ -13,9 +13,11 @@ class Dense(Layer):
 
     def get_config(self):
         base_config = super().get_config()
+        print("dense, get_config")
         config = ({
+            "class_name": self.__class__.__name__,
             'units': self.units,
-            'activation': self.activation,
+            'activation': self.activation.__name__,
         })
         return {**base_config, **config}
 
