@@ -14,6 +14,8 @@ x_test = x_test.reshape(10000, 784).astype('float32') / 255
 y_train = to_categorical(y_train, 10)
 y_test = to_categorical(y_test, 10)
 
+print(x_train.shape, y_train.shape)
+
 # 2. Sequential 모델 생성
 model = Sequential()
 

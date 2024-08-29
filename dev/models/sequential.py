@@ -20,16 +20,9 @@ class Sequential(Layer):
 
         self.built = False
 
-        # Functional API 스타일 변환 여부 확인
-        self._functional = None
+        # layer list
         self._layers = []
-        # 레이어 리스트
-        # 여기서 추가되는 레이어에 대한 rebuild = False 의 지정
-        # 모두 추가 후 모델의 빌드
-        if layers:
-            for layer in layers:
-                self.add(layer, rebuild=False)
-            self._may_rebuild()
+
 
     def get_config(self):
         layer_configs = []

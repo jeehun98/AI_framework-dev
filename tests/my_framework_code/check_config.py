@@ -10,5 +10,7 @@ model = Sequential()
 
 model.add(Flatten(input_shape=(784,)))
 model.add(Dense(128, activation='relu'))
+model.add(Dense(64, activation='relu'))
+model.add(Dense(10, activation='softmax'))
 
 print(model.get_config())
