@@ -11,6 +11,18 @@ class Dense(Layer):
         self.weights = None
         self.bias = None
 
+    def get_config(self):
+        base_config = super().get_config()
+        config = ({
+            'units': self.units,
+            'activation': self.activation,
+        })
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
     def build(self, input_shape):
         # 입력 차원에 따라 가중치와 편향을 초기화합니다.
         # 입력 차원은 이전 layer 의 출력 차원이 될 것
@@ -29,15 +41,4 @@ class Dense(Layer):
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.units)
 
-    def get_config(self):
-        base_config = super().get_config()
-        config = ({
-            'units': self.units,
-            'activation': self.activation,
-        })
-        return {**base_config, **config}
 
-    @classmethod
-    def from_config(cls, config):
-        activation = globals().get(config['activation'])
-        return cls(units=config['units'], activation=activation, name=config['name'])
