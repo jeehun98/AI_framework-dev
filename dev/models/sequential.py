@@ -26,10 +26,13 @@ class Sequential(Layer):
 
     # 모델의 layer 정보 전달
     def get_config(self):
+        seuqential_config = {
+            'name':'seqential',
+        }
         layer_configs = []
         for layer in self._layers:
             layer_configs.append(layer.get_config())
-        return layer_configs
+        return {**seuqential_config, "layers" : layer_configs}
 
 
     # 레이어 추가
@@ -44,14 +47,14 @@ class Sequential(Layer):
             )
         # 레이어가 존재하면...
         if self._layers:
-            previous_layer = self._layers[-1]
-            if hasattr(previous_layer, 'input_shape'):
-                input_shape = previous_layer.input_shape[1:]
+            previous_layer = self._layers[-1]   
+            if hasattr(previous_layer, 'units') and (previous_layer.units != None):
+                input_shape = (previous_layer.units,)
 
-            elif hasattr(previous_layer, 'unit'):
-                input_shape = (previous_layer.unit,)
+            elif hasattr(previous_layer, 'input_shape') and (previous_layer.input_shape != None):
+                input_shape = previous_layer.input_shape
             
-            if not hasattr(layer, "input_shape"):
+            if not hasattr(layer, "input_shape") or (layer.input_shape == None):
                 # build 를 통해 input_shape 지정과 함께, 가중치 초기화
                 # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
                 layer.build(input_shape)
@@ -61,35 +64,22 @@ class Sequential(Layer):
 
     
     # 모델 build 는 뭘 넣지
-    def build(self, input_shape=None):
-        #input_shape = input_shape
-        if not self._layers:
-            raise ValueError(
-                f"Sequential model {self.name} cannot be built because it has "
-                "no layers. Call `model.add(layer)`."
-            )
-        if isinstance(self._layers[0], InputLayer):
-            input_shape = self._layers[0].input_shape
-        # 가중치 초기화만 시행할거야
-        for layer in self._layers[1:]:
-            try:
-                # build 메서드 실행, input_shape 와 해당 layer의 output_shape 크기
-                # 를 통해 임의의 가중치가 생성된다.
-                # 생성된 가중치는 해당 레이어 인스턴스에 저장,
-                layer.build(input_shape)
-                input_shape = layer.output_shape
-
-            except NotImplementedError:
-                return         
-        
-        self.built = True
+    def build(self):
+        self.input_shape = self._layers[0].input_shape
     
+    def get_build_config(self):
+        return {
+            "input_shape" : self.input_shape
+        }
 
     # compile 시 저장되는 정보
     def compile(self, optimizer=None, loss=None, p_metrics=None):
         self.optimizer = optimizers.get(optimizer)
         self.loss = losses.get(loss)
         self.metric = metrics.get(p_metrics)
+
+        #빌드 수행
+        self.build()
 
 
     # 모델의 compile 정보 전달 
@@ -98,9 +88,12 @@ class Sequential(Layer):
         loss_config = self.loss.get_config()
         metrics_config = self.metric.get_config()
         
-        return [optimizer_config, loss_config, metrics_config]
+        return {
+                "optimizer": optimizer_config, 
+                "loss": loss_config, 
+                "metrics": metrics_config,
+            }
 
-    
     def fit(self, x, y, epochs = 1, **kwargs):
         pass
     

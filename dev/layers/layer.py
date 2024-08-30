@@ -24,8 +24,9 @@ class Layer():
 
     # layer build 는 뭘 추가해야 할지
     # layer 가 build 되었는지에 대해..
-    def build(self, input_shape):
+    def build(self):
        self.built = True
+
     
     # 연산이 실행되는 부분, layer 를 상속받는 클래스에서 이를 구현해야 한다. 
     def call(self, *args, **kwargs):
@@ -36,9 +37,10 @@ class Layer():
 
     def get_config(self):
         # 레이어의 구성 정보 반환
-        print("Layer, get_config")
+        
         config = {
-            'name': self.name,
+            # 나중에 바꿔보자 이건
+            'module': "dev.layers",
         }
 
         return {**config}

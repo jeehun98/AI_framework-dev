@@ -136,3 +136,9 @@
     - Layer 클래스의 build, build 상태 정보인, built 의 지정
 
         - 가중치 초기화와 input_shape 의 지정만 한다면, Flatten 은 초기화, 생성 시 built 로 지정할 수 있나?
+
+        - input_shape 저장 확인 - 08/30
+
+        - build_config 구현 : input_shape 의 저장
+
+- 모델의 정보들이 담겨있는 config 파일들, 직렬화 하여 전달해보자잇
