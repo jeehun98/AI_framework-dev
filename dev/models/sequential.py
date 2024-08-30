@@ -24,7 +24,7 @@ class Sequential(Layer):
         # layer list
         self._layers = []
 
-
+    # 모델의 layer 정보 전달
     def get_config(self):
         layer_configs = []
         for layer in self._layers:
@@ -33,6 +33,7 @@ class Sequential(Layer):
 
 
     # 레이어 추가
+    # 파라미터, layer 는 여기서 이미 객체가 생성되면서 여기 메서드 파라미터로 들어가는데...
     def add(self, layer):
         # 입력 형태가 layer 인스턴스가 아닐 경우 
         if not isinstance(layer, Layer):
@@ -41,25 +42,25 @@ class Sequential(Layer):
                 f"added to a Sequential model. Received: {layer} "
                 f"(of type {type(layer)})"
             )
+        # 레이어가 존재하면...
+        if self._layers:
+            previous_layer = self._layers[-1]
+            if hasattr(previous_layer, 'input_shape'):
+                input_shape = previous_layer.input_shape[1:]
+
+            elif hasattr(previous_layer, 'unit'):
+                input_shape = (previous_layer.unit,)
+            
+            if not hasattr(layer, "input_shape"):
+                # build 를 통해 input_shape 지정과 함께, 가중치 초기화
+                # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
+                layer.build(input_shape)
+
         # 입력된 layer 의 추가, 
         self._layers.append(layer)
 
-
-    def compile(self, optimizer=None, loss=None, p_metrics=None):
-        self.optimizer = optimizers.get(optimizer)
-        self.loss = losses.get(loss)
-        self.metric = metrics.get(p_metrics)
-
-
-    def get_compile_config(self):
-        optimizer_config = self.optimizer.get_config()
-        loss_config = self.loss.get_config()
-        metrics_config = self.metric.get_config()
-        
-        return [optimizer_config, loss_config, metrics_config]
-
-
-    # build 와 함께 가중치 초기화
+    
+    # 모델 build 는 뭘 넣지
     def build(self, input_shape=None):
         #input_shape = input_shape
         if not self._layers:
@@ -82,6 +83,26 @@ class Sequential(Layer):
                 return         
         
         self.built = True
+    
+
+    # compile 시 저장되는 정보
+    def compile(self, optimizer=None, loss=None, p_metrics=None):
+        self.optimizer = optimizers.get(optimizer)
+        self.loss = losses.get(loss)
+        self.metric = metrics.get(p_metrics)
+
+
+    # 모델의 compile 정보 전달 
+    def get_compile_config(self):
+        optimizer_config = self.optimizer.get_config()
+        loss_config = self.loss.get_config()
+        metrics_config = self.metric.get_config()
+        
+        return [optimizer_config, loss_config, metrics_config]
+
+    
+    def fit(self, x, y, epochs = 1, **kwargs):
+        pass
     
 
     def call(self, inputs):

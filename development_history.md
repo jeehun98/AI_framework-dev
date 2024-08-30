@@ -125,4 +125,14 @@
 
 - 모델의 정보를 저장할 get_config 메서드의 작성, 모델의 구조를 가지고 갈 수 있도록
 
-    - model.config() 를 통해 해당 모델 layer 에 대한 정보를 호출할 수 있음, 더 필요한 정보가 뭐가 있을 지
+    - model.get_config() 를 통해 해당 모델 layer 에 대한 정보를 호출할 수 있음, 더 필요한 정보가 뭐가 있을 지
+
+    - model.get_compile_config() 구현 완료~! 야호 08/29
+
+- 레이어가 쌓이는, model.add() 와 함께 input_shape, 가중치 초기화, built 지정의 설정
+
+    - Dense 클래스의 build, input_shape 의 지정과 가중치 초기화
+
+    - Layer 클래스의 build, build 상태 정보인, built 의 지정
+
+        - 가중치 초기화와 input_shape 의 지정만 한다면, Flatten 은 초기화, 생성 시 built 로 지정할 수 있나?

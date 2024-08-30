@@ -25,13 +25,12 @@ class Dense(Layer):
     def from_config(cls, config):
         return cls(**config)
 
+    # 입력 차원에 따라 가중치와 편향을 초기화
     def build(self, input_shape):
-        # 입력 차원에 따라 가중치와 편향을 초기화합니다.
-        # 입력 차원은 이전 layer 의 출력 차원이 될 것
-        input_dim = input_shape[-1]
-        self.weights = np.random.randn(input_dim, self.units)
+        self.input_shape = input_shape
+        self.weights = np.random.randn(input_shape, self.units)
         self.bias = np.zeros((self.units,))
-        #super().build(input_shape)
+        super().build(input_shape)
 
     def call(self, inputs):
         # 가중치와 편향을 적용하고 활성화 함수를 통해 출력합니다.
