@@ -63,7 +63,7 @@ class Sequential(Layer):
         self._layers.append(layer)
 
     
-    # 모델 build 는 뭘 넣지
+    # 모델 build, compile 을 통해 실행, input_shape, build_config 정보 저장
     def build(self):
         self.input_shape = self._layers[0].input_shape
     
@@ -71,6 +71,7 @@ class Sequential(Layer):
         return {
             "input_shape" : self.input_shape
         }
+
 
     # compile 시 저장되는 정보
     def compile(self, optimizer=None, loss=None, p_metrics=None):
@@ -93,6 +94,18 @@ class Sequential(Layer):
                 "loss": loss_config, 
                 "metrics": metrics_config,
             }
+
+    # 각 레이어 방문, 가중치 정보 호출
+    def get_weight(self):
+        weights = []
+        for layer in self._layers:
+            if hasattr(layer, 'weights'):
+                weights.append(layer.weights)
+
+        return weights
+
+
+    def seril
 
     def fit(self, x, y, epochs = 1, **kwargs):
         pass

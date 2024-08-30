@@ -25,3 +25,5 @@ print(model.get_config())
 
 #print("빌드 콘피그 확인")
 print(model.get_build_config())
+
+print(model.get_weight()[0].shape)
