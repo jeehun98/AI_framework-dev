@@ -31,7 +31,7 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 # 5. 모델 학습
-model.fit(x_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
+model.fit(x_train, y_train, epochs=1    , batch_size=32, validation_split=0.2)
 
 # 6. 모델 평가
 test_loss, test_acc = model.evaluate(x_test, y_test)
@@ -39,3 +39,6 @@ print(f'Test accuracy: {test_acc:.4f}')
 
 # 7. 예측 수행
 predictions = model.predict(x_test)
+
+print(model.get_build_config())
+model.get_weights

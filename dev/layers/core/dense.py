@@ -13,11 +13,12 @@ class Dense(Layer):
 
     def get_config(self):
         base_config = super().get_config()
-        print("dense, get_config")
         config = ({
-            "class_name": self.__class__.__name__,
+            'class_name': self.__class__.__name__,
             'units': self.units,
             'activation': self.activation.__name__,
+            'input_shape': self.input_shape,
+
         })
         return {**base_config, **config}
 
@@ -27,10 +28,13 @@ class Dense(Layer):
 
     # 입력 차원에 따라 가중치와 편향을 초기화
     def build(self, input_shape):
+        # input_shape가 (784,)와 같은 경우라면, 실제 필요한 것은 input_shape[0]입니다.
+        input_dim = input_shape[0]
         self.input_shape = input_shape
-        self.weights = np.random.randn(input_shape, self.units)
+        self.weights = np.random.randn(input_dim, self.units)
         self.bias = np.zeros((self.units,))
-        super().build(input_shape)
+        super().build()
+
 
     def call(self, inputs):
         # 가중치와 편향을 적용하고 활성화 함수를 통해 출력합니다.
@@ -38,8 +42,3 @@ class Dense(Layer):
         if self.activation:
             return self.activation(z)
         return z
-
-    def compute_output_shape(self, input_shape):
-        return (input_shape[0], self.units)
-
-
