@@ -22,11 +22,10 @@ class Layer():
         if input_dim_arg is not None:
             input_dim_arg = (input_dim_arg,)
 
-    # 가중치 초기화
-    def build(self):
-        # 이미 저장되어 있는 인스턴스로부터 input_shape, output_shape 를 계산할 수 있어야
-        
-        pass
+    # layer build 는 뭘 추가해야 할지
+    # layer 가 build 되었는지에 대해..
+    def build(self, input_shape):
+       self.built = True
     
     # 연산이 실행되는 부분, layer 를 상속받는 클래스에서 이를 구현해야 한다. 
     def call(self, *args, **kwargs):

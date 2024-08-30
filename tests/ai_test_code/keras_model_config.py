@@ -10,11 +10,16 @@ model.add(Dense(128, activation='relu'))  # 첫 번째 Dense 층
 model.add(Dense(64, activation='relu'))   # 두 번째 Dense 층
 model.add(Dense(10, activation='softmax'))  # 세 번째 Dense 층, 출력층
 
+# 여기에도 input_shape 의 정보가 저장되어 있는지의 확인
+a = model.get_config()
+
 # 4. 모델 컴파일
 model.compile(optimizer='adam',
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
-#print(model.get_config())
+b = model.get_config()
+
+
 #print(model.get_compile_config())
-print(model.get_build_config())
+#print(model.get_build_config())
