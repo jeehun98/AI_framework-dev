@@ -2,6 +2,7 @@ from dev.layers.layer import Layer
 from dev import activations
 import numpy as np
 
+
 class Dense(Layer):
     def __init__(self, units, activation=None, name=None, **kwargs):
         super().__init__(name)
@@ -29,8 +30,11 @@ class Dense(Layer):
     # 입력 차원에 따라 가중치와 편향을 초기화
     def build(self, input_shape):
         # input_shape가 (784,)와 같은 경우라면, 실제 필요한 것은 input_shape[0]입니다.
+        # 모델 정보
         input_dim = input_shape[0]
         self.input_shape = input_shape
+
+        # 가중치 생성
         self.weights = np.random.randn(input_dim, self.units)
         self.bias = np.zeros((self.units,))
         super().build()
@@ -38,6 +42,7 @@ class Dense(Layer):
 
     def call(self, inputs):
         # 가중치와 편향을 적용하고 활성화 함수를 통해 출력합니다.
+        # 백엔드 호출이 필요
         z = np.dot(inputs, self.weights) + self.bias
         if self.activation:
             return self.activation(z)
