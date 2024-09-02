@@ -46,18 +46,21 @@ class Sequential(Layer):
                 f"added to a Sequential model. Received: {layer} "
                 f"(of type {type(layer)})"
             )
-        # 레이어가 존재하면...
+        # 레이어가 존재
         if self._layers:
             previous_layer = self._layers[-1]   
+            # 이전 레이어의 units 개수가 이번 레이어의 input_shape
             if hasattr(previous_layer, 'units') and (previous_layer.units != None):
                 input_shape = (previous_layer.units,)
-
+            # units 이 없을 경우 input_shape 가 그대로 복사
             elif hasattr(previous_layer, 'input_shape') and (previous_layer.input_shape != None):
                 input_shape = previous_layer.input_shape
+            
             
             if not hasattr(layer, "input_shape") or (layer.input_shape == None):
                 # build 를 통해 input_shape 지정과 함께, 가중치 초기화
                 # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
+                # dense 의 경우 가중치 초기화
                 layer.build(input_shape)
 
         # 입력된 layer 의 추가, 
