@@ -1,4 +1,5 @@
 import typing
+import json
 
 from dev.layers.layer import Layer
 from dev.layers.core.input_layer import InputLayer
@@ -105,7 +106,33 @@ class Sequential(Layer):
         return weights
 
 
-    def seril
+    def serialize_model(self):
+        # Step 1: Get the compile config, model config, and build config
+        compile_config = self.get_compile_config()
+        model_config = self.get_config()
+        build_config = self.get_build_config()
+
+        # Step 2: Get the weights
+        weights = []
+        for layer in self._layers:
+            layer_weights = layer.get_weights()  # Get weights of the layer
+            serialized_weights = [w.tolist() for w in layer_weights]  # Convert numpy arrays to lists
+            weights.append(serialized_weights)
+
+        # Step 3: Create a dictionary to store all the information
+        model_data = {
+            "compile_config": compile_config,
+            "model_config": model_config,
+            "build_config": build_config,
+            "weights": weights,
+        }
+
+        # Step 4: Serialize the dictionary to a JSON string
+        serialized_model = json.dumps(model_data)
+
+        return serialized_model
+    
+    
 
     def fit(self, x, y, epochs = 1, **kwargs):
         pass
