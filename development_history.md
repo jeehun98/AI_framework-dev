@@ -195,4 +195,22 @@
 
     - optimizer 먼저 해보자잇 - 09/03
 
-    - loss function 의 구현
+    - loss function 의 구현 - 09/03
+
+    - metrics 까지 완료~09/03
+
+        - 여러 종류의 compile parameter 를 앞으로 추가해야 한다.
+
+- model.fit 을 구현해보자!!
+
+    - x, y, epoch 세 개의 파라미터만 먼저 해보자
+
+        - 가장 먼저 초기화된 가중치와 입력값의 연산, 역전파 없이
+
+        - 데이터 입력을 numpy array 로 해야하는 문제가 발생 backend 부분의 수정 필요
+
+        - backend C++ 파일 수정, flatten 및 dense 연산 수행 확인 - 09/03
+
+            - Flatten 의 input_shape 수정 필요
+
+        - activation 연산 확인

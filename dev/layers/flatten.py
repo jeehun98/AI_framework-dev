@@ -27,7 +27,8 @@ class Flatten(Layer):
     def call(self, inputs):
         # 데이터를 실제로 변환하는데 초점
         # 배치 크기가 어떻게 유지되는지 알 수 있는 부분
-        return np.reshape(inputs, (inputs.shape[0], -1))
+        #print(np.reshape(inputs, (1,-1)).shape, "출력 확인")
+        return np.reshape(inputs, (1, -1))
 
     def compute_output_shape(self, input_shape):
         # 입력 shape 를 기반으로 출력 shape 를 계산, 모델의 구조 정의
