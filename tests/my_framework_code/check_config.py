@@ -24,3 +24,9 @@ print("\n\nget_config : ", model.get_config())
 print("\n\nbuild_config : ", model.get_build_config())
 
 print("\n\nweigh_shape : ", model.get_weight()[0].shape)
+
+# model.fit(x_train, y_train, epochs=1, batch_size=32, validation_split=0.2)
+
+# test_loss, test_acc = model.evaluate(x_test, y_test)
+
+# predictions = model.predict(x_test)

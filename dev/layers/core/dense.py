@@ -15,10 +15,12 @@ class Dense(Layer):
         super().__init__(name)
         self.units = units
         self.output_shape = (units,)
+
         if activation is not None:
             self.activation = activations.get(activation)
         else:
             self.activation = activation
+            
         self.weights = None
         self.bias = None
         

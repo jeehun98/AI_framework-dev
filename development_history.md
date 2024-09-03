@@ -188,3 +188,11 @@
     - activation 이 그냥 python 연산으로 수행됨
 
     - 
+
+- add 단계까지는 완료! - 09/03
+
+- model.compile 부분 구현해보자, optimizer, loss, metrics 등등
+
+    - optimizer 먼저 해보자잇 - 09/03
+
+    -
