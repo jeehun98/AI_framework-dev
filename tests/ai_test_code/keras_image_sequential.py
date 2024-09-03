@@ -31,7 +31,7 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 # 5. 모델 학습
-model.fit(x_train, y_train, epochs=1    , batch_size=32, validation_split=0.2)
+model.fit(x_train, y_train, epochs=1, batch_size=32, validation_split=0.2)
 
 # 6. 모델 평가
 test_loss, test_acc = model.evaluate(x_test, y_test)
