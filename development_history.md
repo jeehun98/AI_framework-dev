@@ -195,4 +195,4 @@
 
     - optimizer 먼저 해보자잇 - 09/03
 
-    -
+    - loss function 의 구현
