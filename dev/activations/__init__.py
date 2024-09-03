@@ -1,23 +1,15 @@
 from dev.activations.activations import sigmoid
 from dev.activations.activations import relu
-from dev.activations.activations import relu6
 from dev.activations.activations import leaky_relu
 from dev.activations.activations import softmax
-from dev.activations.activations import swish
-from dev.activations.activations import elu
-from dev.activations.activations import gelu
 from dev.activations.activations import tanh
 
 # 활성화 함수 객체와 딕셔너리
 ALL_ACTIVATIONTS = {
     sigmoid,
     relu,
-    relu6,
     leaky_relu,
     softmax,
-    swish,
-    elu,
-    gelu,
     tanh,
 }
 
@@ -34,9 +26,6 @@ x = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
 result = activation_fn(x)
 
 """
-def serialize(activation):
-    pass
-
 def get(identifier):
 
     # 검증하는 역할, 사용자가 파라미터로 정의되지 않은 활성화 함수의 입력을 했을 경우가 존재
