@@ -17,13 +17,10 @@ model.compile(optimizer='sgd',
               loss='categoricalcrossentropy',
               p_metrics='accuracy')
 
-#print("컴파일 콘피그 확인")
-print(model.get_compile_config())
+print("compile_config : ", model.get_compile_config())
 
-#print("콘피그 확인")
-print(model.get_config())
+print("\n\nget_config : ", model.get_config())
 
-#print("빌드 콘피그 확인")
-print(model.get_build_config())
+print("\n\nbuild_config : ", model.get_build_config())
 
-print(model.get_weight()[0].shape)
+print("\n\nweigh_shape : ", model.get_weight()[0].shape)
