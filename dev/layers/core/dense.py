@@ -4,7 +4,7 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 from dev.layers.layer import Layer
 from dev import activations
 
-from dev.backend.core import operations_matrix
+from dev.backend.operaters import operations_matrix
 
 import numpy as np
 
@@ -49,7 +49,7 @@ class Dense(Layer):
 
         # 가중치 생성
         self.weights = np.random.randn(input_dim, self.units)
-        self.bias = np.zeros((self.units,))
+        self.bias = np.zeros((1, self.units))
         super().build()
 
 

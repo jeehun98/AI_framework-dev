@@ -1,7 +1,7 @@
 // bindings.cpp
 #include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-#include "metrics.cpp"
+#include <pybind11/numpy.h>
+#include "metrics.cpp"  // 해당 부분을 실제 파일 이름으로 바꿔주세요.
 
 namespace py = pybind11;
 

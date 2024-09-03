@@ -10,7 +10,7 @@ from dev import metrics
 #from dev.models.model import Model
 
 # Sequential 을 최상위 모델이라고 가정하고 해보자
-class Sequential(Layer):
+class Sequential():
     def __new__(cls, *args, **kwargs):
         # 부모 클래스의 __new__ 메서드 호출, 인스턴스 생성
         # typing.cast 를 통해 반환된 인스턴스 타입을 자식 클래스로 명시적 지정
@@ -136,9 +136,26 @@ class Sequential(Layer):
         return serialized_model
     
     
+    # fit 을 구현해보자잇~
+    def fit(self, x=None, y=None, epochs = 1):
+        
+        # 연산 결과를 저장
+        result = []
 
-    def fit(self, x, y, epochs = 1, **kwargs):
-        pass
+        # 각 레이어의 call 연산을 호출하는 방식으로 구현
+        # 입력 데이터 하나를 받기
+        for data in x:
+            input_data = data
+            # 각 레이어 방문
+            for layer in self._layers:
+                
+                input_data = layer.call(input_data)
+
+            # 레이어의 call 연산이 모두 끝난 후 
+            print(input_data, "input data")
+            result.append(input_data)
+        
+        return result
     
 
     def call(self, inputs):

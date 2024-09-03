@@ -11,18 +11,17 @@ import numpy as np
 model = Sequential()
 
 model.add(Flatten(input_shape=(4,)))
-model.add(Dense(2))
+model.add(Dense(2, activation = "sigmoid"))
 
 model.compile(optimizer='sgd',
               loss='categoricalcrossentropy',
               p_metrics='accuracy')
 
-print(model.get_weight())
 # 연산을 수행해보자잇~
 
-x = np.array([[0.11098839],
-       [0.54678539],
-       [0.32957108],
-       [0.49607128]])
+x = np.array(
+    [[0.0186703 , 0.64554151, 0.18496826, 0.43432135],
+    [0.15490974, 0.57481778, 0.77393513, 0.03186789]]
+)
 
-model.fit(x)
+print(model.fit(x))

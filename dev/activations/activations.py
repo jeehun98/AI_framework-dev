@@ -16,5 +16,5 @@ def sigmoid(x):
 def tanh(x):
     return activations.tanh_activation(x)
 
-def softmax(x, axis=-1):
+def softmax(x):
     return activations.softmax(x)
