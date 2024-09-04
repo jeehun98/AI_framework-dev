@@ -15,8 +15,8 @@ model.add(Flatten(input_shape=(4,)))
 model.add(Dense(2, activation = "sigmoid"))
 
 model.compile(optimizer='sgd',
-              loss='categoricalcrossentropy',
-              p_metrics='accuracy')
+              loss='mse',
+              p_metrics='mse')
 
 # 연산을 수행해보자잇~
 
@@ -26,6 +26,10 @@ x = np.array(
     [0.15490974, 0.57481778, 0.77393513, 0.03186789]]
 )
 
-y = model.fit(x)
+y = np.array(
+    [[0, 0],
+     [0, 0]]
 
-print(y[0], "\n\n",y[1])
+)
+
+model.fit(x, y)

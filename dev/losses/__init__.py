@@ -1,9 +1,15 @@
 import inspect
 
 from dev.losses.losses import CategoricalCrossentropy
+from dev.losses.losses import BinaryCrossentropy
+from dev.losses.losses import MSE
+
+
 
 ALL_LOSSES= {
     CategoricalCrossentropy,
+    BinaryCrossentropy,
+    MSE,
 }
 
 ALL_LOSSES_DICT = {cls.__name__.lower(): cls for cls in ALL_LOSSES}

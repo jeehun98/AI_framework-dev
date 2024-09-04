@@ -1,9 +1,11 @@
 import inspect
 
 from dev.metrics.accuracy_metrics import Accuracy
+from dev.metrics.accuracy_metrics import MSE
 
 ALL_METRICS = {
     Accuracy,
+    MSE,
 }
 
 ALL_METRICS_DICT = {cls.__name__.lower(): cls for cls in ALL_METRICS}
