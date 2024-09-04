@@ -49,16 +49,23 @@ class Dense(Layer):
 
         # 가중치 생성
         self.weights = np.random.randn(input_dim, self.units)
-        self.bias = np.zeros((1, self.units))
+        self.bias = np.random.rand()
         super().build()
 
 
     def call(self, inputs):
-        # 가중치와 편향을 적용하고 활성화 함수를 통해 출력합니다.
-        # 필요한 각 백엔드 호출
+        """
+        dense 층 연산
+
+        Parameters:
+        inputs (n, p) : p 차원 n개의 데이터 입력
+        
+        Returns (n*, p*): dense 연산 결과
+        """
         x = operations_matrix.matrix_multiply(inputs, self.weights)
         if self.bias is not None:
-            x = operations_matrix.matrix_add(x, self.bias)
+            x = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
         if self.activation is not None:
             x = self.activation(x)
+            x = np.reshape(x,(-1,self.units))
         return x

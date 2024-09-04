@@ -48,16 +48,18 @@ class Sequential():
             )
         # 레이어가 존재
         if self._layers:
+            # 마지막 layer 선택
             previous_layer = self._layers[-1]   
             # 이전 레이어의 units 개수가 이번 레이어의 input_shape
             if hasattr(previous_layer, 'units') and (previous_layer.units != None):
                 input_shape = (previous_layer.units,)
             # units 이 없을 경우 input_shape 가 그대로 복사
+            # 이전 layer 가 flatten 일 경우
             elif hasattr(previous_layer, 'input_shape') and (previous_layer.input_shape != None):
                 input_shape = previous_layer.input_shape
             
-            
-            if not hasattr(layer, "input_shape") or (layer.input_shape == None):
+            # input_shape 값이 들어오거나, input_shape 값이 이미 있을 경우 
+            if hasattr(layer, "input_shape") or (layer.input_shape == None):
                 # build 를 통해 input_shape 지정과 함께, 가중치 초기화
                 # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
                 # dense 의 경우 가중치 초기화
@@ -67,7 +69,9 @@ class Sequential():
         self._layers.append(layer)
 
     
-    # 모델 build, compile 을 통해 실행, input_shape, build_config 정보 저장
+    # layer build 는 가중치 초기화를 진행했음
+    # model build 를 통해 build_config 정보를 구성, input_shape 정보
+    # model.compile 을 통해 실행된다.
     def build(self):
         self.input_shape = self._layers[0].input_shape
     
@@ -138,23 +142,25 @@ class Sequential():
     
     # fit 을 구현해보자잇~
     def fit(self, x=None, y=None, epochs = 1):
+        """
+        모델의 연산 부분
         
+        Parameters:
+        x (n, p): p 개의 특성을 가진, n 개의 데이터
+          (n, p_1, p_2) : p_1,2, 2차원의 특성을 가진 n 개의 데이터
+        y (n, 1): n 개의 타겟값
+
+        """
         # 연산 결과를 저장
         result = []
 
-        # 각 레이어의 call 연산을 호출하는 방식으로 구현
-        # 입력 데이터 하나를 받기
-        for data in x:
-            input_data = data
-            # 각 레이어 방문
-            for layer in self._layers:
-                
-                input_data = layer.call(input_data)
-
-            # 레이어의 call 연산이 모두 끝난 후 
-            print(input_data, "input data")
-            result.append(input_data)
-        
+        # 초기 입력값
+        output = x
+        # 전체 데이터를 처리하도록
+        for layer in self._layers:
+            output = layer.call(output)
+            result.append(output)
+            
         return result
     
 
