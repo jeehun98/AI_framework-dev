@@ -6,6 +6,7 @@ from dev.layers.core.input_layer import InputLayer
 from dev import optimizers
 from dev import losses
 from dev import metrics
+
 #from dev.layers.core.dense import Dense
 #from dev.models.model import Model
 
@@ -152,16 +153,26 @@ class Sequential():
 
         """
         # 연산 결과를 저장
-        result = []
+        layer_results = []
 
         # 초기 입력값
         output = x
         # 전체 데이터를 처리하도록
         for layer in self._layers:
             output = layer.call(output)
-            result.append(output)
+            layer_results.append(output)
+
+        # 연산 최종 결과가 output 에 저장
+        # 해당 데이터와 y 값의 차이를 통한 loss, accuracy 계산
+        
+        # loss 연산의 수행
+        loss_value = self.loss(output, y)
+        # metric 연산
+        metric_value = self.metric(output, y)
+        
+        # optimizer 를 위한 계산 그래프도 구현해야 해
+        for layer_result in layer_result:
             
-        return result
     
 
     def call(self, inputs):

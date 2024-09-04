@@ -17,4 +17,7 @@ PYBIND11_MODULE(metrics, m) {
     
     m.def("f1_score", &f1_score, "Calculate F1 score",
           py::arg("y_true"), py::arg("y_pred"));
+
+    m.def("mse", &mean_squared_error, "Calculate mse",
+          py::arg("y_true"), py::arg("y_pred"));
 }
