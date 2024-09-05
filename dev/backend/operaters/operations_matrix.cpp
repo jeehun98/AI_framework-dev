@@ -96,8 +96,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
 
                 // 곱셈 노드 생성 및 덧셈 노드와 연결
                 std::shared_ptr<Node> mul_node = std::make_shared<Node>("multiply", a_value, b_value, product);
-                sum_node->add_child(mul_node);  // 곱셈 노드를 부모로 추가
-                mul_node->add_parent(sum_node);   // 덧셈 노드를 자식으로 추가
+                sum_node->add_child(mul_node);  // 곱셈 노드를 덧셈 노드의 자식으로 추가
+                mul_node->add_parent(sum_node);   // 덧셈 노드를 곱셈 노드의 부모로 추가
             }
 
             // 덧셈 노드의 최종 출력 업데이트
