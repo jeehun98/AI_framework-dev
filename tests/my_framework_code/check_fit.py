@@ -26,10 +26,16 @@ x = np.array(
     [0.15490974, 0.57481778, 0.77393513, 0.03186789]]
 )
 
+# 각 입력 데이터에 대한 타겟값, y
 y = np.array(
     [[0, 0],
      [0, 0]]
 
 )
 
-model.fit(x, y)
+result = model.fit(x, y)
+
+print(len(result), result[1])
+
+# 입력 배치 데이터의 loss 평균값
+print(model.loss_value)

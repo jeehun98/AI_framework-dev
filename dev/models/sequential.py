@@ -166,14 +166,16 @@ class Sequential():
         # 해당 데이터와 y 값의 차이를 통한 loss, accuracy 계산
         
         # loss 연산의 수행
-        loss_value = self.loss(output, y)
+        self.loss_value = self.loss(output, y)
         # metric 연산
-        metric_value = self.metric(output, y)
+        self.metric_value = self.metric(output, y)
         
         # optimizer 를 위한 계산 그래프도 구현해야 해
-        for layer_result in layer_result:
+        for layer_result in layer_results:
+            pass
             
-    
+
+        return layer_results
 
     def call(self, inputs):
         for layer in self.layers:
