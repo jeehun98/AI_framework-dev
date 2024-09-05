@@ -237,5 +237,10 @@
 
             - (m, n) (n, l) 의 행렬 곱 수행 시, m * l 개의 덧셈 노드와, 각 덧셈 노드는 n 개의 곱셈 노드를 포함하고 있다. - 09/05 완료
 
-        - activation 연산의 구현 backend 내 구현 Node 연결
+        - activation 연산 backend 내 구현 Node 연결
 
+            - 활성화 함수 연산들의 구성 요소들을 노드 연산 상 구현을 해야하네
+
+                - relu 의 경우, compare - select 노드, compare 는 gra 값 변화가 없고, select 는 output / input 의 gra 값을 가짐
+
+                - sigmoid 의 경우, 
