@@ -10,6 +10,7 @@ class Layer():
 
         return obj
     
+    
     def __init__(self, name=None, regularizer=None,**kwargs):
         self.name = name
         self.input_shape = None

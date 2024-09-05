@@ -4,6 +4,8 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 from dev.layers.layer import Layer
 from dev import activations
 
+from dev.ops import operation
+
 from dev.backend.operaters import operations_matrix
 
 import numpy as np
@@ -24,6 +26,22 @@ class Dense(Layer):
         self.weights = None
         self.bias = None
         
+    # 계산 그래프의 구현
+    def __call__(self):
+        pass
+
+    """
+    keras 코드
+        def call(self, inputs, training=None):
+        x = ops.matmul(inputs, self.kernel)
+        if self.bias is not None:
+            x = ops.add(x, self.bias)
+        if self.activation is not None:
+            x = self.activation(x)
+        return x
+    
+    """
+
 
     def get_config(self):
         base_config = super().get_config()
