@@ -26,5 +26,6 @@ print("\nSum Node List and Child (Multiply) Nodes:")
 for sum_node in node_list:
     print(f"Sum Node - Operation: {sum_node.operation}, Result: {sum_node.output}")
     for mul_node in sum_node.children:
-        print(mul_node)
-    
+        print(f"Mul Node - Operations: {mul_node.operation}, Input_a: {mul_node.input_a}, Input_b: {mul_node.input_b}, Result: {mul_node.output}")
+
+print(type(node_list[0]))
