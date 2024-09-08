@@ -222,10 +222,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::a
         double* row_ptr = ptr + row * num_cols;
         double* row_result_ptr = ptr_result + row * num_cols;
 
-        // Max 노드 생성 (각 행에서 최대값)
+        // 각 행 별 최댓값
         double max_val = *std::max_element(row_ptr, row_ptr + num_cols);
-        std::shared_ptr<Node> max_node = std::make_shared<Node>("max", 0.0, max_val);
-        node_list.push_back(max_node);
 
         double sum = 0.0;
         std::vector<std::shared_ptr<Node>> exp_nodes;
@@ -235,34 +233,28 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::a
 
             // Subtract 노드 생성 (각 입력에서 최대값을 뺌)
             double sub_output = input_value - max_val;
-            std::shared_ptr<Node> sub_node = std::make_shared<Node>("subtract", input_value, sub_output);
-            sub_node->add_parent(max_node);  // Max 노드를 부모로 추가
-            node_list.push_back(sub_node);
+            std::shared_ptr<Node> sub_node = std::make_shared<Node>("subtract", input_value, max_val, sub_output);
 
             // Exponentiate 노드 생성 (exp(x))
             double exp_output = std::exp(sub_output);
             std::shared_ptr<Node> exp_node = std::make_shared<Node>("exp", sub_output, exp_output);
-            exp_node->add_parent(sub_node);
-            node_list.push_back(exp_node);
+            exp_node->add_child(sub_node);
+            sub_node->add_parent(exp_node);
+
             exp_nodes.push_back(exp_node);
 
             sum += exp_output;
         }
 
-        // Sum 노드 생성 (exp 결과의 합)
-        std::shared_ptr<Node> sum_node = std::make_shared<Node>("sum", 0.0, sum);  // Sum 노드는 여러 입력값을 처리하므로 input은 0으로 초기화
-        for (auto& exp_node : exp_nodes) {
-            sum_node->add_parent(exp_node);
-            exp_node->add_child(sum_node);
-        }
-        node_list.push_back(sum_node);
-
         for (size_t i = 0; i < num_cols; ++i) {
             // Divide 노드 생성 (exp(x) / sum)
             double div_output = exp_nodes[i]->output / sum;
-            std::shared_ptr<Node> div_node = std::make_shared<Node>("divide", exp_nodes[i]->output, div_output);
-            div_node->add_parent(sum_node);
-            div_node->add_parent(exp_nodes[i]);
+            std::shared_ptr<Node> div_node = std::make_shared<Node>("divide", exp_nodes[i]->output, sum, div_output);
+            
+            div_node->add_child(exp_nodes[i]);
+            exp_nodes[i]->add_parent(div_node);
+
+            // 결과의 개수는 입력 데이터의 개수와 동일, 배치까지
             node_list.push_back(div_node);
 
             // 결과 저장
