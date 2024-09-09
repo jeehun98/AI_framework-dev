@@ -166,10 +166,13 @@ class Sequential():
             layer_results.append(output)
 
         # 연산 최종 결과가 output 에 저장
+        #print(output, "이게 뭐야")
         # 해당 데이터와 y 값의 차이를 통한 loss, accuracy 계산
-        
+
         # loss 연산의 수행
         self.loss_value = self.loss(output, y)
+        print(self.loss_value, "loss 확인")
+
         # metric 연산
         self.metric_value = self.metric(output, y)
         

@@ -77,9 +77,9 @@ class Dense(Layer):
         if self.activation is not None:
             x, node_list = self.activation(x)
 
-        print(x, "바꾸기 전")
         x = x.reshape(n, -1)
-        print(x, "바꾼 후")
+
+        return x
 
     """
     keras 코드

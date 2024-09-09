@@ -20,7 +20,7 @@ class MSE():
         return losses.mean_squared_error(y_true, y_pred)
 
 class BinaryCrossentropy():
-    def __init__(self, name="binary_crossentropy"):
+    def __init__(self, name="binarycrossentropy"):
         self.name = name
 
     def get_config(self):
@@ -29,7 +29,7 @@ class BinaryCrossentropy():
         }
 
 class CategoricalCrossentropy():
-    def __init__(self, name="categorical_crossentropy"):
+    def __init__(self, name="categoricalcrossentropy"):
         self.name = name
 
     def get_config(self):
