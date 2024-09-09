@@ -162,12 +162,17 @@ class Sequential():
         # 전체 데이터를 처리하도록
         for layer in self._layers:
             # 이전 층의 출력값이 해당 층의 입력값이 되고,
+            # 해당 레이에 해당하는 계산 노드 리스트가 출력, 
+            print(output.shape, "output_shape 확인")
             output = layer.call(output)
+
+            # 레이어별 출력 확인
             layer_results.append(output)
 
-        # 연산 최종 결과가 output 에 저장
-        #print(output, "이게 뭐야")
-        # 해당 데이터와 y 값의 차이를 통한 loss, accuracy 계산
+        # 연산 최종 결과, 레이어의 출력이 output 에 저장
+        
+        # flatten 때문에 늘어난 차원의 수정
+        output = output.reshape(x.shape[0],-1)
 
         # loss 연산의 수행
         self.loss_value = self.loss(output, y)
@@ -177,13 +182,6 @@ class Sequential():
         self.metric_value = self.metric(output, y)
         print(self.metric_value,"metric 확인")
 
-
-        # optimizer 를 위한 계산 그래프도 구현해야 해
-        for layer_result in layer_results:
-            pass
-            
-
-        return layer_results
 
     def call(self, inputs):
         for layer in self.layers:
