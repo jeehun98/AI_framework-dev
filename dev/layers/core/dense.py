@@ -4,9 +4,8 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 from dev.layers.layer import Layer
 from dev import activations
 
-from dev.ops import operation
-
 from dev.backend.operaters import operations_matrix
+from dev.backend.activations import activations
 
 import numpy as np
 
