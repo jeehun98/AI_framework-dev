@@ -1,5 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 #include <cmath>
 #include <vector>
 #include "../node/node.h"  // Node 클래스가 정의된 헤더 파일 포함
@@ -80,7 +82,6 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> sigmoid(py::a
         exp_node->add_parent(add_node);   // add_node는 exp_node의 부모 노드
 
         // Reciprocal 노드 (1 / (1 + exp(-x)))
-        double constant_value = 1.0;
         double recip_output = constant_value / add_output;  // 1.0을 분자에 포함
         std::shared_ptr<Node> recip_node = std::make_shared<Node>("reciprocal", constant_value, add_output, recip_output);
 

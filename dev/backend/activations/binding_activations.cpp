@@ -1,30 +1,50 @@
-// bindings.cpp
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include "activations.cpp"  // 해당 부분을 실제 파일 이름으로 바꿔주세요.
+#include <pybind11/stl.h>
+#include <cmath>
+#include <vector>
+#include <memory>
+
+#include "activations.cpp"  
 #include "../node/node.h"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(operations_matrix, m) {
+// 각 활성화 함수의 선언
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> relu(py::array_t<double> inputs);
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> sigmoid(py::array_t<double> inputs);
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> tanh_activation(py::array_t<double> inputs);
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> leaky_relu(py::array_t<double> inputs, double alpha);
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::array_t<double> inputs);
+
+PYBIND11_MODULE(activations, m) {
+    m.doc() = "Activation functions with computation graph support";
+
+    // Node 클래스 바인딩
     py::class_<Node, std::shared_ptr<Node>>(m, "Node")
-        .def(py::init<const std::string&, double, double>())
+        .def(py::init<const std::string&, double, double, double>())  // 두 개의 입력을 받는 생성자
+        .def(py::init<const std::string&, double, double>())          // 단일 입력을 받는 생성자
+        .def("add_parent", &Node::add_parent)
+        .def("add_child", &Node::add_child)
         .def_readwrite("operation", &Node::operation)
-        .def_readwrite("input", &Node::input_a)
+        .def_readwrite("input_a", &Node::input_a)
+        .def_readwrite("input_b", &Node::input_b)
         .def_readwrite("output", &Node::output)
         .def_readwrite("parents", &Node::parents)
         .def_readwrite("children", &Node::children);
 
-    m.def("softmax", &softmax, "Apply Softmax using component nodes");
-}
+    // ReLU 함수 바인딩
+    m.def("relu", &relu, py::arg("inputs"), "ReLU activation function");
 
+    // Sigmoid 함수 바인딩
+    m.def("sigmoid", &sigmoid, py::arg("inputs"), "Sigmoid activation function");
 
-/*
-PYBIND11_MODULE(activations, m) {
-    m.def("relu", &relu, "ReLU activation function");
-    m.def("sigmoid", &sigmoid, "Sigmoid activation function");
-    m.def("tanh_activation", &tanh_activation, "Tanh activation function");
+    // Tanh 함수 바인딩
+    m.def("tanh", &tanh_activation, py::arg("inputs"), "Tanh activation function");
+
+    // Leaky ReLU 함수 바인딩
     m.def("leaky_relu", &leaky_relu, py::arg("inputs"), py::arg("alpha") = 0.01, "Leaky ReLU activation function");
-    m.def("softmax", &softmax, "Softmax function");
+
+    // Softmax 함수 바인딩
+    m.def("softmax", &softmax, py::arg("inputs"), "Softmax activation function");
 }
-*/

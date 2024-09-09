@@ -243,4 +243,6 @@
 
                 - relu 의 경우, compare - select 노드, compare 는 gra 값 변화가 없고, select 는 output / input 의 gra 값을 가짐
 
-                - sigmoid 의 경우, 
+                - sigmoid, softmax 까지 구현 완료~ - 09/09
+
+        
