@@ -49,13 +49,15 @@ class Sequential():
             )
         # 레이어가 존재
         if self._layers:
+            # input_shape 기본값 지정
+
             # 마지막 layer 선택
             previous_layer = self._layers[-1]   
             # 이전 레이어의 units 개수가 이번 레이어의 input_shape
             if hasattr(previous_layer, 'units') and (previous_layer.units != None):
                 input_shape = (previous_layer.units,)
             # units 이 없을 경우 input_shape 가 그대로 복사
-            # 이전 layer 가 flatten 일 경우
+            # 이전 layer 가 input_shape 가 존재하는 flatten 층 일 경우
             elif hasattr(previous_layer, 'input_shape') and (previous_layer.input_shape != None):
                 input_shape = previous_layer.input_shape
             
@@ -159,6 +161,7 @@ class Sequential():
         output = x
         # 전체 데이터를 처리하도록
         for layer in self._layers:
+            # 이전 층의 출력값이 해당 층의 입력값이 되고,
             output = layer.call(output)
             layer_results.append(output)
 
