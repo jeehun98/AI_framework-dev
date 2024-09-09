@@ -30,13 +30,22 @@ class Flatten(Layer):
         p~ 차원 입력 데이터를 펼침
         
         Parameters:
-        inputs (1, p) 
-               (1, p_1, p_2) : 특정 차원별 1개의 데이터가 입력으로 들어옴
+        inputs (n., p) 
+               (n, p_1, p_2) : 특정 차원별 n개의 데이터가 입력으로 들어옴 - 배치!!
         
         Returns:
         (n, p*) : 펼친 데이터, 1개의 데이터가 입력 될 경우 행 벡터 출력
         """
-        return np.reshape(inputs, (-1, self.input_shape[0]))
+        shape = inputs.shape
+
+        n = shape[0]
+
+        flatten_size = np.prod(shape[1:])
+
+        # 가중치와의 연산을 위한 적절하 변환
+        flattened_array = inputs.reshape(n, -1, flatten_size)
+
+        return flattened_array
 
     def compute_output_shape(self, input_shape):
         # 입력 shape 를 기반으로 출력 shape 를 계산, 모델의 구조 정의

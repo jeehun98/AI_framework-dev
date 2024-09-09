@@ -5,7 +5,7 @@ from dev.layers.layer import Layer
 from dev import activations
 
 from dev.backend.operaters import operations_matrix
-from dev.backend.activations import activations
+from dev.backend.activations import activations as ac
 
 import numpy as np
 
@@ -17,6 +17,7 @@ class Dense(Layer):
         self.units = units
         self.output_shape = (units,)
 
+        # activations 오브젝트를 지정하네
         if activation is not None:
             self.activation = activations.get(activation)
         else:
@@ -24,23 +25,6 @@ class Dense(Layer):
             
         self.weights = None
         self.bias = None
-        
-    # 계산 그래프의 구현
-    def __call__(self):
-        pass
-
-    """
-    keras 코드
-        def call(self, inputs, training=None):
-        x = ops.matmul(inputs, self.kernel)
-        if self.bias is not None:
-            x = ops.add(x, self.bias)
-        if self.activation is not None:
-            x = self.activation(x)
-        return x
-    
-    """
-
 
     def get_config(self):
         base_config = super().get_config()
@@ -72,17 +56,50 @@ class Dense(Layer):
 
     def call(self, inputs):
         """
-        dense 층 연산
+        dense 층의 연산
 
         Parameters:
-        inputs (n, p) : p 차원 n개의 데이터 입력
-        
-        Returns (n*, p*): dense 연산 결과
+        inputs (배치 크기, 행, 열) 
+
+        Returns:
+        result (배치 단위 출력)
+
         """
-        x = operations_matrix.matrix_multiply(inputs, self.weights)
+        shape = inputs.shape
+
+        n = shape[0]
+
+        x, node_list = operations_matrix.matrix_multiply(inputs, self.weights)
+
+        if self.bias is not None:
+            x, node_list = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
+
+        if self.activation is not None:
+            x, node_list = self.activation(x)
+
+        print(x, "바꾸기 전")
+        x = x.reshape(n, -1)
+        print(x, "바꾼 후")
+
+    """
+    keras 코드
+        def call(self, inputs, training=None):
+        x = ops.matmul(inputs, self.kernel)
+        if self.bias is not None:
+            x = ops.add(x, self.bias)
+        if self.activation is not None:
+            x = self.activation(x)
+        return x
+    
+    이전 call 코드
+    x = operations_matrix.matrix_multiply(inputs, self.weights)
         if self.bias is not None:
             x = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
         if self.activation is not None:
             x = self.activation(x)
             x = np.reshape(x,(-1,self.units))
         return x
+    """
+
+
+        
