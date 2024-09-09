@@ -257,4 +257,20 @@
 
     - 각 layer 에서 생성된 노드들의 연결하기
 
-        - hot issue 발생, flatten 층의 input_shape 가 없을 경우!! 비상 비상 - 09/09
+        - hot issue 발생, flatten 층의 input_shape 가 없을 경우!! 비상 비상 
+
+        - 일단 fit 연산의 metrics 까지 구현했음, 이제 node 를 연결하는 작업을 해야 함 - 09/09
+
+        - dense 층에서 연산과 함께 받아오는 node_list 에서 연결하는 방법
+
+            - 행렬 곱, 행렬 덧셈 이후 2차원 배열 형태로 변환은 하지 않음, 행렬 형태 변환에 필요한 정보들은 이미 다 있으므로 - 09/09
+
+            - flatten 의 call 함수의 반환 값은 node_list 가 아닌 None 값으로 지정
+
+            - 각기 다른 layer 의 node_list 를 연결하거나, 부모 자식 관계를 지정해줘야 한다
+
+                - 새로운 node_list 가 입력될 때는 해당 값은 가장 상위 부모 노드에 해당, 하지만 이전 node_list 도 가장 상위 부모 노드만 있으므로 새로운 node_list 의 자식 노드까지 방문 후, 해당 노드와 이전 node_list 의 값과 부모 자식 관계를 연결해줘야 한다. 
+
+                - 개별 레이어에서 수행해봐야겠다.
+
+                - trainable 레이어를 지정해봐야지

@@ -6,6 +6,8 @@ class Flatten(Layer):
         # 인스턴스 생성 시 어떤 값이 추가되어야 할 지에 대한 고민
         super().__init__(input_shape, **kwargs)
         self.input_shape = input_shape
+        # 가중치 갱신이 없는 layer, flatten
+        self.trainable = False
 
     # 객체 정보를 저장하는 get_config
     # 향후 from_config 를 통해 해당 객체를 복원할 수 있다. 
@@ -36,6 +38,7 @@ class Flatten(Layer):
         Returns:
         (n, p*) : 펼친 데이터, 1개의 데이터가 입력 될 경우 행 벡터 출력
         """
+
         shape = inputs.shape
 
         n = shape[0]
