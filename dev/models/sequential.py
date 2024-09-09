@@ -175,7 +175,9 @@ class Sequential():
 
         # metric 연산
         self.metric_value = self.metric(output, y)
-        
+        print(self.metric_value,"metric 확인")
+
+
         # optimizer 를 위한 계산 그래프도 구현해야 해
         for layer_result in layer_results:
             pass
