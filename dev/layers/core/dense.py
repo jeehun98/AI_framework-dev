@@ -5,7 +5,6 @@ from dev.layers.layer import Layer
 from dev import activations
 
 from dev.backend.operaters import operations_matrix
-from dev.backend.activations import activations as ac
 
 import numpy as np
 
@@ -83,6 +82,8 @@ class Dense(Layer):
         # 행렬 출력 결과의 형태에 맞게 node_list 를 재구성 해보자
         # node_list 를 2차원 형태로 재구성하지말고 이미 어떤 형태를 띄어야 하는지는
         # 알고 있으므로 1차원 리스트에 계속 이어서 붙여보자
+
+        # 계산 그래프, 노드의 구성 때문에 아래와 같은 조건문들이 추가되었음...
 
         # 노드 리스트를 재구성, 행렬 곱이니까안
         print(inputs.shape, self.weights.shape, "input_shape 확인")
