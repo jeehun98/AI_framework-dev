@@ -8,6 +8,9 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <map>
+#include <functional>
+#include <stdexcept>
 
 namespace py = pybind11;
 
@@ -36,6 +39,40 @@ public:
     // 자식 노드를 추가하는 함수
     void add_child(std::shared_ptr<Node> child) {
         children.push_back(child);
+    }
+
+    std::pair<double, double> calculate_gradient(double upstrema_gradient = 1.0){
+        auto it = operations.find(operation);
+        if(it != operations.end()){
+            return it->second(input_a, input_b, output, upstrema_gradient);
+        }
+    }
+
+private:
+    std::map<std::string, std::function<std::pair<double, double>(double, double, double, double)>> operations;
+
+    void init_operations(){
+        operations["add"] = [](double a, double b, double out, double upstream){
+            return std::make_pair(upstream, upstream);
+        };
+
+        operations["substract"] = [](double a, double b, double out, double upstream){
+            return std::make_pair(upstream, -upstream);
+        };
+
+        operations["multiply"] = [](double a, double b, double out, double upstream){
+            return std::make_pair(upstream * b, upstream * a);
+        };
+
+        operations["divide"] = [](double a, double b, double out, double upstream){
+            double grad_a = upstream / b;
+            double grad_b = -upstream * a / (b * b);
+            return std::make_pair(grad_a, grad_b);
+        };
+
+        operations["exp"] = [](double a, double b, double out, double upstream){
+            return std::make_pair(upstream * out, 0.0);
+        };
     }
 };
 

@@ -2,7 +2,6 @@ import typing
 import json
 
 from dev.layers.layer import Layer
-from dev.layers.core.input_layer import InputLayer
 from dev import optimizers
 from dev import losses
 from dev import metrics
@@ -143,7 +142,7 @@ class Sequential():
         return serialized_model
     
     
-    # fit 을 구현해보자잇~
+    # fit 을 구현해보자잇~ forward 연산이라고 보면 될 듯
     def fit(self, x=None, y=None, epochs = 1):
         """
         모델의 연산 부분
@@ -154,8 +153,6 @@ class Sequential():
         y (n, 1): n 개의 타겟값
 
         """
-        # 연산 결과를 저장
-        layer_results = []
 
         # 초기 입력값
         output = x
@@ -166,21 +163,23 @@ class Sequential():
             print(output.shape, "output_shape 확인")
             output = layer.call(output)
 
-            # 레이어별 출력 확인
-            layer_results.append(output)
-
         # 연산 최종 결과, 레이어의 출력이 output 에 저장
         
         # flatten 때문에 늘어난 차원의 수정
         output = output.reshape(x.shape[0],-1)
 
-        # loss 연산의 수행
-        self.loss_value = self.loss(output, y)
-        print(self.loss_value, "loss 확인")
+        # loss, metrics 연산의 수행
+        self.compute_loss_and_metrics(output, y)
 
-        # metric 연산
-        self.metric_value = self.metric(output, y)
-        print(self.metric_value,"metric 확인")
+
+        # 이후 가중치 갱신의 연산을 수행해야 한다.
+
+    def compute_loss_and_metrics(self, y_pred, y_true):
+        self.loss_value = self.loss(y_pred, y_true)
+        self.metric_value = self.metric(y_pred, y_true)
+
+    def backpropagate(self):
+        
 
 
     def call(self, inputs):
