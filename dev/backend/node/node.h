@@ -20,6 +20,8 @@ public:
     double input_a = 0.0;              // 첫 번째 입력 값 (선택적)
     double input_b = 0.0;              // 두 번째 입력 값 (선택적)
     double output = 0.0;               // 출력 값
+    double grad_a = 0.0;
+    double grad_b = 0.0;
     std::vector<std::shared_ptr<Node>> parents;   // 부모 노드들
     std::vector<std::shared_ptr<Node>> children;  // 자식 노드들
 
@@ -41,12 +43,14 @@ public:
         children.push_back(child);
     }
 
-    std::pair<double, double> calculate_gradient(double upstrema_gradient = 1.0){
-        auto it = operations.find(operation);
-        if(it != operations.end()){
-            return it->second(input_a, input_b, output, upstrema_gradient);
-        }
+    std::pair<double, double> calculate_gradient(double upstream_gradient = 1.0) {
+    auto it = operations.find(operation);
+    if (it != operations.end()) {
+        return it->second(input_a, input_b, output, upstream_gradient);
+    } else {
+        throw std::runtime_error("Unsupported operation: " + operation);
     }
+}
 
 private:
     std::map<std::string, std::function<std::pair<double, double>(double, double, double, double)>> operations;
@@ -72,6 +76,11 @@ private:
 
         operations["exp"] = [](double a, double b, double out, double upstream){
             return std::make_pair(upstream * out, 0.0);
+        };
+
+        operations["square"] = [](double a, double , double out, double upstream){
+            double grad_a = 2 * a * upstream;
+            return std::make_pair(grad_a, 0.0);
         };
     }
 };

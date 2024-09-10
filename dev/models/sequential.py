@@ -160,7 +160,6 @@ class Sequential():
         for layer in self._layers:
             # 이전 층의 출력값이 해당 층의 입력값이 되고,
             # 해당 레이에 해당하는 계산 노드 리스트가 출력, 
-            print(output.shape, "output_shape 확인")
             output = layer.call(output)
 
         # 연산 최종 결과, 레이어의 출력이 output 에 저장
@@ -175,11 +174,12 @@ class Sequential():
         # 이후 가중치 갱신의 연산을 수행해야 한다.
 
     def compute_loss_and_metrics(self, y_pred, y_true):
-        self.loss_value = self.loss(y_pred, y_true)
+        self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
 
     def backpropagate(self):
-        
+        # 계산 그래프의 최상위 루트 노드, loss_node_list
+        self.loss_node_list
 
 
     def call(self, inputs):

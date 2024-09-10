@@ -86,7 +86,6 @@ class Dense(Layer):
         # 계산 그래프, 노드의 구성 때문에 아래와 같은 조건문들이 추가되었음...
 
         # 노드 리스트를 재구성, 행렬 곱이니까안
-        print(inputs.shape, self.weights.shape, "input_shape 확인")
         x, self.node_list = operations_matrix.matrix_multiply(inputs, self.weights)
 
         # bias 가 None 이 아닌 경우 - 아직

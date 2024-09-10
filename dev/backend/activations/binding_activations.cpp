@@ -20,16 +20,20 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::a
 PYBIND11_MODULE(activations, m) {
     m.doc() = "Activation functions with computation graph support";
 
-    // Node 클래스 바인딩
-    py::class_<Node, std::shared_ptr<Node>>(m, "Node")
-        .def(py::init<const std::string&, double, double, double>())  // 두 개의 입력을 받는 생성자
-        .def(py::init<const std::string&, double, double>())          // 단일 입력을 받는 생성자
+     py::class_<Node, std::shared_ptr<Node>>(m, "Node")
+        .def(py::init<const std::string&, double, double, double>(),
+             py::arg("operation"), py::arg("input_a"), py::arg("input_b"), py::arg("output"))
+        .def(py::init<const std::string&, double, double>(),
+             py::arg("operation"), py::arg("input_a"), py::arg("output"))
         .def("add_parent", &Node::add_parent)
         .def("add_child", &Node::add_child)
+        .def("calculate_gradient", &Node::calculate_gradient)
         .def_readwrite("operation", &Node::operation)
         .def_readwrite("input_a", &Node::input_a)
         .def_readwrite("input_b", &Node::input_b)
         .def_readwrite("output", &Node::output)
+        .def_readwrite("grad_a", &Node::grad_a)
+        .def_readwrite("grad_b", &Node::grad_b)
         .def_readwrite("parents", &Node::parents)
         .def_readwrite("children", &Node::children);
 

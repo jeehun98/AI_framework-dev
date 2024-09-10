@@ -16,7 +16,7 @@ model.add(Dense(2, 'sigmoid'))
 
 model.compile(optimizer='sgd',
               loss='mse',
-              p_metrics='accuracy')
+              p_metrics='mse')
 
 #print(model.get_weight())
 # 연산을 수행해보자잇~
