@@ -113,7 +113,7 @@ class Sequential():
                 weights.append(layer.weights)
 
         return weights
-
+    
 
     def serialize_model(self):
         # Step 1: Get the compile config, model config, and build config
@@ -163,15 +163,15 @@ class Sequential():
             output = layer.call(output)
 
         # 연산 최종 결과, 레이어의 출력이 output 에 저장
-        
+
         # flatten 때문에 늘어난 차원의 수정
         output = output.reshape(x.shape[0],-1)
 
         # loss, metrics 연산의 수행
         self.compute_loss_and_metrics(output, y)
 
-
         # 이후 가중치 갱신의 연산을 수행해야 한다.
+        self.backpropagate
 
     def compute_loss_and_metrics(self, y_pred, y_true):
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
@@ -179,7 +179,7 @@ class Sequential():
 
     def backpropagate(self):
         # 계산 그래프의 최상위 루트 노드, loss_node_list
-        self.loss_node_list
+        print(self.loss_node_list)
 
 
     def call(self, inputs):
