@@ -20,7 +20,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::a
 PYBIND11_MODULE(activations, m) {
     m.doc() = "Activation functions with computation graph support";
 
-     py::class_<Node, std::shared_ptr<Node>>(m, "Node")
+    py::class_<Node, std::shared_ptr<Node>>(m, "Node")
         .def(py::init<const std::string&, double, double, double>(),
              py::arg("operation"), py::arg("input_a"), py::arg("input_b"), py::arg("output"))
         .def(py::init<const std::string&, double, double>(),
@@ -37,18 +37,10 @@ PYBIND11_MODULE(activations, m) {
         .def_readwrite("parents", &Node::parents)
         .def_readwrite("children", &Node::children);
 
-    // ReLU 함수 바인딩
+    // 각 활성화 함수의 바인딩 코드
     m.def("relu", &relu, py::arg("inputs"), "ReLU activation function");
-
-    // Sigmoid 함수 바인딩
     m.def("sigmoid", &sigmoid, py::arg("inputs"), "Sigmoid activation function");
-
-    // Tanh 함수 바인딩
     m.def("tanh", &tanh_activation, py::arg("inputs"), "Tanh activation function");
-
-    // Leaky ReLU 함수 바인딩
     m.def("leaky_relu", &leaky_relu, py::arg("inputs"), py::arg("alpha") = 0.01, "Leaky ReLU activation function");
-
-    // Softmax 함수 바인딩
     m.def("softmax", &softmax, py::arg("inputs"), "Softmax activation function");
 }

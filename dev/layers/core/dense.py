@@ -92,12 +92,15 @@ class Dense(Layer):
         if self.bias is not None:
             x, add_node_list = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
             for i in range(len(self.node_list)):
-                self.node_list[i].add_parent(add_node_list[i])
                 add_node_list[i].add_child(self.node_list[i])
+                self.node_list[i].add_parent(add_node_list[i])
+
+                
         
         # bias 가 None 이고, act 이 None 이 아닌 - 완료
         elif self.activation is not None:
             x, act_node_list = self.activation(x)
+            
             for i in range(len(add_node_list)):
                 act_node_list[i].add_child(add_node_list[i])
                 add_node_list[i].add_parent(act_node_list[i])
