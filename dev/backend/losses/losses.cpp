@@ -6,7 +6,7 @@
 
 namespace py = pybind11;
 
-double mean_squared_error(py::array_t<double> y_true, py::array_t<double> y_pred) {
+std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(py::array_t<double> y_true, py::array_t<double> y_pred) {
     py::buffer_info buf_true = y_true.request();
     py::buffer_info buf_pred = y_pred.request();
 
@@ -41,11 +41,12 @@ double mean_squared_error(py::array_t<double> y_true, py::array_t<double> y_pred
 
         mse += squared_diff;
     }
+    mse = mse / buf_true.size;
 
-    return mse / buf_true.size;
+    return std::make_pair(mse, node_list);
 }
 
-double cross_entropy_loss(py::array_t<double> y_true, py::array_t<double> y_pred) {
+std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(py::array_t<double> y_true, py::array_t<double> y_pred) {
     py::buffer_info buf_true = y_true.request(), buf_pred = y_pred.request();
 
     if (buf_true.ndim != buf_pred.ndim) {
@@ -114,5 +115,5 @@ double cross_entropy_loss(py::array_t<double> y_true, py::array_t<double> y_pred
         loss += sample_loss;
     }
 
-    return loss / buf_true.size;
+    return std::make_pair(loss / buf_true.size, node_list);
 }
