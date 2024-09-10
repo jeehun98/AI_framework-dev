@@ -6,6 +6,7 @@ from dev import optimizers
 from dev import losses
 from dev import metrics
 
+import numpy as np
 #from dev.layers.core.dense import Dense
 #from dev.models.model import Model
 
@@ -153,6 +154,9 @@ class Sequential():
         y (n, 1): n 개의 타겟값
 
         """
+        # 일단 임의로 출력 노드의 개수를 y 의 차원에서 얻어보자
+
+        self.output_node_count = y.shape[1]
 
         # 초기 입력값
         output = x
@@ -171,8 +175,19 @@ class Sequential():
         self.compute_loss_and_metrics(output, y)
 
         # 이후 가중치 갱신의 연산을 수행해야 한다.
-        for node in self.loss_node_list:
-            self.backpropagate(node)
+        # loss_node_list 에는 개별 데이터의 비용 함수 값이 저장되어 있음...
+
+        # self.loss_node_list 의 reshape
+
+        self.loss_node_list = np.array(self.loss_node_list).reshape(-1, self.output_node_count)
+
+        # 한개의 데이터의 출력 노드들 
+        for data_loss in self.loss_node_list:
+            # 개별 노드 접근
+            print("데이터 하나")
+            for node_loss in data_loss:
+                
+                self.backpropagate(node_loss)
         
         """
         for layer in self._layers:
@@ -186,19 +201,22 @@ class Sequential():
         self.metric_value = self.metric(y_pred, y_true)
 
     def backpropagate(self, node, upstream_gradient = 1.0):
-        print("재귀", node.operation)
+        
         # 1. 현재 노드에서 그래디언트 계산
         grad_a, grad_b = node.calculate_gradient(upstream_gradient)
         
         # 2. 부모 노드로 전파된 그래디언트 합산
         node.grad_a += grad_a
         node.grad_b += grad_b
+
+        print(node.operation, node.input_a, node.input_b, node.grad_a, node.grad_b, upstream_gradient)
         
         # 3. 자식 노드로 그래디언트 전파
         for child in node.get_children():
-            print(child, "자식이 있는겨", node.grad_a, node.grad_b)
             self.backpropagate(child, grad_a)  # 자식 노드로 그래디언트를 전파
 
+        if not node.get_children():
+            print("자식 없음")
 
     def call(self, inputs):
         for layer in self.layers:
