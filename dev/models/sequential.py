@@ -171,15 +171,33 @@ class Sequential():
         self.compute_loss_and_metrics(output, y)
 
         # 이후 가중치 갱신의 연산을 수행해야 한다.
-        self.backpropagate
+        for node in self.loss_node_list:
+            self.backpropagate(node)
+        
+        """
+        for layer in self._layers:
+            if layer.trainable:
+                for node in layer.node_list:
+                    self.backpropagate(node)
+        """                    
 
     def compute_loss_and_metrics(self, y_pred, y_true):
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
 
-    def backpropagate(self):
-        # 계산 그래프의 최상위 루트 노드, loss_node_list
-        print(self.loss_node_list)
+    def backpropagate(self, node, upstream_gradient = 1.0):
+        print("재귀", node.operation)
+        # 1. 현재 노드에서 그래디언트 계산
+        grad_a, grad_b = node.calculate_gradient(upstream_gradient)
+        
+        # 2. 부모 노드로 전파된 그래디언트 합산
+        node.grad_a += grad_a
+        node.grad_b += grad_b
+        
+        # 3. 자식 노드로 그래디언트 전파
+        for child in node.get_children():
+            print(child, "자식이 있는겨", node.grad_a, node.grad_b)
+            self.backpropagate(child, grad_a)  # 자식 노드로 그래디언트를 전파
 
 
     def call(self, inputs):

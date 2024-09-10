@@ -27,7 +27,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(py::arr
 
     for (ssize_t i = 0; i < buf_true.size; ++i) {
         double diff = ptr_true[i] - ptr_pred[i];
-        std::shared_ptr<Node> diff_node = std::make_shared<Node>("substract", ptr_true[i], ptr_pred[i], diff);
+        std::shared_ptr<Node> diff_node = std::make_shared<Node>("subtract", ptr_true[i], ptr_pred[i], diff);
 
 
         double squared_diff = diff * diff;
@@ -75,7 +75,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(py::arr
 
         double constant_value = 1.0;
         double one_minus_pred = constant_value - ptr_pred[i];
-        std::shared_ptr<Node> one_minus_pred_node =  std::make_shared<Node>("substract", constant_value, ptr_pred[i], one_minus_pred);
+        std::shared_ptr<Node> one_minus_pred_node =  std::make_shared<Node>("subtract", constant_value, ptr_pred[i], one_minus_pred);
 
         double log_one_minus_pred = std::log(one_minus_pred);
         std::shared_ptr<Node> log_one_minus_pred_node = std::make_shared<Node>("log", one_minus_pred, log_one_minus_pred);
@@ -85,7 +85,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(py::arr
 
 
         double one_minus_true = constant_value - ptr_true[i];
-        std::shared_ptr<Node> one_minus_true_node = std::make_shared<Node>("substract", constant_value, ptr_true[i], one_minus_true);
+        std::shared_ptr<Node> one_minus_true_node = std::make_shared<Node>("subtract", constant_value, ptr_true[i], one_minus_true);
         
         double term2 = one_minus_true * log_one_minus_pred;
         std::shared_ptr<Node> mul_node2 = std::make_shared<Node>("multiply", one_minus_true, log_one_minus_pred, term2);

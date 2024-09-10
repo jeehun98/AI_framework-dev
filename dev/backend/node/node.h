@@ -20,9 +20,8 @@ public:
     double output = 0.0;               // 출력 값
     double grad_a = 0.0;
     double grad_b = 0.0;
-    std::vector<std::weak_ptr<Node>> parents;   // 부모 노드들
-    std::vector<std::weak_ptr<Node>> children;  // 자식 노드들
-
+    std::vector<std::shared_ptr<Node>> parents;   // 부모 노드들
+    std::vector<std::shared_ptr<Node>> children;  // 자식 노드들
 
     // 두 개의 입력을 받는 노드를 위한 생성자
     Node(const std::string& op, double a, double b, double out)
@@ -37,11 +36,11 @@ public:
     }
 
     void add_parent(std::shared_ptr<Node> parent) {
-    if (std::find_if(parents.begin(), parents.end(), 
-         [&parent](const std::weak_ptr<Node>& p){ return !p.expired() && p.lock() == parent; }) == parents.end()) {
-        parents.push_back(parent);
+        if (std::find_if(parents.begin(), parents.end(), 
+            [&parent](const std::weak_ptr<Node>& p){ return !p.expired() && p.lock() == parent; }) == parents.end()) {
+            parents.push_back(parent);
+        }
     }
-}
 
     void add_child(std::shared_ptr<Node> child) {
         if (std::find_if(children.begin(), children.end(), 
@@ -50,6 +49,13 @@ public:
         }
     }
 
+    std::vector<std::shared_ptr<Node>> get_children() const {
+        return children;
+    }
+
+    std::vector<std::shared_ptr<Node>> get_parents() const {
+        return parents;
+    }
 
     std::pair<double, double> calculate_gradient(double upstream_gradient = 1.0) {
         auto it = operations.find(operation);
@@ -88,6 +94,11 @@ private:
 
         operations["square"] = [](double a, double, double out, double upstream) {
             double grad_a = 2 * a * upstream;
+            return std::make_pair(grad_a, 0.0);
+        };
+
+        operations["reciprocal"] = [](double a, double, double out, double upstream) {
+            double grad_a = -upstream / (a * a);
             return std::make_pair(grad_a, 0.0);
         };
     }
