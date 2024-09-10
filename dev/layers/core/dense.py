@@ -5,6 +5,7 @@ from dev.layers.layer import Layer
 from dev import activations
 
 from dev.backend.operaters import operations_matrix
+from dev.backend.node import node
 
 import numpy as np
 
@@ -94,8 +95,6 @@ class Dense(Layer):
             for i in range(len(self.node_list)):
                 add_node_list[i].add_child(self.node_list[i])
                 self.node_list[i].add_parent(add_node_list[i])
-
-                
         
         # bias 가 None 이고, act 이 None 이 아닌 - 완료
         elif self.activation is not None:
