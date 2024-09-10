@@ -27,11 +27,10 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(py::arr
 
     for (ssize_t i = 0; i < buf_true.size; ++i) {
         double diff = ptr_true[i] - ptr_pred[i];
-
         std::shared_ptr<Node> diff_node = std::make_shared<Node>("substract", ptr_true[i], ptr_pred[i], diff);
 
-        double squared_diff = diff * diff;
 
+        double squared_diff = diff * diff;
         std::shared_ptr<Node> square_node = std::make_shared<Node>("square", diff, squared_diff);
 
         diff_node->add_parent(square_node);
@@ -41,7 +40,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(py::arr
 
         mse += squared_diff;
     }
-    mse = mse / buf_true.size;
+    mse = mse / buf_true.size;  
 
     return std::make_pair(mse, node_list);
 }
@@ -111,6 +110,8 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(py::arr
 
         neg_node->add_child(add_term_node);
         add_term_node->add_parent(neg_node);
+
+        node_list.push_back(neg_node);
 
         loss += sample_loss;
     }
