@@ -14,25 +14,23 @@ namespace py = pybind11;
 
 class Node {
 public:
-    std::string operation;             // 연산의 이름
-    double input_a = 0.0;              // 첫 번째 입력 값 (선택적)
-    double input_b = 0.0;              // 두 번째 입력 값 (선택적)
-    double output = 0.0;               // 출력 값
-    double grad_a = 0.0;
-    double grad_b = 0.0;
-    std::vector<std::shared_ptr<Node>> parents;   // 부모 노드들
-    std::vector<std::shared_ptr<Node>> children;  // 자식 노드들
+    std::string operation;             
+    double input_a = 0.0;              
+    double input_b = 0.0;              
+    double output = 0.0;               
+    double grad_input = 0.0;
+    double grad_weight = 0.0;
+    std::vector<std::shared_ptr<Node>> parents;   
+    std::vector<std::shared_ptr<Node>> children;  
 
-    // 두 개의 입력을 받는 노드를 위한 생성자
     Node(const std::string& op, double a, double b, double out)
         : operation(op), input_a(a), input_b(b), output(out) {
-        init_operations(); // 초기화 함수 호출
+        init_operations(); 
     }
 
-    // 단일 입력을 받는 노드를 위한 생성자
     Node(const std::string& op, double in_val, double out_val)
         : operation(op), input_a(in_val), output(out_val) {
-        init_operations(); // 초기화 함수 호출
+        init_operations(); 
     }
 
     void add_parent(std::shared_ptr<Node> parent) {
@@ -83,9 +81,9 @@ private:
         };
 
         operations["divide"] = [](double a, double b, double out, double upstream) {
-            double grad_a = upstream / b;
-            double grad_b = -upstream * a / (b * b);
-            return std::make_pair(grad_a, grad_b);
+            double grad_input = upstream / b;
+            double grad_weight = -upstream * a / (b * b);
+            return std::make_pair(grad_input, grad_weight);
         };
 
         operations["exp"] = [](double a, double b, double out, double upstream) {
@@ -93,13 +91,18 @@ private:
         };
 
         operations["square"] = [](double a, double, double out, double upstream) {
-            double grad_a = 2 * a * upstream;
-            return std::make_pair(grad_a, 0.0);
+            double grad_input = 2 * a * upstream;
+            return std::make_pair(grad_input, 0.0);
         };
 
-        operations["reciprocal"] = [](double a, double, double out, double upstream) {
-            double grad_a = -upstream / (a * a);
-            return std::make_pair(grad_a, 0.0);
+        operations["reciprocal"] = [](double a, double b, double out, double upstream) {
+            double grad_input = -upstream / (a * a) * b;
+            return std::make_pair(grad_input, 0.0);
+        };
+
+        operations["negate"] = [](double a, double, double out, double upstream) {
+            double grad_input = -upstream;
+            return std::make_pair(grad_input, 0);
         };
     }
 };
