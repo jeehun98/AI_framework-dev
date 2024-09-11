@@ -5,13 +5,14 @@ from dev.layers.layer import Layer
 from dev import optimizers
 from dev import losses
 from dev import metrics
+from dev.node.node import Node
 
 import numpy as np
 #from dev.layers.core.dense import Dense
 #from dev.models.model import Model
 
 # Sequential 을 최상위 모델이라고 가정하고 해보자
-class Sequential():
+class Sequential(Node):
     def __new__(cls, *args, **kwargs):
         # 부모 클래스의 __new__ 메서드 호출, 인스턴스 생성
         # typing.cast 를 통해 반환된 인스턴스 타입을 자식 클래스로 명시적 지정
@@ -190,65 +191,23 @@ class Sequential():
             for node_loss in data_loss:        
                 leaf_nodes.append(self.backpropagate(node_loss))
 
-        # print(len(leaf_nodes))
-        # print(len(leaf_nodes[0]))
+        print(len(leaf_nodes))
+        print(len(leaf_nodes[0]))
+
+        layer_leaf_node = []
 
         # 레이어 역순으로 방문
         for layer in reversed(self._layers):
             if layer.trainable:
-                for i in range(len(layer.node_list)):
-                    # 노드간 연결
-                    leaf_nodes[i][0].add_child(layer.node_list[i])
-                    layer.node_list[i].add_parent(leaf_nodes[i][0])
-
-                    print("레이어 하위 노드 방문을 해볼게~")
-                    #layer 최상위 노드에서 하위 노드들의 방문
-                    self.backpropagate(layer.node_list[i], leaf_nodes[i][0].grad_input)
-        """
-        for layer in self._layers:
-            if layer.trainable:
-                for node in layer.node_list:
-                    self.backpropagate(node)
-        """                    
+                # 각 데이터의 최상위 부모 노드
+                for i in range(len(leaf_nodes)):
+                    # leaf_node 방문
+                    for j in range(len(leaf_nodes[i])):
+                        pass    
 
     def compute_loss_and_metrics(self, y_pred, y_true):
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
-
-    def backpropagate(self, node, upstream_gradient=1.0, leaf_nodes=None):
-        if leaf_nodes is None:
-            leaf_nodes = []
-
-        print(node.operation)
-        # 1. 현재 노드에서 그래디언트 계산
-        grad_input, grad_weight = node.calculate_gradient(upstream_gradient)
-
-        # 2. 부모 노드로 전파된 그래디언트 합산
-        node.grad_input += grad_input
-        node.grad_weight += grad_weight
-
-        # 3. 자식 노드로 그래디언트 전파
-        children = node.get_children()
-        if not children:  # 자식 노드가 없으면 리프 노드
-            leaf_nodes.append(node)
-        else:
-            for child in children:
-                # 연산 타입에 따라 어떤 그래디언트를 넘길지 결정
-                if node.operation in ['add', 'subtract']:
-                    # 덧셈이나 뺄셈은 두 입력에 동일한 upstream_gradient를 전파
-                    self.backpropagate(child, upstream_gradient, leaf_nodes)
-                elif node.operation == 'multiply':
-                    # 곱셈의 경우, 첫 번째 입력은 grad_b를, 두 번째 입력은 grad_a를 받음
-                    if child == node.get_children()[0]:
-                        self.backpropagate(child, grad_input, leaf_nodes)
-                    else:
-                        self.backpropagate(child, grad_weight, leaf_nodes)
-                else:
-                    # 다른 연산의 경우 기본적으로 grad_a를 넘김
-                    self.backpropagate(child, grad_input, leaf_nodes)
-
-        return leaf_nodes
-
 
     def call(self, inputs):
         for layer in self.layers:

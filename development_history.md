@@ -311,4 +311,8 @@
 
             - 조건문을 통해 특정 노드에 grad_input, grad_weight 중 어느 값을 전달해야 할 지 정한다.
 
-            
+            - activation 의 연산의 역전파 시 grad_input 값만 갱신됨
+
+    - node 클래스를 정의하자 - 09/11
+
+        - bias 덧셈 시 차원에 맞게 늘리지 말까...
