@@ -166,7 +166,7 @@ class Sequential(Node):
             # 이전 층의 출력값이 해당 층의 입력값이 되고,
             # 해당 레이에 해당하는 계산 노드 리스트가 출력, 
             output = layer.call(output)
-
+            
         # 연산 최종 결과, 레이어의 출력이 output 에 저장
 
         # flatten 때문에 늘어난 차원의 수정
@@ -178,32 +178,40 @@ class Sequential(Node):
         # 이후 가중치 갱신의 연산을 수행해야 한다.
         # loss_node_list 에는 개별 데이터의 비용 함수 값이 저장되어 있음...
 
-        # self.loss_node_list 의 reshape
+        # reshape 하지 말자구~
 
-        self.loss_node_list = np.array(self.loss_node_list).reshape(-1, self.output_node_count)
-
+        # 각 데이터에 대응되는 leaf_nodes 
         leaf_nodes = []
-        # 한개의 데이터의 출력 노드들 
+        
+        # 전체 데이터의 반복 
         for data_loss in self.loss_node_list:
-            # 개별 노드 접근
-            # 배치 내 한 데이터에 대한 가중치 갱신량을 계산해보자
-            # 각 출력 노드의 출력값 변화에 따른 비용 함수의 변화량 을 저장
-            for node_loss in data_loss:        
-                leaf_nodes.append(self.backpropagate(node_loss))
+            leaf_nodes.append(self.backpropagate(data_loss))
 
-        print(len(leaf_nodes))
-        print(len(leaf_nodes[0]))
-
-        layer_leaf_node = []
 
         # 레이어 역순으로 방문
         for layer in reversed(self._layers):
+            # 학습이 가능한 layer 일 경우 
             if layer.trainable:
-                # 각 데이터의 최상위 부모 노드
+                # 각 데이터별 loss_node 의 leaf_node 값
                 for i in range(len(leaf_nodes)):
-                    # leaf_node 방문
+                    # 현재 레이어의 루트 노드 탐색
+                    # print(self.find_root(layer.node_list[i]).operation, "개별 데이터의 루트 노드 탐색")
+                    # print(leaf_nodes[0][0].operation, "뭘까")
+                    # activation 에 해당하는 최상위 노드 operation - reciprocal 
+                    # leaf_nodes(loss_node) 의 자식 노드 간의 연결
+
+                    # leaf_nodes[i] 에는 자식 노드 리스트들이 존재
                     for j in range(len(leaf_nodes[i])):
-                        pass    
+
+                        child_node_list = self.find_child_node(leaf_nodes[i][j])
+                        # 진짜 찐 leaf_node, layer.node_list 와 연결해야
+                        for child_node in child_node_list:
+                            child_node.add_child(layer.node_list[i])
+                            layer.node_list[i].add_parent(child_node)
+
+                print(self.find_root(layer.node_list[0]).operation, "개별 데이터의 루트 노드 탐색")
+    
+
 
     def compute_loss_and_metrics(self, y_pred, y_true):
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)

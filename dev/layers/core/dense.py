@@ -91,6 +91,8 @@ class Dense(Layer, Node):
         # sefl.node_list 의 개수는 배치 데이터 * unit
         x, mul_mat_node_list = operations_matrix.matrix_multiply(inputs, self.weights)
 
+        self.node_list = mul_mat_node_list
+
         # bias 가 None 이 아닌 경우 - 아직
         # 이거 수정해야 함 루트 노드와 리프 노드를 연결해야 함,
         # 이전에는 루트 노드끼리 연결되어 있었음
@@ -115,28 +117,13 @@ class Dense(Layer, Node):
 
         x = x.reshape(n, 1,-1)
 
-        return x
+        self.set_root_node()
 
-
-    """
-    keras 코드
-        def call(self, inputs, training=None):
-        x = ops.matmul(inputs, self.kernel)
-        if self.bias is not None:
-            x = ops.add(x, self.bias)
-        if self.activation is not None:
-            x = self.activation(x)
         return x
     
-    이전 call 코드
-    x = operations_matrix.matrix_multiply(inputs, self.weights)
-        if self.bias is not None:
-            x = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
-        if self.activation is not None:
-            x = self.activation(x)
-            x = np.reshape(x,(-1,self.units))
-        return x
-    """
+    def set_root_node(self):
+        root_node_list = []
+        for node in self.node_list:
+            root_node_list.append(self.find_root(node))
 
-
-        
+        self.node_list = root_node_list
