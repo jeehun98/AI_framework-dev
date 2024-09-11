@@ -96,7 +96,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
                 ptrResult[result_index] = 0;
 
                 // 덧셈 노드 생성
-                std::shared_ptr<Node> sum_node = std::make_shared<Node>("sum", 0, 0, 0.0);
+                std::shared_ptr<Node> sum_node = std::make_shared<Node>("add", 0, 0, 0.0);
                 node_list.push_back(sum_node);
 
                 for (size_t k = 0; k < feature_dim; ++k) {
