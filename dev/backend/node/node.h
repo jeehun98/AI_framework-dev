@@ -86,6 +86,7 @@ private:
             return std::make_pair(grad_input, grad_weight);
         };
 
+        // grad_input 의 갱신
         operations["exp"] = [](double a, double b, double out, double upstream) {
             return std::make_pair(upstream * out, 0.0);
         };

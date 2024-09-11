@@ -3,6 +3,7 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
 from dev.layers.layer import Layer
 from dev import activations
+from dev.node.node import Node
 
 from dev.backend.operaters import operations_matrix
 from dev.backend.node import node
@@ -10,7 +11,7 @@ from dev.backend.node import node
 import numpy as np
 
 
-class Dense(Layer):
+class Dense(Layer, Node):
     # dense layer 에 필요한 내용이 뭐가 있을지, 추가될 수 있어용
     def __init__(self, units, activation=None, name=None, **kwargs):
         super().__init__(name)
@@ -87,55 +88,35 @@ class Dense(Layer):
         # 계산 그래프, 노드의 구성 때문에 아래와 같은 조건문들이 추가되었음...
 
         # 노드 리스트를 재구성, 행렬 곱이니까안
-        x, self.node_list = operations_matrix.matrix_multiply(inputs, self.weights)
+        # sefl.node_list 의 개수는 배치 데이터 * unit
+        x, mul_mat_node_list = operations_matrix.matrix_multiply(inputs, self.weights)
 
         # bias 가 None 이 아닌 경우 - 아직
+        # 이거 수정해야 함 루트 노드와 리프 노드를 연결해야 함,
+        # 이전에는 루트 노드끼리 연결되어 있었음
         if self.bias is not None:
             x, add_node_list = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
-            for i in range(len(self.node_list)):
-                add_node_list[i].add_child(self.node_list[i])
-                self.node_list[i].add_parent(add_node_list[i])
-        
-        # bias 가 None 이고, act 이 None 이 아닌 - 완료
-        elif self.activation is not None:
-            x, act_node_list = self.activation(x)
-            
             for i in range(len(add_node_list)):
-                act_node_list[i].add_child(add_node_list[i])
-                add_node_list[i].add_parent(act_node_list[i])
-            
-            x = x.reshape(n, 1,-1)
+                child_node = self.backpropagate(add_node_list[i])
+                root_node = self.find_root(mul_mat_node_list[i])
 
-            self.node_list = act_node_list
-
-            return x
-
-        # 둘 다 None 이 아닐 경우 - 완료
+                child_node[0].add_child(root_node)
+                root_node.add_parent(child_node[0])
+        
         if self.activation is not None:
             x, act_node_list = self.activation(x)
-            for i in range(len(add_node_list)):
-                act_node_list[i].add_child(self.node_list[i])
-                self.node_list[i].add_parent(act_node_list[i])
-            
-            x = x.reshape(n, 1, -1)
 
-            self.node_list = act_node_list
-            #print("둘 다 아님")
-            return x
+            for i in range(len(act_node_list)):
+                child_node = self.backpropagate(act_node_list[i])
+                root_node = self.find_root(mul_mat_node_list[i])
 
-        # bias 만 None 이 아닌 경우 - 완료
-        elif self.activation is None and self.bias is not None:
-            x = x.reshape(n, 1, -1)
+                child_node[0].add_child(root_node)
+                root_node.add_parent(child_node[0])
 
-            self.node_list = add_node_list
-            #print("bias 만 아님")
-            return x
-        
-        # 둘 다 None 인 경우 
-        x = x.reshape(n, 1, -1)
-        # self.node_list 는 위에 지정되어 있음
+        x = x.reshape(n, 1,-1)
 
         return x
+
 
     """
     keras 코드
