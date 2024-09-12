@@ -6,6 +6,7 @@ from dev import activations
 from dev.node.node import Node
 
 from dev.backend.operaters import operations_matrix
+from dev.backend.node import node
 
 import numpy as np
 
@@ -65,7 +66,7 @@ class Dense(Layer, Node):
         super().build()
 
 
-    def call(self, inputs):
+    def call(self, input_data):
         """
         dense 층의 연산
 
@@ -76,46 +77,48 @@ class Dense(Layer, Node):
         result (배치 단위 출력)
 
         """
-        shape = inputs.shape
+        root_node_list = self.node_list
 
-        n = shape[0]
+        # 개별 데이터의 행렬 곱셈 수행
+        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.node_list)    
 
-        # 행렬 출력 결과의 형태에 맞게 node_list 를 재구성 해보자
-        # node_list 를 2차원 형태로 재구성하지말고 이미 어떤 형태를 띄어야 하는지는
-        # 알고 있으므로 1차원 리스트에 계속 이어서 붙여보자
-
-        # 노드 리스트를 재구성, 행렬 곱이니까안
-        # sefl.node_list 의 개수는 배치 데이터 * unit
-        x, mul_mat_node_list = operations_matrix.matrix_multiply(inputs, self.weights, self.node_list)
-
-        self.node_list = mul_mat_node_list
+        root_node_list = mul_mat_node_list
 
         # bias 가 None 이 아닌 경우
         if self.bias is not None:
-            x, add_node_list = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
-            for i in range(len(add_node_list)):
-                child_node = self.backpropagate(add_node_list[i])
-                root_node = self.find_root(mul_mat_node_list[i])
+            bias_reshaped = np.tile(self.bias, (1, x.shape[1]))
+            
+            x, add_node_list = operations_matrix.matrix_add(x, bias_reshaped, self.node_list)
 
-                child_node[0].add_child(root_node)
-                root_node.add_parent(child_node[0])
-        
-        # activation 이 None 이 아닌 경우
+            # add_node_list 노드들을 mul_mat_node_list에 연결
+            # add_node_list 의 leaf_node 들과 연결해야 함
+            for j in range(len(add_node_list)):
+                leaf_node_list = self.find_child_node(add_node_list[j])
+                root_node = root_node_list[j]
+                
+                for leaf_node in leaf_node_list:
+                    leaf_node.add_child(root_node)
+                    root_node.add_parent(leaf_node)
+
+            # 최상위 노드 업데이트
+            root_node_list = add_node_list
+
         if self.activation is not None:
             x, act_node_list = self.activation(x)
 
-            for i in range(len(act_node_list)):
-                child_node = self.backpropagate(act_node_list[i])
-                root_node = self.find_root(mul_mat_node_list[i])
+            for j in range(len(act_node_list)):
+                leaf_node_list = self.find_child_node(act_node_list[j])
+                root_node = root_node_list[j]
+                
+                for leaf_node in leaf_node_list:
+                    leaf_node.add_child(root_node)
+                    root_node.add_parent(leaf_node)
 
-                child_node[0].add_child(root_node)
-                root_node.add_parent(child_node[0])
+            root_node_list = act_node_list
 
-        x = x.reshape(n, 1,-1)
+        self.node_list = root_node_list
 
-        self.set_root_node()
-
-        return x
+        return x.reshape(1, -1)
     
     def set_root_node(self):
         root_node_list = []

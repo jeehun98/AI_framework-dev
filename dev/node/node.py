@@ -68,3 +68,22 @@ class Node:
             current_node = current_node.get_parents()[0]
         return current_node
     
+
+    def link_node(self, parent_nodes, child_nodes):
+        """
+        노드 리스트를 받음
+        parent_nodes : 해당 노드의 리프 노드와
+        child_nodes : 해당 노드의 루트 노드와 연결해야 함
+        
+        """
+        if not child_nodes:
+            return parent_nodes
+
+        for parent_node in parent_nodes:
+            leaf_nodes = self.find_child_node(parent_node)
+
+            for i in range(len(leaf_nodes)):
+                leaf_nodes[i].add_child(child_nodes[i])
+                child_nodes[i].add_parent(leaf_nodes[i])
+            
+        return parent_nodes
