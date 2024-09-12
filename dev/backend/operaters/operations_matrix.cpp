@@ -5,10 +5,10 @@
 
 namespace py = pybind11;
 
-// 행렬 덧셈 (2D)
+// 배치 단위 노드
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
     py::array_t<double> A, 
-    py::array_t<double> B, 
+    py::array_t<double> B,
     std::vector<std::shared_ptr<Node>> node_list = {}
 ) {
     // Numpy 배열의 버퍼 정보 가져오기
@@ -25,6 +25,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
         throw std::runtime_error("Input matrices must have the same shape");
     }
 
+    // 행과 열의 크기
+    
     size_t rows = bufA.shape[0];
     size_t cols = bufA.shape[1];
 
@@ -39,7 +41,10 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
     // 노드 리스트가 비어 있다면 새로운 노드 리스트 생성
     bool is_new_graph = node_list.empty();
 
-    // 행렬 덧셈 및 노드 생성
+    std::vector<std::shared_ptr<Node>> node_list;
+
+    // 배치 단위로 행렬 덧셈 및 노드 생성
+    
     for (size_t i = 0; i < rows; ++i) {
         for (size_t j = 0; j < cols; ++j) {
             size_t index = i * cols + j;
@@ -47,24 +52,23 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
             double valueB = ptrB[index];
             double sum = valueA + valueB;
 
-            // 덧셈 노드 생성 또는 업데이트
+            // 덧셈 노드 생성
             if (is_new_graph) {
                 std::shared_ptr<Node> add_node = std::make_shared<Node>("add", valueA, valueB, sum);
                 node_list.push_back(add_node);
             } else {
-                node_list[index]->update(valueA, valueB, sum);
+                node_list[index] -> update(valueA, valueB, sum);
             }
-
+    
             // 결과 저장
             ptrResult[index] = sum;
         }
     }
+    
 
     // 결과 배열과 노드 리스트 반환
     return std::make_pair(result, node_list);
 }
-
-// 행렬 곱셈 (2D)
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multiply(
     py::array_t<double> A, 
     py::array_t<double> B, 
@@ -83,9 +87,9 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
         throw std::runtime_error("The number of columns in A must match the number of rows in B");
     }
 
-    size_t rows = bufA.shape[0];
-    size_t feature_dim = bufA.shape[1];
-    size_t cols = bufB.shape[1];
+    size_t rows = bufA.shape[0];    // A의 행 수
+    size_t feature_dim = bufA.shape[1];  // A의 열 수 = B의 행 수
+    size_t cols = bufB.shape[1];    // B의 열 수
 
     // 결과 배열 생성
     py::array_t<double> result = py::array_t<double>({rows, cols});
@@ -99,20 +103,20 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
     bool is_new_graph = node_list.empty();
 
     // 행렬 곱셈
-    for (size_t i = 0; i < rows; ++i) {
-        for (size_t j = 0; j < cols; ++j) {
+    for (size_t j = 0; j < cols; ++j) {
+        std::shared_ptr<Node> sum_node;
+
+        if (is_new_graph) {
+            sum_node = std::make_shared<Node>("add", 0, 0, 0.0);
+            node_list.push_back(sum_node);
+        } else {
+            sum_node = node_list[j];
+            sum_node->output = 0.0;  // 초기화
+        }
+
+        for (size_t i = 0; i < rows; ++i) {
             size_t result_index = i * cols + j;
             ptrResult[result_index] = 0;
-
-            // 덧셈 노드 생성 또는 초기화
-            std::shared_ptr<Node> sum_node;
-            if (is_new_graph) {
-                sum_node = std::make_shared<Node>("add", 0, 0, 0.0);
-                node_list.push_back(sum_node);
-            } else {
-                sum_node = node_list[result_index];
-                sum_node->output = 0.0; // 초기화
-            }
 
             for (size_t k = 0; k < feature_dim; ++k) {
                 // 각 개별 곱셈 수행
@@ -128,7 +132,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
                     sum_node->add_child(mul_node);
                     mul_node->add_parent(sum_node);
                 } else {
-                    auto mul_node = sum_node->get_children()[k]; // 기존 곱셈 노드 가져오기
+                    auto mul_node = sum_node->get_children()[k];  // 기존 곱셈 노드 가져오기
                     mul_node->update(a_value, b_value, product);
                 }
 
@@ -137,10 +141,10 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
             }
 
             // 덧셈 노드의 최종 출력 업데이트
-            sum_node->output = ptrResult[result_index];
+            sum_node->output += ptrResult[result_index];  // 열 단위로 덧셈 결과를 축적
         }
     }
 
-    // 결과 행렬과 노드 리스트 반환
+    // 결과 행렬과 노드 리스트 반환 (node_list는 p개의 add 노드로 구성됨)
     return std::make_pair(result, node_list);
 }
