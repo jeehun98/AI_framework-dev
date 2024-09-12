@@ -21,6 +21,7 @@ class Dense(Layer, Node):
         self.trainable = True
         # 노드 리스트의 저장
         self.node_list = []
+        self.mul_mat_node_list = []
 
         # activations 오브젝트를 지정
         if activation is not None:
@@ -80,9 +81,10 @@ class Dense(Layer, Node):
         root_node_list = self.node_list
 
         # 개별 데이터의 행렬 곱셈 수행
-        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.node_list)    
+        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.mul_mat_node_list)    
 
         root_node_list = mul_mat_node_list
+        self.mul_mat_node_list = mul_mat_node_list
 
         # bias 가 None 이 아닌 경우
         if self.bias is not None:
@@ -93,6 +95,7 @@ class Dense(Layer, Node):
             # add_node_list 노드들을 mul_mat_node_list에 연결
             # add_node_list 의 leaf_node 들과 연결해야 함
             for j in range(len(add_node_list)):
+                print(add_node_list[j], "뭐가 다른가", j)
                 leaf_node_list = self.find_child_node(add_node_list[j])
                 root_node = root_node_list[j]
                 

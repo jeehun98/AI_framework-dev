@@ -46,11 +46,19 @@ class Node:
     def weight_update(self, node):
         pass
 
-
-    # 자식 노드 리스트 반환
-    def find_child_node(self, node, leaf_nodes=None):
+    def find_child_node(self, node, leaf_nodes=None, visited=None):
         if leaf_nodes is None:
             leaf_nodes = []
+        
+        if visited is None:
+            visited = set()
+
+        # 이미 방문한 노드라면 순환 참조로 간주하고 종료
+        if node in visited:
+            return leaf_nodes
+        
+        # 현재 노드를 방문했음으로 표시
+        visited.add(node)
 
         children = node.get_children()
         
@@ -58,9 +66,10 @@ class Node:
             leaf_nodes.append(node)
         else:
             for child in children:
-                self.find_child_node(child, leaf_nodes)
+                self.find_child_node(child, leaf_nodes, visited)
         
         return leaf_nodes
+
     
     def find_root(self, node):
         current_node = node
@@ -74,7 +83,6 @@ class Node:
         노드 리스트를 받음
         parent_nodes : 해당 노드의 리프 노드와
         child_nodes : 해당 노드의 루트 노드와 연결해야 함
-        
         """
         if not child_nodes:
             return parent_nodes
@@ -82,8 +90,28 @@ class Node:
         for parent_node in parent_nodes:
             leaf_nodes = self.find_child_node(parent_node)
 
+            print(len(leaf_nodes), len(child_nodes), "길이가 달라?")
+
+            # 리프 노드와 자식 노드의 길이 확인
+            if len(leaf_nodes) != len(child_nodes):
+                raise ValueError("Mismatch in number of leaf nodes and child nodes.")
+
             for i in range(len(leaf_nodes)):
-                leaf_nodes[i].add_child(child_nodes[i])
-                child_nodes[i].add_parent(leaf_nodes[i])
-            
+                # 순환 참조 방지
+                if child_nodes[i] not in leaf_nodes[i].get_children():
+                    leaf_nodes[i].add_child(child_nodes[i])
+                    child_nodes[i].add_parent(leaf_nodes[i])
+
         return parent_nodes
+
+    def link_loss_node(self, parent_nodes, child_nodes):
+        
+        for i in range(len(parent_nodes)):
+            parent_nodes[i].add_child(child_nodes[i])
+            child_nodes[i].add_parent(parent_nodes[i])
+
+        return parent_nodes
+
+    def find_operation_node(self, node, operation):
+        
+        pass

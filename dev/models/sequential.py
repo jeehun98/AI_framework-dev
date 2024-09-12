@@ -160,8 +160,6 @@ class Sequential(Node):
         # 초기 입력값, layer 입력값의 갱신
         n = x.shape[0]
 
-
-
         for i in range(n):
             output = x[i]
             
@@ -175,30 +173,32 @@ class Sequential(Node):
                 # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
                 
                 output = layer.call(output)
-                
+                print("각 레이어 call 연산", i)
                 if layer.trainable:
+                    print("Dense")
                     # 해당 레이어의 루트 노드
                     layer_node_list2 = layer.node_list
-
+                    
                     # 기존의, list1 아래에 list2 를 연결해야 한다.
                     # 첫 번째 레이어의 경우 list2 자체가 node_list 가 된다.
                     self.node_list = self.link_node(layer_node_list2, layer_node_list1)
 
                     layer_node_list1 = layer_node_list2 
                 
-
-            print(self.node_list[0].operation, len(self.node_list), "node_list 확인")
             # loss, metrics 연산의 수행
             self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
-            print(self.loss_value, self.metric_value, "loss, metric 확인")
 
-            self.node_list = self.link_node(self.loss_node_list, self.node_list)
-            print(self.node_list[0].operation, "이거 설마??")
+            print(self.find_root(self.node_list[0]).operation)
+            
+            self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
 
-            print(i, "반복 확인")
+            print(self.find_root(self.node_list[0]).operation)
+            print("loss 연결 잘 됨\n\n\n\n")
+
             self.node_list = []
             self.loss_node_list = []
 
+        """
 
         leaf_nodes = []
         
@@ -235,10 +235,13 @@ class Sequential(Node):
 
                     # layer_leaf_node, leaf_nodes 의 갱신
                 leaf_nodes = layer_leaf_node
+
+        """
                 
 
 
     def compute_loss_and_metrics(self, y_pred, y_true):
+        print(y_pred, y_true, "이거이거")
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
 
