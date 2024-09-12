@@ -25,9 +25,6 @@ class Node:
         # node.operation 별로 알맞게 저장됨...
         grad_input, grad_weight = node.calculate_gradient(upstream_gradient)
 
-        print("입력값의 변화에 대한 비용 함수의 변화량 : ", grad_input)
-        print("가중치의 변화량에 대한 비용 함수의 변화량 : ", grad_weight)
-
         # 2. 부모 노드로 전파된 그래디언트 합산
         node.grad_input += grad_input
         node.grad_weight += grad_weight
@@ -70,3 +67,4 @@ class Node:
         while current_node.get_parents():  # 부모 노드가 있으면 계속 탐색
             current_node = current_node.get_parents()[0]
         return current_node
+    
