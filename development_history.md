@@ -338,3 +338,7 @@
             - model.compile 부분에서 계산 그래프를 초기화 해야함...
 
             - 계산 그래프 초기화 없이, layer 별 root 노드 전달을 통해 진행할거임
+
+                - operations_matrix 완료 - 09/12
+
+                -
