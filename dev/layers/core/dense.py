@@ -6,7 +6,6 @@ from dev import activations
 from dev.node.node import Node
 
 from dev.backend.operaters import operations_matrix
-from dev.backend.node import node
 
 import numpy as np
 
@@ -20,9 +19,9 @@ class Dense(Layer, Node):
         # 가중치 갱신이 가능한 layer
         self.trainable = True
         # 노드 리스트의 저장
-        self.node_list = None
+        self.node_list = []
 
-        # activations 오브젝트를 지정하네
+        # activations 오브젝트를 지정
         if activation is not None:
             self.activation = activations.get(activation)
         else:
@@ -85,17 +84,13 @@ class Dense(Layer, Node):
         # node_list 를 2차원 형태로 재구성하지말고 이미 어떤 형태를 띄어야 하는지는
         # 알고 있으므로 1차원 리스트에 계속 이어서 붙여보자
 
-        # 계산 그래프, 노드의 구성 때문에 아래와 같은 조건문들이 추가되었음...
-
         # 노드 리스트를 재구성, 행렬 곱이니까안
         # sefl.node_list 의 개수는 배치 데이터 * unit
-        x, mul_mat_node_list = operations_matrix.matrix_multiply(inputs, self.weights)
+        x, mul_mat_node_list = operations_matrix.matrix_multiply(inputs, self.weights, self.node_list)
 
         self.node_list = mul_mat_node_list
 
-        # bias 가 None 이 아닌 경우 - 아직
-        # 이거 수정해야 함 루트 노드와 리프 노드를 연결해야 함,
-        # 이전에는 루트 노드끼리 연결되어 있었음
+        # bias 가 None 이 아닌 경우
         if self.bias is not None:
             x, add_node_list = operations_matrix.matrix_add(x, np.tile(self.bias, x.shape))
             for i in range(len(add_node_list)):
@@ -105,6 +100,7 @@ class Dense(Layer, Node):
                 child_node[0].add_child(root_node)
                 root_node.add_parent(child_node[0])
         
+        # activation 이 None 이 아닌 경우
         if self.activation is not None:
             x, act_node_list = self.activation(x)
 

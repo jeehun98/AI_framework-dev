@@ -159,8 +159,9 @@ class Sequential(Node):
 
         self.output_node_count = y.shape[1]
 
-        # 초기 입력값
+        # 초기 입력값, layer 입력값의 갱신
         output = x
+
         # 전체 데이터를 처리하도록
         for layer in self._layers:
             # 이전 층의 출력값이 해당 층의 입력값이 되고,
@@ -232,3 +233,4 @@ class Sequential(Node):
         # call 메서드 실행
         # y_pred 값, outputs
         return outputs   
+    
