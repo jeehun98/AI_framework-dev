@@ -26,6 +26,8 @@ class Sequential(Node):
         self.built = False
         # layer list
         self._layers = []
+        self.node_list = []
+        self.loss_node_list = []
 
     # 모델의 layer 정보 전달
     def get_config(self):
@@ -155,33 +157,49 @@ class Sequential(Node):
         y (n, 1): n 개의 타겟값
 
         """
-        # 일단 임의로 출력 유닛의 개수를 y 의 차원에서 얻어보자
-
-        self.output_node_count = y.shape[1]
-
         # 초기 입력값, layer 입력값의 갱신
-        output = x
+        n = x.shape[0]
 
-        # 전체 데이터를 처리하도록
-        for layer in self._layers:
-            # 이전 층의 출력값이 해당 층의 입력값이 되고,
-            # 해당 레이에 해당하는 계산 노드 리스트가 출력, 
-            output = layer.call(output)
+
+
+        for i in range(n):
+            output = x[i]
             
-        # 연산 최종 결과, 레이어의 출력이 output 에 저장
+            print(output, "입력 데이터")
 
-        # flatten 때문에 늘어난 차원의 수정
-        output = output.reshape(x.shape[0],-1)
+            layer_node_list1 = []
 
-        # loss, metrics 연산의 수행
-        self.compute_loss_and_metrics(output, y)
+            # 전체 데이터를 처리하도록
+            for layer in self._layers:
+                # 이전 층의 출력값이 해당 층의 입력값이 되고,
+                # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
+                
+                output = layer.call(output)
+                
+                if layer.trainable:
+                    # 해당 레이어의 루트 노드
+                    layer_node_list2 = layer.node_list
 
-        # 이후 가중치 갱신의 연산을 수행해야 한다.
-        # loss_node_list 에는 개별 데이터의 비용 함수 값이 저장되어 있음...
+                    # 기존의, list1 아래에 list2 를 연결해야 한다.
+                    # 첫 번째 레이어의 경우 list2 자체가 node_list 가 된다.
+                    self.node_list = self.link_node(layer_node_list2, layer_node_list1)
 
-        # reshape 하지 말자구~
+                    layer_node_list1 = layer_node_list2 
+                
 
-        # 각 데이터에 대응되는 leaf_nodes 
+            print(self.node_list[0].operation, len(self.node_list), "node_list 확인")
+            # loss, metrics 연산의 수행
+            self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
+            print(self.loss_value, self.metric_value, "loss, metric 확인")
+
+            self.node_list = self.link_node(self.loss_node_list, self.node_list)
+            print(self.node_list[0].operation, "이거 설마??")
+
+            print(i, "반복 확인")
+            self.node_list = []
+            self.loss_node_list = []
+
+
         leaf_nodes = []
         
         # 전체 데이터의 반복 
