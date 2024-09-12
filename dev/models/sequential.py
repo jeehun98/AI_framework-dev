@@ -155,7 +155,7 @@ class Sequential(Node):
         y (n, 1): n 개의 타겟값
 
         """
-        # 일단 임의로 출력 노드의 개수를 y 의 차원에서 얻어보자
+        # 일단 임의로 출력 유닛의 개수를 y 의 차원에서 얻어보자
 
         self.output_node_count = y.shape[1]
 
@@ -189,28 +189,34 @@ class Sequential(Node):
 
 
         # 레이어 역순으로 방문
+        # 노드 관계가 연결된다
         for layer in reversed(self._layers):
             # 학습이 가능한 layer 일 경우 
             if layer.trainable:
-                # 각 데이터별 loss_node 의 leaf_node 값
+                # layer.node_list 와 동일
+
+                # 레이어의 leaf_node 저장 리스트
+                layer_leaf_node = []
+
+                # 각 데이터별 loss_node 의 leaf_nodes 에 접근
                 for i in range(len(leaf_nodes)):
-                    # 현재 레이어의 루트 노드 탐색
-                    # print(self.find_root(layer.node_list[i]).operation, "개별 데이터의 루트 노드 탐색")
-                    # print(leaf_nodes[0][0].operation, "뭘까")
-                    # activation 에 해당하는 최상위 노드 operation - reciprocal 
-                    # leaf_nodes(loss_node) 의 자식 노드 간의 연결
-
-                    # leaf_nodes[i] 에는 자식 노드 리스트들이 존재
+                    # leaf_nodes(list) 에는 자식 노드 리스트들이 존재
+                    
+                    # leaf_node 접근
                     for j in range(len(leaf_nodes[i])):
-
                         child_node_list = self.find_child_node(leaf_nodes[i][j])
-                        # 진짜 찐 leaf_node, layer.node_list 와 연결해야
+                        # 진짜 찐 leaf_node, layer.node_list(각 레이어의 root node) 와 연결
                         for child_node in child_node_list:
+                            # 필요한 node 정보만 계산 후 저장
+                            # 해당 레이어의 leaf_node 리스트가 필요함
+                            layer_leaf_node.append(self.backpropagate(layer.node_list[i]))
+
                             child_node.add_child(layer.node_list[i])
                             layer.node_list[i].add_parent(child_node)
 
-                print(self.find_root(layer.node_list[0]).operation, "개별 데이터의 루트 노드 탐색")
-    
+                    # layer_leaf_node, leaf_nodes 의 갱신
+                leaf_nodes = layer_leaf_node
+                
 
 
     def compute_loss_and_metrics(self, y_pred, y_true):

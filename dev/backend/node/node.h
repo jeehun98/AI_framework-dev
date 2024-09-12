@@ -76,6 +76,8 @@ private:
             return std::make_pair(upstream, -upstream);
         };
 
+        // 행렬의 곱셈에서, 입력의 변화에 대한 비용 함수의 변화량,
+        // 가중치의 변화에 대한 비용 함수의 변화량이 각각 저장된다.
         operations["multiply"] = [](double a, double b, double out, double upstream) {
             return std::make_pair(upstream * b, upstream * a);
         };
