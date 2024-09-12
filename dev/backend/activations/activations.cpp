@@ -1,105 +1,57 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
-#include <pybind11/numpy.h>
 #include <cmath>
 #include <vector>
 #include "../node/node.h"  // Node 클래스가 정의된 헤더 파일 포함
 
 namespace py = pybind11;
 
-std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> relu(py::array_t<double> inputs) {
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> relu(
+    py::array_t<double> inputs, 
+    std::vector<std::shared_ptr<Node>> node_list = {}
+) {
     py::buffer_info buf = inputs.request();
     double* ptr = static_cast<double*>(buf.ptr);
 
     py::array_t<double> result(buf.size);
-
     py::buffer_info buf_result = result.request();
     double* ptr_result = static_cast<double*>(buf_result.ptr);
 
-    std::vector<std::shared_ptr<Node>> node_list;
+    bool is_new_graph = node_list.empty();
 
     for (size_t i = 0; i < buf.size; ++i) {
         double input_value = ptr[i];
         double zero_value = 0.0;
 
-        // 비교 노드 생성 (x > 0)
-        std::shared_ptr<Node> compare_node = std::make_shared<Node>("compare", input_value, zero_value, input_value > 0 ? 1.0 : 0.0);
+        if (is_new_graph) {
+            std::shared_ptr<Node> compare_node = std::make_shared<Node>("compare", input_value, zero_value, input_value > 0 ? 1.0 : 0.0);
+            double output_value = (compare_node->output > 0) ? input_value : 0.0;
+            std::shared_ptr<Node> select_node = std::make_shared<Node>("select", input_value, zero_value, output_value);
 
-        // 선택 노드 생성 (x 또는 0 선택)
-        double output_value = (compare_node->output > 0) ? input_value : 0.0;
-        std::shared_ptr<Node> select_node = std::make_shared<Node>("select", input_value, zero_value, output_value);
+            select_node->add_child(compare_node);
+            compare_node->add_parent(select_node);
 
-        // 노드 연결
-        select_node->add_child(compare_node);
-        compare_node->add_parent(select_node);
+            node_list.push_back(select_node);
+            ptr_result[i] = output_value;
+        } else {
+            auto select_node = node_list[i];
+            select_node->update(input_value, zero_value, (input_value > 0) ? input_value : 0.0);
+            ptr_result[i] = select_node->output;
 
-        ptr_result[i] = output_value;
-
-        node_list.push_back(select_node);
+            // 노드 연결 확인 및 재설정
+            auto compare_node = select_node->get_children()[0];  // 첫 번째 자식 노드가 비교 노드
+            compare_node->update(input_value, zero_value, input_value > 0 ? 1.0 : 0.0);
+        }
     }
 
     return std::make_pair(result, node_list);
 }
 
-
-// Sigmoid 연산을 개별 노드로 분리하여 구현
-std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> sigmoid(py::array_t<double> inputs) {
-    // Numpy 배열의 버퍼 정보 가져오기
-    py::buffer_info buf = inputs.request();
-    double* ptr = static_cast<double*>(buf.ptr);
-
-    // 결과 배열 생성
-    py::array_t<double> result(buf.size);
-    py::buffer_info buf_result = result.request();
-    double* ptr_result = static_cast<double*>(buf_result.ptr);
-
-    // 노드 리스트 생성
-    std::vector<std::shared_ptr<Node>> node_list;
-
-    // 각 요소에 대해 Sigmoid 연산을 수행하고, 노드 생성
-    for (size_t i = 0; i < buf.size; ++i) {
-        double input_value = ptr[i];
-
-        // Negate 노드 (-x)
-        double neg_output = -input_value;
-        std::shared_ptr<Node> neg_node = std::make_shared<Node>("negate", input_value, neg_output);
-
-        // Exponentiate 노드 (exp(-x))
-        double exp_output = std::exp(neg_output);
-        std::shared_ptr<Node> exp_node = std::make_shared<Node>("exp", neg_output, exp_output);
-        exp_node->add_child(neg_node);
-        neg_node->add_parent(exp_node);
-
-        // Add 1 노드 (1 + exp(-x))
-        // 상수 1 까지의 연산, add 하는 객체가 2개이므로
-        double constant_value = 1.0;
-        double add_output = constant_value + exp_output;
-        std::shared_ptr<Node> add_node = std::make_shared<Node>("add", exp_output, constant_value, add_output);
-
-        // 부모-자식 관계 설정
-        add_node->add_child(exp_node);  // exp_node는 add_node의 자식 노드
-        exp_node->add_parent(add_node);   // add_node는 exp_node의 부모 노드
-
-        // Reciprocal 노드 (1 / (1 + exp(-x)))
-        double recip_output = constant_value / add_output;  // 1.0을 분자에 포함
-        std::shared_ptr<Node> recip_node = std::make_shared<Node>("reciprocal", constant_value, add_output, recip_output);
-
-        recip_node->add_child(add_node);
-        add_node->add_parent(recip_node);
-
-        // 결과 저장
-        ptr_result[i] = recip_output;
-
-        // 노드 리스트에 추가
-        node_list.push_back(recip_node);
-    }
-
-    // 결과 배열과 노드 리스트 반환
-    return std::make_pair(result, node_list);
-}
-
-std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> tanh_activation(py::array_t<double> inputs) {
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> sigmoid(
+    py::array_t<double> inputs, 
+    std::vector<std::shared_ptr<Node>> node_list = {}
+) {
     py::buffer_info buf = inputs.request();
     double* ptr = static_cast<double*>(buf.ptr);
 
@@ -107,103 +59,177 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> tanh_activati
     py::buffer_info buf_result = result.request();
     double* ptr_result = static_cast<double*>(buf_result.ptr);
 
-    std::vector<std::shared_ptr<Node>> node_list;
+    bool is_new_graph = node_list.empty();
 
     for (size_t i = 0; i < buf.size; ++i) {
         double input_value = ptr[i];
+        if (is_new_graph) {
+            double neg_output = -input_value;
+            std::shared_ptr<Node> neg_node = std::make_shared<Node>("negate", input_value, neg_output);
 
-        // Exponentiate 노드 (exp(x))
-        double exp_pos_output = std::exp(input_value);
-        std::shared_ptr<Node> exp_pos_node = std::make_shared<Node>("exp", input_value, exp_pos_output);
+            double exp_output = std::exp(neg_output);
+            std::shared_ptr<Node> exp_node = std::make_shared<Node>("exp", neg_output, exp_output);
+            exp_node->add_child(neg_node);
+            neg_node->add_parent(exp_node);
 
-        // Exponentiate 노드 (exp(-x))
-        double exp_neg_output = std::exp(-input_value);
-        std::shared_ptr<Node> exp_neg_node = std::make_shared<Node>("exp", -input_value, exp_neg_output);
+            double constant_value = 1.0;
+            double add_output = constant_value + exp_output;
+            std::shared_ptr<Node> add_node = std::make_shared<Node>("add", exp_output, constant_value, add_output);
+            add_node->add_child(exp_node);
+            exp_node->add_parent(add_node);
 
-        // Numerator 노드 (exp(x) - exp(-x))
-        double numerator_output = exp_pos_output - exp_neg_output;
-        std::shared_ptr<Node> numerator_node = std::make_shared<Node>("subtract", exp_pos_output, exp_neg_output, numerator_output);
-        numerator_node->add_child(exp_pos_node);
-        numerator_node->add_child(exp_neg_node);
+            double recip_output = constant_value / add_output;
+            std::shared_ptr<Node> recip_node = std::make_shared<Node>("reciprocal", constant_value, add_output, recip_output);
+            recip_node->add_child(add_node);
+            add_node->add_parent(recip_node);
 
-        exp_pos_node->add_parent(numerator_node);
-        exp_neg_node->add_parent(numerator_node);
+            node_list.push_back(recip_node);
+            ptr_result[i] = recip_output;
+        } else {
+            auto recip_node = node_list[i];
+            double neg_output = -input_value;
+            double exp_output = std::exp(neg_output);
+            double add_output = 1.0 + exp_output;
+            recip_node->update(1.0, add_output, 1.0 / add_output);
+            ptr_result[i] = recip_node->output;
 
-        // Denominator 노드 (exp(x) + exp(-x))
-        double denominator_output = exp_pos_output + exp_neg_output;
-        std::shared_ptr<Node> denominator_node = std::make_shared<Node>("add", exp_pos_output, exp_neg_output, denominator_output);
-        denominator_node->add_child(exp_pos_node);
-        denominator_node->add_child(exp_neg_node);
+            // 노드 연결 확인 및 재설정
+            auto add_node = recip_node->get_parents()[0];
+            add_node->update(exp_output, 1.0, add_output);
 
-        exp_pos_node->add_parent(denominator_node);
-        exp_neg_node->add_parent(denominator_node);
+            auto exp_node = add_node->get_parents()[0];
+            exp_node->update(neg_output, 0.0, exp_output);
 
-        // Reciprocal 노드 (1 / (exp(x) + exp(-x)))
-        double constant_value = 1.0;
-        double reciprocal_output = constant_value / denominator_output;
-        std::shared_ptr<Node> reciprocal_node = std::make_shared<Node>("reciprocal", constant_value, denominator_output, reciprocal_output);  // 두 입력: 상수 1과 분모
-        reciprocal_node->add_child(denominator_node);
-        denominator_node->add_parent(reciprocal_node);
-
-        // Tanh 노드 (Numerator * Reciprocal)
-        double tanh_output = numerator_output * reciprocal_output;
-        std::shared_ptr<Node> tanh_node = std::make_shared<Node>("multiply", numerator_output, reciprocal_output, tanh_output);
-        tanh_node->add_child(numerator_node);
-        numerator_node->add_parent(tanh_node);
-
-        ptr_result[i] = tanh_output;
-
-        node_list.push_back(tanh_node);
+            auto neg_node = exp_node->get_parents()[0];
+            neg_node->update(input_value, 0.0, neg_output);
+        }
     }
 
     return std::make_pair(result, node_list);
 }
 
-
-std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> leaky_relu(py::array_t<double> inputs, double alpha = 0.01) {
-    // Numpy 배열의 버퍼 정보 가져오기
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> tanh_activation(
+    py::array_t<double> inputs, 
+    std::vector<std::shared_ptr<Node>> node_list = {}
+) {
     py::buffer_info buf = inputs.request();
     double* ptr = static_cast<double*>(buf.ptr);
 
-    // 결과 배열 생성
     py::array_t<double> result(buf.size);
     py::buffer_info buf_result = result.request();
     double* ptr_result = static_cast<double*>(buf_result.ptr);
 
-    // 노드 리스트 생성 (마지막 노드만 추가)
-    std::vector<std::shared_ptr<Node>> node_list;
+    bool is_new_graph = node_list.empty();
 
-    // 각 요소에 대해 Leaky ReLU 연산을 수행하고, 노드 생성
+    for (size_t i = 0; i < buf.size; ++i) {
+        double input_value = ptr[i];
+
+        if (is_new_graph) {
+            double exp_pos_output = std::exp(input_value);
+            std::shared_ptr<Node> exp_pos_node = std::make_shared<Node>("exp", input_value, exp_pos_output);
+
+            double exp_neg_output = std::exp(-input_value);
+            std::shared_ptr<Node> exp_neg_node = std::make_shared<Node>("exp", -input_value, exp_neg_output);
+
+            double numerator_output = exp_pos_output - exp_neg_output;
+            std::shared_ptr<Node> numerator_node = std::make_shared<Node>("subtract", exp_pos_output, exp_neg_output, numerator_output);
+            numerator_node->add_child(exp_pos_node);
+            numerator_node->add_child(exp_neg_node);
+            exp_pos_node->add_parent(numerator_node);
+            exp_neg_node->add_parent(numerator_node);
+
+            double denominator_output = exp_pos_output + exp_neg_output;
+            std::shared_ptr<Node> denominator_node = std::make_shared<Node>("add", exp_pos_output, exp_neg_output, denominator_output);
+            denominator_node->add_child(exp_pos_node);
+            denominator_node->add_child(exp_neg_node);
+            exp_pos_node->add_parent(denominator_node);
+            exp_neg_node->add_parent(denominator_node);
+
+            double reciprocal_output = 1.0 / denominator_output;
+            std::shared_ptr<Node> reciprocal_node = std::make_shared<Node>("reciprocal", 1.0, denominator_output, reciprocal_output);
+            reciprocal_node->add_child(denominator_node);
+            denominator_node->add_parent(reciprocal_node);
+
+            double tanh_output = numerator_output * reciprocal_output;
+            std::shared_ptr<Node> tanh_node = std::make_shared<Node>("multiply", numerator_output, reciprocal_output, tanh_output);
+            tanh_node->add_child(numerator_node);
+            numerator_node->add_parent(tanh_node);
+
+            node_list.push_back(tanh_node);
+            ptr_result[i] = tanh_output;
+        } else {
+            auto tanh_node = node_list[i];
+            double exp_pos_output = std::exp(input_value);
+            double exp_neg_output = std::exp(-input_value);
+            double numerator_output = exp_pos_output - exp_neg_output;
+            double denominator_output = exp_pos_output + exp_neg_output;
+            double tanh_output = numerator_output / denominator_output;
+            tanh_node->update(numerator_output, denominator_output, tanh_output);
+            ptr_result[i] = tanh_node->output;
+
+            // 노드 연결 확인 및 재설정
+            auto reciprocal_node = tanh_node->get_parents()[0];
+            reciprocal_node->update(1.0, denominator_output, 1.0 / denominator_output);
+
+            auto denominator_node = reciprocal_node->get_parents()[0];
+            denominator_node->update(exp_pos_output, exp_neg_output, denominator_output);
+
+            auto numerator_node = tanh_node->get_parents()[0];
+            numerator_node->update(exp_pos_output, exp_neg_output, numerator_output);
+        }
+    }
+
+    return std::make_pair(result, node_list);
+}
+
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> leaky_relu(
+    py::array_t<double> inputs, 
+    double alpha = 0.01, 
+    std::vector<std::shared_ptr<Node>> node_list = {}
+) {
+    py::buffer_info buf = inputs.request();
+    double* ptr = static_cast<double*>(buf.ptr);
+
+    py::array_t<double> result(buf.size);
+    py::buffer_info buf_result = result.request();
+    double* ptr_result = static_cast<double*>(buf_result.ptr);
+
+    bool is_new_graph = node_list.empty();
+
     for (size_t i = 0; i < buf.size; ++i) {
         double input_value = ptr[i];
         double leaky_value = alpha * input_value;
 
-        // 비교 노드 생성 (x > 0)
-        double compare_output = (input_value > 0) ? 1.0 : 0.0;
-        std::shared_ptr<Node> compare_node = std::make_shared<Node>("compare", input_value, compare_output);
+        if (is_new_graph) {
+            double compare_output = (input_value > 0) ? 1.0 : 0.0;
+            std::shared_ptr<Node> compare_node = std::make_shared<Node>("compare", input_value, compare_output);
 
-        // 선택 노드 생성 (x 또는 alpha * x 선택)
-        double output_value = (compare_output > 0) ? input_value : leaky_value;
-        std::shared_ptr<Node> select_node = std::make_shared<Node>("select", input_value, leaky_value, output_value);
+            double output_value = (compare_output > 0) ? input_value : leaky_value;
+            std::shared_ptr<Node> select_node = std::make_shared<Node>("select", input_value, leaky_value, output_value);
+            select_node->add_parent(compare_node);
+            compare_node->add_child(select_node);
 
-        // 노드 연결: 선택 노드를 비교 노드의 자식으로 설정
-        select_node->add_parent(compare_node);
-        compare_node->add_child(select_node);
+            node_list.push_back(select_node);
+            ptr_result[i] = output_value;
+        } else {
+            auto select_node = node_list[i];
+            double output_value = (input_value > 0) ? input_value : leaky_value;
+            select_node->update(input_value, leaky_value, output_value);
+            ptr_result[i] = select_node->output;
 
-        // 결과 저장
-        ptr_result[i] = output_value;
-
-        // 노드 리스트에 마지막 노드(선택 노드)만 추가
-        node_list.push_back(select_node);
+            // 노드 연결 확인 및 재설정
+            auto compare_node = select_node->get_parents()[0];
+            compare_node->update(input_value, 0.0, input_value > 0 ? 1.0 : 0.0);
+        }
     }
 
-    // 결과 배열과 노드 리스트 반환
     return std::make_pair(result, node_list);
 }
 
-
-// Softmax 연산을 배치 데이터로 수행하도록 개별 노드로 분리하여 구현
-std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::array_t<double> inputs) {
+std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(
+    py::array_t<double> inputs, 
+    std::vector<std::shared_ptr<Node>> node_list = {}
+) {
     py::buffer_info buf = inputs.request();
     if (buf.ndim != 2)
         throw std::runtime_error("Input should be a 2-D array");
@@ -216,14 +242,12 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::a
     py::buffer_info buf_result = result.request();
     double* ptr_result = static_cast<double*>(buf_result.ptr);
 
-    std::vector<std::shared_ptr<Node>> node_list;
+    bool is_new_graph = node_list.empty();
 
-    // 각 행에 대해 Softmax 연산 수행
     for (size_t row = 0; row < num_rows; ++row) {
         double* row_ptr = ptr + row * num_cols;
         double* row_result_ptr = ptr_result + row * num_cols;
 
-        // 각 행 별 최댓값
         double max_val = *std::max_element(row_ptr, row_ptr + num_cols);
 
         double sum = 0.0;
@@ -232,34 +256,46 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(py::a
         for (size_t i = 0; i < num_cols; ++i) {
             double input_value = row_ptr[i];
 
-            // Subtract 노드 생성 (각 입력에서 최대값을 뺌)
-            double sub_output = input_value - max_val;
-            std::shared_ptr<Node> sub_node = std::make_shared<Node>("subtract", input_value, max_val, sub_output);
+            if (is_new_graph) {
+                double sub_output = input_value - max_val;
+                std::shared_ptr<Node> sub_node = std::make_shared<Node>("subtract", input_value, max_val, sub_output);
 
-            // Exponentiate 노드 생성 (exp(x))
-            double exp_output = std::exp(sub_output);
-            std::shared_ptr<Node> exp_node = std::make_shared<Node>("exp", sub_output, exp_output);
-            exp_node->add_child(sub_node);
-            sub_node->add_parent(exp_node);
+                double exp_output = std::exp(sub_output);
+                std::shared_ptr<Node> exp_node = std::make_shared<Node>("exp", sub_output, exp_output);
+                exp_node->add_child(sub_node);
+                sub_node->add_parent(exp_node);
 
-            exp_nodes.push_back(exp_node);
-
-            sum += exp_output;
+                exp_nodes.push_back(exp_node);
+                sum += exp_output;
+            } else {
+                auto exp_node = node_list[row * num_cols + i];
+                double sub_output = input_value - max_val;
+                double exp_output = std::exp(sub_output);
+                exp_node->update(sub_output, 0, exp_output);
+                exp_nodes.push_back(exp_node);
+                sum += exp_output;
+            }
         }
 
         for (size_t i = 0; i < num_cols; ++i) {
-            // Divide 노드 생성 (exp(x) / sum)
-            double div_output = exp_nodes[i]->output / sum;
-            std::shared_ptr<Node> div_node = std::make_shared<Node>("divide", exp_nodes[i]->output, sum, div_output);
-            
-            div_node->add_child(exp_nodes[i]);
-            exp_nodes[i]->add_parent(div_node);
+            if (is_new_graph) {
+                double div_output = exp_nodes[i]->output / sum;
+                std::shared_ptr<Node> div_node = std::make_shared<Node>("divide", exp_nodes[i]->output, sum, div_output);
+                div_node->add_child(exp_nodes[i]);
+                exp_nodes[i]->add_parent(div_node);
 
-            // 결과의 개수는 입력 데이터의 개수와 동일, 배치까지
-            node_list.push_back(div_node);
+                node_list.push_back(div_node);
+                row_result_ptr[i] = div_output;
+            } else {
+                auto div_node = node_list[row * num_cols + i];
+                double div_output = exp_nodes[i]->output / sum;
+                div_node->update(exp_nodes[i]->output, sum, div_output);
+                row_result_ptr[i] = div_node->output;
 
-            // 결과 저장
-            row_result_ptr[i] = div_output;
+                // 노드 연결 확인 및 재설정
+                auto exp_node = div_node->get_parents()[0];
+                exp_node->update(div_node->input_a, 0.0, std::exp(div_node->input_a));
+            }
         }
     }
 
