@@ -22,9 +22,6 @@ model.compile(optimizer='sgd',
               loss='mse',
               p_metrics='mse')
 
-#print(model.get_weight())
-# 연산을 수행해보자잇~
-
 x = np.random.rand(10,4)
 y = np.random.rand(10,2)
 

@@ -94,19 +94,20 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> sigmoid(
             ptr_result[i] = recip_node->output;
 
             // 노드 연결 확인 및 재설정
-            auto add_node = recip_node->get_parents()[0];
+            auto add_node = recip_node->get_children()[0];
             add_node->update(exp_output, 1.0, add_output);
 
-            auto exp_node = add_node->get_parents()[0];
+            auto exp_node = add_node->get_children()[0];
             exp_node->update(neg_output, 0.0, exp_output);
 
-            auto neg_node = exp_node->get_parents()[0];
+            auto neg_node = exp_node->get_children()[0];
             neg_node->update(input_value, 0.0, neg_output);
         }
     }
 
     return std::make_pair(result, node_list);
 }
+
 
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> tanh_activation(
     py::array_t<double> inputs, 

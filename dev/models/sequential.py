@@ -163,7 +163,7 @@ class Sequential(Node):
         for i in range(n):
             output = x[i]
             
-            print(output, "입력 데이터")
+            print(output, "입력 데이터", i)
 
             layer_node_list1 = []
 
@@ -173,75 +173,32 @@ class Sequential(Node):
                 # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
                 
                 output = layer.call(output)
-                print("각 레이어 call 연산", i)
                 if layer.trainable:
-                    print("Dense")
+                    print("레이어~")
                     # 해당 레이어의 루트 노드
                     layer_node_list2 = layer.node_list
                     
-                    # 기존의, list1 아래에 list2 를 연결해야 한다.
-                    # 첫 번째 레이어의 경우 list2 자체가 node_list 가 된다.
+                    # 기존의, list2 아래에 list1 를 연결해야 한다.
+                    # 첫 번째 레이어의 경우 list1 자체가 node_list 가 된다.
                     self.node_list = self.link_node(layer_node_list2, layer_node_list1)
 
                     layer_node_list1 = layer_node_list2 
                 
             # loss, metrics 연산의 수행
             self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
-
-            print(self.find_root(self.node_list[0]).operation)
             
             self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
-
-            print(self.find_root(self.node_list[0]).operation)
-            print("loss 연결 잘 됨\n\n\n\n")
-
+            
+            print("데이터 하나 끝")
+            
             self.node_list = []
             self.loss_node_list = []
 
-        """
 
-        leaf_nodes = []
-        
-        # 전체 데이터의 반복 
-        for data_loss in self.loss_node_list:
-            leaf_nodes.append(self.backpropagate(data_loss))
-
-
-        # 레이어 역순으로 방문
-        # 노드 관계가 연결된다
-        for layer in reversed(self._layers):
-            # 학습이 가능한 layer 일 경우 
-            if layer.trainable:
-                # layer.node_list 와 동일
-
-                # 레이어의 leaf_node 저장 리스트
-                layer_leaf_node = []
-
-                # 각 데이터별 loss_node 의 leaf_nodes 에 접근
-                for i in range(len(leaf_nodes)):
-                    # leaf_nodes(list) 에는 자식 노드 리스트들이 존재
-                    
-                    # leaf_node 접근
-                    for j in range(len(leaf_nodes[i])):
-                        child_node_list = self.find_child_node(leaf_nodes[i][j])
-                        # 진짜 찐 leaf_node, layer.node_list(각 레이어의 root node) 와 연결
-                        for child_node in child_node_list:
-                            # 필요한 node 정보만 계산 후 저장
-                            # 해당 레이어의 leaf_node 리스트가 필요함
-                            layer_leaf_node.append(self.backpropagate(layer.node_list[i]))
-
-                            child_node.add_child(layer.node_list[i])
-                            layer.node_list[i].add_parent(child_node)
-
-                    # layer_leaf_node, leaf_nodes 의 갱신
-                leaf_nodes = layer_leaf_node
-
-        """
-                
 
 
     def compute_loss_and_metrics(self, y_pred, y_true):
-        print(y_pred, y_true, "이거이거")
+
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
 
@@ -253,5 +210,4 @@ class Sequential(Node):
         # fit sequential 클래스 fit 메서드 실행
         # call 메서드 실행
         # y_pred 값, outputs
-        return outputs   
-    
+        return outputs

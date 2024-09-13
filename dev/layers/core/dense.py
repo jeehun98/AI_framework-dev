@@ -21,7 +21,12 @@ class Dense(Layer, Node):
         self.trainable = True
         # 노드 리스트의 저장
         self.node_list = []
+
         self.mul_mat_node_list = []
+
+        self.add_bias_node_list = []
+
+        self.act_node_list  = []
 
         # activations 오브젝트를 지정
         if activation is not None:
@@ -84,18 +89,20 @@ class Dense(Layer, Node):
         x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.mul_mat_node_list)    
 
         root_node_list = mul_mat_node_list
+        
+        # 행렬 곱 노드 리스트
         self.mul_mat_node_list = mul_mat_node_list
 
         # bias 가 None 이 아닌 경우
         if self.bias is not None:
             bias_reshaped = np.tile(self.bias, (1, x.shape[1]))
             
-            x, add_node_list = operations_matrix.matrix_add(x, bias_reshaped, self.node_list)
+            x, add_node_list = operations_matrix.matrix_add(x, bias_reshaped, self.add_bias_node_list)
 
+            self.add_bias_node_list = add_node_list
             # add_node_list 노드들을 mul_mat_node_list에 연결
             # add_node_list 의 leaf_node 들과 연결해야 함
             for j in range(len(add_node_list)):
-                print(add_node_list[j], "뭐가 다른가", j)
                 leaf_node_list = self.find_child_node(add_node_list[j])
                 root_node = root_node_list[j]
                 
@@ -107,7 +114,11 @@ class Dense(Layer, Node):
             root_node_list = add_node_list
 
         if self.activation is not None:
-            x, act_node_list = self.activation(x)
+
+            # 여기서 오류가 발생
+            x, act_node_list = self.activation(x, self.act_node_list)
+
+            self.act_node_list = act_node_list
 
             for j in range(len(act_node_list)):
                 leaf_node_list = self.find_child_node(act_node_list[j])
@@ -120,6 +131,7 @@ class Dense(Layer, Node):
             root_node_list = act_node_list
 
         self.node_list = root_node_list
+        print(len(self.node_list), "잘 저장하고 있니?")
 
         return x.reshape(1, -1)
     
