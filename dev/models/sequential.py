@@ -163,11 +163,10 @@ class Sequential(Node):
         # 계산 그래프 만들기
         for i in range(n):
             output = x[i]
-            
-            print(output, "입력 데이터", i)
 
             layer_node_list1 = []
 
+            # 첫 데이터를 통해 계산 그래프 생성
             if i == 0:
                  # 전체 데이터를 처리하도록
                 for layer in self._layers:
@@ -178,7 +177,6 @@ class Sequential(Node):
 
                     # 레이어 연결, 
                     if layer.trainable:
-                        print("레이어~")
                         # 해당 레이어의 루트 노드
                         layer_node_list2 = layer.node_list
                         
@@ -193,33 +191,38 @@ class Sequential(Node):
                 
                 self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
                 
-                print("데이터 하나 끝")
+                #self.print_relationships(self.node_list[0])
                 
-                self.node_list = []
-                self.loss_node_list = []
-
-                return 0
+                for i in range(1):
+                    self.backpropagate(self.node_list[i])
+                    #self.print_relationships(self.node_list[i])
+                    
             
-            # 전체 데이터를 처리하도록
-            for layer in self._layers:
-                # 이전 층의 출력값이 해당 층의 입력값이 되고,
-                # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
-                output = layer.call(output)
+            """
+            # 두 번째 데이터 부터
+            else: 
+                # 전체 데이터를 처리하도록
+                for layer in self._layers:
+                    # 이전 층의 출력값이 해당 층의 입력값이 되고,
+                    # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
+                    output = layer.call(output)
+                    
+                # loss, metrics 연산의 수행
+                self.compute_loss_and_metrics(output, y[i].reshape(1,-1))   
+            """
                 
-            # loss, metrics 연산의 수행
-            self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
-
-            print("데이터 하나 끝")
-            
+            # 매 반복 연산이 끝난 후 초기화
             self.node_list = []
-            self.loss_node_list = []
+            
 
-            return 0
+            
 
     def compute_loss_and_metrics(self, y_pred, y_true):
-
+        # 매 계산 마다 self.loss_node_list 가 갱신,
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
+        print(self.loss_value)
+
 
     def call(self, inputs):
         for layer in self.layers:

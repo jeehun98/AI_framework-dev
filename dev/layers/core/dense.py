@@ -131,7 +131,6 @@ class Dense(Layer, Node):
             root_node_list = act_node_list
 
         self.node_list = root_node_list
-        print(len(self.node_list), "잘 저장하고 있니?")
 
         return x.reshape(1, -1)
     
