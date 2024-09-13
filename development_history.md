@@ -342,3 +342,7 @@
                 - operations_matrix 완료 - 09/12
 
                 -
+
+            - Dense 간 연결과 loss_function 연결을 따로 구현했음, Dense 층의 경우 행렬 원소에 대해 연결되기 때문
+
+        

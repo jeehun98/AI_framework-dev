@@ -1,6 +1,8 @@
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
+from dev.backend.node import node
+
 # 노드 클래스 정의
 class Node:
 
@@ -90,9 +92,8 @@ class Node:
         for parent_node in parent_nodes:
             leaf_nodes = self.find_child_node(parent_node)
 
-            print(len(leaf_nodes), len(child_nodes), "길이가 달라?")
-
             # 리프 노드와 자식 노드의 길이 확인
+            print(len(leaf_nodes), len(child_nodes))
             if len(leaf_nodes) != len(child_nodes):
                 raise ValueError("Mismatch in number of leaf nodes and child nodes.")
 
