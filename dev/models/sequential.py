@@ -160,6 +160,7 @@ class Sequential(Node):
         # 초기 입력값, layer 입력값의 갱신
         n = x.shape[0]
 
+        # 계산 그래프 만들기
         for i in range(n):
             output = x[i]
             
@@ -167,35 +168,53 @@ class Sequential(Node):
 
             layer_node_list1 = []
 
+            if i == 0:
+                 # 전체 데이터를 처리하도록
+                for layer in self._layers:
+                    # 이전 층의 출력값이 해당 층의 입력값이 되고,
+                    # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
+                    
+                    output = layer.call(output)
+
+                    # 레이어 연결, 
+                    if layer.trainable:
+                        print("레이어~")
+                        # 해당 레이어의 루트 노드
+                        layer_node_list2 = layer.node_list
+                        
+                        # 기존의, list2 아래에 list1 를 연결해야 한다.
+                        # 첫 번째 레이어의 경우 list1 자체가 node_list 가 된다.
+                        self.node_list = self.link_node(layer_node_list2, layer_node_list1)
+
+                        layer_node_list1 = layer_node_list2 
+                    
+                # loss, metrics 연산의 수행
+                self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
+                
+                self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
+                
+                print("데이터 하나 끝")
+                
+                self.node_list = []
+                self.loss_node_list = []
+
+                return 0
+            
             # 전체 데이터를 처리하도록
             for layer in self._layers:
                 # 이전 층의 출력값이 해당 층의 입력값이 되고,
                 # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
-                
                 output = layer.call(output)
-                if layer.trainable:
-                    print("레이어~")
-                    # 해당 레이어의 루트 노드
-                    layer_node_list2 = layer.node_list
-                    
-                    # 기존의, list2 아래에 list1 를 연결해야 한다.
-                    # 첫 번째 레이어의 경우 list1 자체가 node_list 가 된다.
-                    self.node_list = self.link_node(layer_node_list2, layer_node_list1)
-
-                    layer_node_list1 = layer_node_list2 
                 
             # loss, metrics 연산의 수행
             self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
-            
-            self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
-            
+
             print("데이터 하나 끝")
             
             self.node_list = []
             self.loss_node_list = []
 
-
-
+            return 0
 
     def compute_loss_and_metrics(self, y_pred, y_true):
 
