@@ -53,7 +53,7 @@ class Node:
         else:
             print(' ' * (indent + 4) + 'Leaf node')     
     
-    
+
 
 
     def backpropagate(self, node, upstream_gradient=1.0, leaf_nodes=None):
@@ -65,7 +65,8 @@ class Node:
         grad_input, grad_weight = node.calculate_gradient(upstream_gradient)
 
         # 2. 부모 노드로 전파된 그래디언트 합산
-        node.grad_input += grad_input
+        # 가중치 변화에 대한 비용 함수의 변화량의 값은 누적
+        # 향후 가중치 갱신에 사용함
         node.grad_weight += grad_weight
 
         # 3. 자식 노드로 그래디언트 전파
@@ -82,7 +83,7 @@ class Node:
         return leaf_nodes
     
     # 노드 내 저장된 정보를 통한 가중치 갱신
-    def weight_update(self, node):
+    def weight_update(self, node, batch_size):
         pass
 
     def find_child_node(self, node, leaf_nodes=None, visited=None):
