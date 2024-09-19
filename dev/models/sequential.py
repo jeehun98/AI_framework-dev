@@ -191,11 +191,13 @@ class Sequential(Node):
                 
                 self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
                 
-                #self.print_relationships(self.node_list[0])
-                
-                for i in range(1):
-                    self.backpropagate(self.node_list[i])
-                    #self.print_relationships(self.node_list[i])
+                # 각 출력 유닛별 가중치 갱신량 계산
+                for root_node in  self.node_list:
+                    # 해당 유닛의 역전파 연산이 끝나고 나면,
+                    self.backpropagate(root_node)
+
+                    # 가중치 값을 갱신해야 함, 배치 사이즈는 수정하자
+                    self.weight_update(root_node, 1)
                     
             
             """
@@ -210,19 +212,18 @@ class Sequential(Node):
                 # loss, metrics 연산의 수행
                 self.compute_loss_and_metrics(output, y[i].reshape(1,-1))   
             """
-                
+
             # 매 반복 연산이 끝난 후 초기화
             self.node_list = []
             
 
-            
-
+        
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
-        print(self.loss_value)
-
+        print(y_pred, y_true, self.loss_value, self.loss_value * 2 * 1)
+        
 
     def call(self, inputs):
         for layer in self.layers:
