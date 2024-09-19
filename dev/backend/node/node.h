@@ -19,19 +19,19 @@ public:
     double input_a = 0.0;              
     double input_b = 0.0;              
     double output = 0.0;               
-    double grad_input = 0.0;
+    double weight = 0.0;
     double grad_weight = 0.0;
     std::vector<std::shared_ptr<Node>> parents;   
     std::vector<std::shared_ptr<Node>> children;  
 
-    Node(const std::string& op, double a, double b, double out)
-        : operation(op), input_a(a), input_b(b), output(out) {
+    Node(const std::string& op, double a, double b, double out, double weight)
+        : operation(op), input_a(a), input_b(b), output(out), weight(weight) {
         init_operations(); 
         validate_operation();
     }
 
-    Node(const std::string& op, double in_val, double out_val)
-        : operation(op), input_a(in_val), output(out_val) {
+    Node(const std::string& op, double in_val, double out_val, double weight)
+        : operation(op), input_a(in_val), output(out_val), weight(weight) {
         init_operations(); 
         validate_operation();
     }
@@ -56,30 +56,11 @@ public:
         parents.erase(std::remove(parents.begin(), parents.end(), parent), parents.end());
     }
 
-    void update(double a, double b, double out) {
+    void update(double a, double b, double out, double weight) {
         input_a = a;
         input_b = b;
         output = out;
-    }
-
-    void accumulate_gradient(double grad_in, double grad_wt) {
-        grad_input += grad_in;
-        grad_weight += grad_wt;
-    }
-
-    void clear_gradients() {
-        grad_input = 0.0;
-        grad_weight = 0.0;
-    }
-
-    void backward(double upstream_gradient = 1.0) {
-        auto gradients = calculate_gradient(upstream_gradient);
-        if (!parents.empty()) {
-            parents[0]->accumulate_gradient(gradients.first, 0.0); // 부모 노드에 대해 그래디언트 누적
-            if (parents.size() > 1) {
-                parents[1]->accumulate_gradient(0.0, gradients.second);
-            }
-        }
+        weight = weight;
     }
 
     std::vector<std::shared_ptr<Node>> get_children() const {
@@ -108,11 +89,11 @@ private:
 
     void init_operations() {
         operations["add"] = [](double a, double b, double out, double upstream) {
-            return std::make_pair(upstream, upstream);
+            return std::make_pair(upstream, 0);
         };
 
         operations["subtract"] = [](double a, double b, double out, double upstream) {
-            return std::make_pair(upstream, -upstream);
+            return std::make_pair(upstream, 0);
         };
 
         operations["multiply"] = [](double a, double b, double out, double upstream) {
@@ -122,7 +103,7 @@ private:
         operations["divide"] = [](double a, double b, double out, double upstream) {
             double grad_input = upstream / b;
             double grad_weight = -upstream * a / (b * b);
-            return std::make_pair(grad_input, grad_weight);
+            return std::make_pair(grad_input, 0);
         };
 
         operations["exp"] = [](double a, double b, double out, double upstream) {

@@ -41,8 +41,6 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
     // 노드 리스트가 비어 있다면 새로운 노드 리스트 생성
     bool is_new_graph = node_list.empty();
 
-    std::vector<std::shared_ptr<Node>> node_list;
-
     // 배치 단위로 행렬 덧셈 및 노드 생성
     
     for (size_t i = 0; i < rows; ++i) {
@@ -54,10 +52,10 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
 
             // 덧셈 노드 생성
             if (is_new_graph) {
-                std::shared_ptr<Node> add_node = std::make_shared<Node>("add", valueA, valueB, sum);
+                std::shared_ptr<Node> add_node = std::make_shared<Node>("add", valueA, valueB, sum, 0);
                 node_list.push_back(add_node);
             } else {
-                node_list[index] -> update(valueA, valueB, sum);
+                node_list[index] -> update(valueA, valueB, sum, 0);
             }
     
             // 결과 저장
@@ -107,7 +105,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
         std::shared_ptr<Node> sum_node;
 
         if (is_new_graph) {
-            sum_node = std::make_shared<Node>("add", 0, 0, 0.0);
+            sum_node = std::make_shared<Node>("add", 0, 0, 0.0, 0);
             node_list.push_back(sum_node);
         } else {
             sum_node = node_list[j];
@@ -128,12 +126,12 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multip
 
                 // 곱셈 노드 생성 및 덧셈 노드와 연결
                 if (is_new_graph) {
-                    std::shared_ptr<Node> mul_node = std::make_shared<Node>("multiply", a_value, b_value, product);
+                    std::shared_ptr<Node> mul_node = std::make_shared<Node>("multiply", a_value, b_value, product, b_value);
                     sum_node->add_child(mul_node);
                     mul_node->add_parent(sum_node);
                 } else {
                     auto mul_node = sum_node->get_children()[k];  // 기존 곱셈 노드 가져오기
-                    mul_node->update(a_value, b_value, product);
+                    mul_node->update(a_value, b_value, product, b_value);
                 }
 
                 // 각 곱셈 결과를 더하여 결과 행렬 값 계산
