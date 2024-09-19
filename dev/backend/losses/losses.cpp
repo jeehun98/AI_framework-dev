@@ -32,9 +32,9 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(
         double diff = ptr_true[i] - ptr_pred[i];
 
         if (is_new_graph) {
-            std::shared_ptr<Node> diff_node = std::make_shared<Node>("subtract", ptr_true[i], ptr_pred[i], diff);
+            std::shared_ptr<Node> diff_node = std::make_shared<Node>("subtract", ptr_true[i], ptr_pred[i], diff, 0);
             double squared_diff = diff * diff;
-            std::shared_ptr<Node> square_node = std::make_shared<Node>("square", diff, squared_diff);
+            std::shared_ptr<Node> square_node = std::make_shared<Node>("square", diff, squared_diff, 0);
 
             diff_node->add_parent(square_node);
             square_node->add_child(diff_node);
@@ -44,9 +44,9 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(
         } else {
             auto square_node = node_list[i];
             auto diff_node = square_node->get_children()[0];
-            diff_node->update(ptr_true[i], ptr_pred[i], diff);
+            diff_node->update(ptr_true[i], ptr_pred[i], diff, 0);
             double squared_diff = diff * diff;
-            square_node->update(diff, 0.0, squared_diff);
+            square_node->update(diff, 0.0, squared_diff, 0);
             mse += squared_diff;
         }
     }
@@ -79,29 +79,29 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
     for (size_t i = 0; i < buf_true.size; ++i) {
         if (is_new_graph) {
             double log_pred = std::log(ptr_pred[i]);
-            std::shared_ptr<Node> log_pred_node = std::make_shared<Node>("log", ptr_pred[i], log_pred);
+            std::shared_ptr<Node> log_pred_node = std::make_shared<Node>("log", ptr_pred[i], log_pred, 0);
 
             double term1 = ptr_true[i] * log_pred;
-            std::shared_ptr<Node> mul_node1 = std::make_shared<Node>("multiply", ptr_true[i], log_pred, term1);
+            std::shared_ptr<Node> mul_node1 = std::make_shared<Node>("multiply", ptr_true[i], log_pred, term1, 0);
 
             log_pred_node->add_parent(mul_node1);
             mul_node1->add_child(log_pred_node);
 
             double constant_value = 1.0;
             double one_minus_pred = constant_value - ptr_pred[i];
-            std::shared_ptr<Node> one_minus_pred_node = std::make_shared<Node>("subtract", constant_value, ptr_pred[i], one_minus_pred);
+            std::shared_ptr<Node> one_minus_pred_node = std::make_shared<Node>("subtract", constant_value, ptr_pred[i], one_minus_pred, 0);
 
             double log_one_minus_pred = std::log(one_minus_pred);
-            std::shared_ptr<Node> log_one_minus_pred_node = std::make_shared<Node>("log", one_minus_pred, log_one_minus_pred);
+            std::shared_ptr<Node> log_one_minus_pred_node = std::make_shared<Node>("log", one_minus_pred, log_one_minus_pred, 0);
 
             log_one_minus_pred_node->add_child(one_minus_pred_node);
             one_minus_pred_node->add_parent(log_one_minus_pred_node);
 
             double one_minus_true = constant_value - ptr_true[i];
-            std::shared_ptr<Node> one_minus_true_node = std::make_shared<Node>("subtract", constant_value, ptr_true[i], one_minus_true);
+            std::shared_ptr<Node> one_minus_true_node = std::make_shared<Node>("subtract", constant_value, ptr_true[i], one_minus_true, 0);
 
             double term2 = one_minus_true * log_one_minus_pred;
-            std::shared_ptr<Node> mul_node2 = std::make_shared<Node>("multiply", one_minus_true, log_one_minus_pred, term2);
+            std::shared_ptr<Node> mul_node2 = std::make_shared<Node>("multiply", one_minus_true, log_one_minus_pred, term2, 0);
 
             mul_node2->add_child(one_minus_true_node);
             mul_node2->add_child(log_one_minus_pred_node);
@@ -110,7 +110,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
             one_minus_true_node->add_parent(mul_node2);
 
             double add_term = term1 + term2;
-            std::shared_ptr<Node> add_term_node = std::make_shared<Node>("add", term1, term2, add_term);
+            std::shared_ptr<Node> add_term_node = std::make_shared<Node>("add", term1, term2, add_term, 0);
 
             add_term_node->add_child(mul_node1);
             add_term_node->add_child(mul_node2);
@@ -119,7 +119,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
             mul_node2->add_parent(add_term_node);
 
             double sample_loss = -add_term;
-            std::shared_ptr<Node> neg_node = std::make_shared<Node>("negate", add_term, sample_loss);
+            std::shared_ptr<Node> neg_node = std::make_shared<Node>("negate", add_term, sample_loss, 0);
 
             neg_node->add_child(add_term_node);
             add_term_node->add_parent(neg_node);
@@ -133,9 +133,9 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
             auto log_pred_node = mul_node1->get_children()[0];
 
             double log_pred = std::log(ptr_pred[i]);
-            log_pred_node->update(ptr_pred[i], 0.0, log_pred);
+            log_pred_node->update(ptr_pred[i], 0.0, log_pred, 0);
             double term1 = ptr_true[i] * log_pred;
-            mul_node1->update(ptr_true[i], log_pred, term1);
+            mul_node1->update(ptr_true[i], log_pred, term1, 0);
 
             auto mul_node2 = add_term_node->get_children()[1];
             auto one_minus_true_node = mul_node2->get_children()[0];
@@ -143,20 +143,20 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
             auto one_minus_pred_node = log_one_minus_pred_node->get_children()[0];
 
             double one_minus_pred = 1.0 - ptr_pred[i];
-            one_minus_pred_node->update(1.0, ptr_pred[i], one_minus_pred);
+            one_minus_pred_node->update(1.0, ptr_pred[i], one_minus_pred, 0);
             double log_one_minus_pred = std::log(one_minus_pred);
-            log_one_minus_pred_node->update(one_minus_pred, 0.0, log_one_minus_pred);
+            log_one_minus_pred_node->update(one_minus_pred, 0.0, log_one_minus_pred, 0);
 
             double one_minus_true = 1.0 - ptr_true[i];
-            one_minus_true_node->update(1.0, ptr_true[i], one_minus_true);
+            one_minus_true_node->update(1.0, ptr_true[i], one_minus_true, 0);
             double term2 = one_minus_true * log_one_minus_pred;
-            mul_node2->update(one_minus_true, log_one_minus_pred, term2);
+            mul_node2->update(one_minus_true, log_one_minus_pred, term2, 0);
 
             double add_term = term1 + term2;
-            add_term_node->update(term1, term2, add_term);
+            add_term_node->update(term1, term2, add_term, 0);
 
             double sample_loss = -add_term;
-            neg_node->update(add_term, 0.0, sample_loss);
+            neg_node->update(add_term, 0.0, sample_loss, 0);
 
             loss += sample_loss;
         }
