@@ -98,22 +98,39 @@ public:
     }
 
     // 역전파 메서드 (루트 노드에서 자식 노드로 내려가는 방식)
-    void backpropagate(double upstream_gradient = 1.0) {
+    // 순환 구조 방지를 위해 visited 집합을 추가
+    void backpropagate(double upstream_gradient = 1.0, std::unordered_set<Node*>* visited = nullptr) {
+        // 방문 집합 초기화
+        if (!visited) {
+            std::unordered_set<Node*> local_visited;
+            backpropagate(upstream_gradient, &local_visited);
+            return;
+        }
+
+        // 현재 노드가 이미 방문된 노드라면 재귀 호출을 중단
+        if (visited->find(this) != visited->end()) {
+            
+            return;
+        }
+
+        // 현재 노드를 방문한 것으로 기록
+        visited->insert(this);
+
         // 1. 현재 노드에서 그래디언트 계산
         auto gradients = calculate_gradient(upstream_gradient);
-        double grad_input = gradients.first;       // 입력값에 대한 그래디언트 (사용하지 않음)
-        double grad_weight = gradients.second;     // 가중치에 대한 그래디언트
+        double grad_input = gradients.first;   // 입력값에 대한 그래디언트
+        double grad_weight = gradients.second; // 가중치에 대한 그래디언트
 
         // 2. 가중치에 대한 그래디언트 누적
         grad_weight_total += grad_weight;
 
         // 3. 자식 노드로 그래디언트 전달
         for (auto& child : children) {
-            if (child->input_value == this->output) {
-                child->backpropagate(upstream_gradient);
-            }
+            // 자식 노드로 현재 노드의 grad_input 값을 전달
+            child->backpropagate(grad_input, visited);
         }
     }
+
 
     void update_weights(double learning_rate, std::unordered_set<Node*>* visited = nullptr) {
         if (!visited) {
