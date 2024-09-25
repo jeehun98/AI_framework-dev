@@ -1,6 +1,7 @@
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
+from dev.backend.operaters import operations_matrix
 from dev.backend.node import node
 
 # 노드 클래스 정의
@@ -31,11 +32,7 @@ class Node:
         visited.add(node)
 
         # 현재 노드 정보 출력
-        print(' ' * indent + f'Node Operation: {node.operation}')
-        # print(' ' * indent + f'Inputs: {node.input_a}, {node.input_b}')
-        # print(' ' * indent + f'Output: {node.output}')
-        # print(' ' * indent + f'Grad Input: {node.grad_input}')
-        print(' ' * indent + f'Grad Weight: {node.grad_weight}')
+        print(node.grad_bias, node.bias)
 
         # 부모 노드 출력
         parents = node.get_parents()
@@ -52,53 +49,17 @@ class Node:
                 self.print_relationships(child, visited, indent + 4)
         else:
             print(' ' * (indent + 4) + 'Leaf node')     
+
     
-    def backpropagate(self, node, upstream_gradient=1.0, leaf_nodes=None):
-        if leaf_nodes is None:
-            leaf_nodes = []
-        # 1. 현재 노드에서 그래디언트 계산
-        # 입력값 변화량에 대한 비용 함수의 변화량 grad_input
-        # 가중치 변화량에 대한 비용 함수의 변화량 grad_weight
-        grad_input, grad_weight = node.calculate_gradient(upstream_gradient)
+    # 리턴 값이 없음
+    # node.h 코드의 실행
+    def backpropagate(self, root_node, upstream_gradient = 1.0):
+        root_node.backpropagate(upstream_gradient)
 
-        # 2. 부모 노드로 전파된 그래디언트 합산
-        # 가중치 변화에 대한 비용 함수의 변화량의 값은 누적
-        # 향후 가중치 갱신에 사용함
-        node.grad_weight += grad_weight
-
-        # 3. 자식 노드로 그래디언트 전파
-        children = node.get_children()
-        if not children:  # 자식 노드가 없으면 리프 노드
-            leaf_nodes.append(node)
-        else:
-            # 각 자식노드 리스트 내 접근
-            for child in children:
-                # 각 자식 노드 리스트 접근과 함께 입력 값의 변화량에 대한
-                # 비용 함수의 변화량인, grad_input 값을 갱신해준다.
-                self.backpropagate(child, grad_input, leaf_nodes)
-
-        return leaf_nodes
-    
-    # 노드 내 저장된 정보를 통한 가중치 갱신
-    def weight_update(self, node, batch_size, learning_rate = 0.001):
-        # 레이어별 저장된 가중치
-        # 각 가중치를 출력해보자.
-        
-        # 해당 노드의 가중치 갱신
-        node.weight = node.weight - learning_rate * node.grad_weight
-
-
-
-        children = node.get_children()
-        if not children:  # 자식 노드가 없으면 리프 노드
-            pass
-        else:
-            # 각 자식노드 리스트 내 접근
-            for child in children:
-                # 각 자식 노드 리스트 접근과 함께 입력 값의 변화량에 대한
-                # 비용 함수의 변화량인, grad_input 값을 갱신해준다.
-                self.weight_update(child, batch_size)
-        
+    def weight_update(self, root_node, learning_rate = 0.001):
+        print("시작")
+        root_node.update_weights(learning_rate)
+        print("끝")
 
     def find_child_node(self, node, leaf_nodes=None, visited=None):
         """
