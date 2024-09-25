@@ -28,6 +28,7 @@ class Sequential(Node):
         self._layers = []
         self.node_list = []
         self.loss_node_list = []
+        
 
     # 모델의 layer 정보 전달
     def get_config(self):
@@ -239,32 +240,51 @@ class Sequential(Node):
                         # 해당 유닛의 역전파 연산이 끝나고 나면,
                         
                         # backpropagate 연산을 통해 가중치 업데이트 량 계산
-                        
                         self.backpropagate(root_node)
 
                     # self.print_relationships(self.node_list[0])
-            
-            print(len(self.node_list))
 
-            #self.print_relationships(self.node_list[0])
-
-            # 가중치 업데이트
+            # 가중치 업데이트, 배치 데이터 개수도 넘겨줘야 해
             for root_node in self.node_list:
                 self.weight_update(root_node, n)
 
             # 매 반복 연산이 끝난 후 초기화
             self.node_list = []
 
-            # 배치 데이터의 추론이 끝난 후 가중치 업데이트 수행
-            # 각 반복이 끝난 후 가중치 업데이트 
+        # epoch 가 끝난 후 바뀐 가중치 값에 대해서 연산을 다시 수행.
+        
+        # 전체 데이터에 대해 살펴보자
+        print("분리")
+        
+        for batch_data in range(n):
+            input_data = x[batch_data]
+            target = y[batch_data]
 
+            # layer_node_list1 의 초기화
+            layer_node_list1 = []
+
+            # 0 번쩨 유닛의 출력은 입력값과 동일하다
+            output = input_data
+
+            for layer in self._layers:
+                output = layer.call(output)
+
+                if layer.trainable:
+                            
+                    # 노드 리스트의 갱신
+                    self.node_list = layer.node_list
+
+                        
+            # loss, metrics 연산의 수행
+            self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
 
 
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
-        #print(y_pred, y_true, self.loss_value)
+        print(y_pred, y_true, self.loss_value)
+        
         
 
     def call(self, inputs):

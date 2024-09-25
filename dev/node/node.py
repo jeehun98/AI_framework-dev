@@ -32,7 +32,7 @@ class Node:
         visited.add(node)
 
         # 현재 노드 정보 출력
-        print(node.grad_bias, node.bias)
+        print(node.weight_value)
 
         # 부모 노드 출력
         parents = node.get_parents()
@@ -54,12 +54,14 @@ class Node:
     # 리턴 값이 없음
     # node.h 코드의 실행
     def backpropagate(self, root_node, upstream_gradient = 1.0):
-        root_node.backpropagate(upstream_gradient)
+        visited = set()
+        root_node.backpropagate(upstream_gradient, visited)
 
-    def weight_update(self, root_node, learning_rate = 0.001):
-        print("시작")
+    def weight_update(self, root_node, batch_count, learning_rate = 0.0005):
+        learning_rate = learning_rate / batch_count
+
         root_node.update_weights(learning_rate)
-        print("끝")
+        
 
     def find_child_node(self, node, leaf_nodes=None, visited=None):
         """

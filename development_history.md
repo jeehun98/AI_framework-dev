@@ -383,4 +383,30 @@
 
         - 계산 그래프에 접근하는 방법이, sequential 모델의 self.node_list 값을 통해 root_node 에 접근한다. 
 
-        - node.h 파일의 backpropagate 수정하기 상위 부모 노드에서 아래로 내려가기
+        - node.h 파일의 backpropagate 수정하기 상위 부모 노드에서 아래로 내려가기 완료 - 09/25
+
+        - weight_update 전후의 노드 계산 그래프 출력해서 잘 변했는지 확인해보자
+
+        - weight_value 를 출력하는데 바뀌질 않는 문제 - 09/25
+
+        - weight_update 이후  weight_value 값이 진짜 엄청 커지네 
+
+        - weight_update 과정을 출력하여 확인할까...
+        
+            - grad_weight_total 의 값에 의해 weight_update 가 시행되는데, 배치 사이즈크기로도 나눠줘야 한다. 
+
+            - 첫 추론에서 임의의 가중치를 입력받아 연산을 수행 
+
+            - 이후 노드 값에 가중치가 저장되어 있는 경우 저장되어 있는 가중치를 통한 연산을 수행해야 한다. 
+
+            - dense.py 와 operations_matrix.cpp 의 데이터 전달 확인, 노드 리스트가 전달될 경우...
+
+                - operations_matrix 도 수정해야 한다. 파이썬으로 부터 입력값과 가중치를 전달받아 연산을 수행후 노드 그래프에 저장하는 방식임 지금
+
+                - 수정할 방향으로 이미 node_list 가 존재할 경우 해당 노드 list 로 부터 가중치 데이터를 전달받아야 한다. - 09/25 완료
+
+        - epoch 가 끝난 후 비용 함수값 확인 - 유의미한 값은 아니네...
+
+            - learning_rate 를 더 낮췄을 때, 그 값의 변화가 적어져야 함 - 이건 맞음 09/25
+
+            - 배치 데이터들의 가중치 변화량 합의 평균을 사용해서 그렇군...
