@@ -295,7 +295,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> softmax(
 
                 // 노드 연결 확인 및 재설정
                 auto exp_node = div_node->get_parents()[0];
-                exp_node->update(div_node->input_a, 0.0, std::exp(div_node->input_a), 0);
+                exp_node->update(div_node->input_value, 0.0, std::exp(div_node->input_value), 0);
             }
         }
     }

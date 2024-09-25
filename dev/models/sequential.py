@@ -96,6 +96,8 @@ class Sequential(Node):
         #빌드 수행
         self.build()
 
+        self.get_weight()
+
 
     # 모델의 compile 정보 전달 
     def get_compile_config(self):
@@ -116,8 +118,8 @@ class Sequential(Node):
             if hasattr(layer, 'weights'):
                 weights.append(layer.weights)
 
-        return weights
-    
+        self.weigts = weights
+
 
     def serialize_model(self):
         # Step 1: Get the compile config, model config, and build config
@@ -158,72 +160,106 @@ class Sequential(Node):
 
         """
         # 초기 입력값, layer 입력값의 갱신
+        # 행의 개수가 데이터의 개수
         n = x.shape[0]
 
-        # 계산 그래프 만들기
-        for i in range(n):
-            output = x[i]
-
-            layer_node_list1 = []
-
-            # 첫 데이터를 통해 계산 그래프 생성
-            if i == 0:
-                 # 전체 데이터를 처리하도록
-                for layer in self._layers:
-                    # 이전 층의 출력값이 해당 층의 입력값이 되고,
-                    # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
-                    
-                    output = layer.call(output)
-
-                    # 레이어 연결, 
-                    if layer.trainable:
-                        # 해당 레이어의 루트 노드
-                        layer_node_list2 = layer.node_list
-                        
-                        # 기존의, list2 아래에 list1 를 연결해야 한다.
-                        # 첫 번째 레이어의 경우 list1 자체가 node_list 가 된다.
-                        self.node_list = self.link_node(layer_node_list2, layer_node_list1)
-
-                        layer_node_list1 = layer_node_list2 
-                    
-                # loss, metrics 연산의 수행
-                self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
+        # 반복 횟수
+        for epoch in range(epochs):
+            # 배치 크기만큼 반복
+            # 배치 크기 데이터 선택이 필요
+            for batch_data in range(n):
                 
-                self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
+                # 입, 출력 데이터 하나 선택
+                # 학습과 역전파 연산은 한 개 씩 수행됨
+                input_data = x[batch_data]
+                target = y[batch_data]
 
-                # 각 출력 유닛별 가중치 갱신량 계산
-                for root_node in  self.node_list:
-                    # 해당 유닛의 역전파 연산이 끝나고 나면,
-                    self.backpropagate(root_node)
+                # layer_node_list1 의 초기화
+                layer_node_list1 = []
 
-                    # 가중치 값을 갱신해야 함, 배치 사이즈는 수정하자
-                    # 가중치도 전달하자
-                    self.weight_update(root_node, 1)
+                # 0 번쩨 유닛의 출력은 입력값과 동일하다
+                output = input_data
 
-                # self.print_relationships(self.node_list[0])
-            
-            # 두 번째 데이터 부터
-            else: 
-                # 전체 데이터를 처리하도록
-                for layer in self._layers:
-                    # 이전 층의 출력값이 해당 층의 입력값이 되고,
-                    # 해당 레이어에 해당하는 계산 노드 리스트가 출력, 
-                    output = layer.call(output)
+                # 첫 데이터를 통해 계산 그래프 생성
+                if batch_data == 0:
+                    # 전체 데이터를 처리하도록
+                    for layer in self._layers:
+                        
+                        # 레이어의 출력값 계산
+                        output = layer.call(output)
+
+                        # 학습이 가능한 연산들에 대해서만 노드 링크 연결
+                        if layer.trainable:
+                            
+                            # 해당 레이어의 루트 노드 리스트 획득
+                        
+                            layer_node_list2 = layer.node_list
+                            
+                            # 두 개의 layer_node_list 의 연결
+
+                            # layer_node_list2 밑에 layer_node_list1 에 연결
+                            self.node_list = self.link_node(layer_node_list2, layer_node_list1)
+
+                            # 업데이트를 위한 값 치환
+                            layer_node_list1 = layer_node_list2 
+
+                    # 전체 레이어 계산 끝!
+                        
+                    # loss, metrics 연산의 수행
+                    self.compute_loss_and_metrics(output, target.reshape(1,-1))
                     
-                    if layer.trainable:
-                        self.node_list = layer.node_list
-                    
-                # loss, metrics 연산의 수행
-                self.compute_loss_and_metrics(output, y[i].reshape(1,-1))
+                    # 비용 함수 계산 그래프와 lanode_list 의 연결
+                    self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
 
-                self.print_relationships(self.node_list[0])
+                    # 각 출력 유닛별 가중치 갱신량 계산
+                    for root_node in  self.node_list:
+                        # 해당 유닛의 역전파 연산이 끝나고 나면,
+                        
+                        # 노드 정보가 바뀐 것을 확인해보자
+                        self.backpropagate(root_node)
+
+                
+                # 두 번째 데이터 부터 계산 그래프의 생성이 필요 없음
+                # layer 연결의 생략 가능, self.node_list 로 전체 노드 트리에 접근 가능
+                else: 
+                    for layer in self._layers:
+                        output = layer.call(output)
+
+                        if layer.trainable:
+                            
+                            # 노드 리스트의 갱신
+                            self.node_list = layer.node_list
+
+                        
+                    # loss, metrics 연산의 수행
+                    self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
+
+                    # 각 출력 유닛별 가중치 갱신량 계산
+                    for root_node in  self.node_list:
+                        # 해당 유닛의 역전파 연산이 끝나고 나면,
+                        
+                        # backpropagate 연산을 통해 가중치 업데이트 량 계산
+                        
+                        self.backpropagate(root_node)
+
+                    # self.print_relationships(self.node_list[0])
             
+            print(len(self.node_list))
+
+            #self.print_relationships(self.node_list[0])
+
+            # 가중치 업데이트
+            for root_node in self.node_list:
+                self.weight_update(root_node, n)
 
             # 매 반복 연산이 끝난 후 초기화
             self.node_list = []
-            
 
-        
+            # 배치 데이터의 추론이 끝난 후 가중치 업데이트 수행
+            # 각 반복이 끝난 후 가중치 업데이트 
+
+
+
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)

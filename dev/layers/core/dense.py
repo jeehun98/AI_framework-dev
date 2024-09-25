@@ -6,7 +6,6 @@ from dev import activations
 from dev.node.node import Node
 
 from dev.backend.operaters import operations_matrix
-from dev.backend.node import node
 
 import numpy as np
 
@@ -86,7 +85,7 @@ class Dense(Layer, Node):
         root_node_list = self.node_list
 
         # 개별 데이터의 행렬 곱셈 수행
-        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.mul_mat_node_list)    
+        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.mul_mat_node_list)
 
         root_node_list = mul_mat_node_list
         
