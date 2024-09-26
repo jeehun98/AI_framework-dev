@@ -1,6 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include "Node.h"
+#include "node.h"  // Node 클래스가 정의된 헤더 파일 포함
 
 namespace py = pybind11;
 
@@ -25,12 +25,11 @@ PYBIND11_MODULE(node, m) {
                  self.update_weights(learning_rate, &visited);
              },
              py::arg("learning_rate"))
-        // 멤버 변수 노출
         .def_readwrite("operation", &Node::operation)
         .def_readwrite("input_value", &Node::input_value)
         .def_readwrite("weight_value", &Node::weight_value)
         .def_readwrite("output", &Node::output)
         .def_readwrite("bias", &Node::bias)
         .def_readwrite("grad_bias", &Node::grad_bias)
-        .def_readwrite("grad_weight_total", &Node::grad_weight_total);  // grad_weight_total 노출 추가
+        .def_readwrite("grad_weight_total", &Node::grad_weight_total);
 }

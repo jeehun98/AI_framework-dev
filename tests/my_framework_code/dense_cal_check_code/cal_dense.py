@@ -22,7 +22,7 @@ def load_diabetes_data():
 # 함수 호출 예시
 X, y = load_diabetes_data()
 
-X = X[:50]
+X = X[:5]
 
 # 랜덤 시드값 고정
 np.random.seed(42)

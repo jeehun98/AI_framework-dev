@@ -70,6 +70,11 @@ public:
         bias = new_bias;
     }
 
+    double get_weight() const { return weight_value; }
+    double get_gradient() const { return grad_weight_total; }
+    void set_weight(double new_weight) { weight_value = new_weight; }
+
+
     // 자식 노드 반환
     std::vector<std::shared_ptr<Node>> get_children() const {
         return children;
