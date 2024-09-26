@@ -32,6 +32,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(
         double diff = ptr_true[i] - ptr_pred[i];
 
         if (is_new_graph) {
+            // 새로운 그래프 생성
             std::shared_ptr<Node> diff_node = std::make_shared<Node>("subtract", ptr_true[i], ptr_pred[i], diff, 0);
             double squared_diff = diff * diff;
             std::shared_ptr<Node> square_node = std::make_shared<Node>("square", diff, squared_diff, 0);
@@ -42,8 +43,10 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> mean_squared_error(
             node_list.push_back(square_node);
             mse += squared_diff;
         } else {
+            // 기존 그래프 업데이트
             auto square_node = node_list[i];
             auto diff_node = square_node->get_children()[0];
+
             diff_node->update(ptr_true[i], ptr_pred[i], diff, 0);
             double squared_diff = diff * diff;
             square_node->update(diff, 0.0, squared_diff, 0);
@@ -78,6 +81,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
 
     for (size_t i = 0; i < buf_true.size; ++i) {
         if (is_new_graph) {
+            // 새로운 그래프 생성
             double log_pred = std::log(ptr_pred[i]);
             std::shared_ptr<Node> log_pred_node = std::make_shared<Node>("log", ptr_pred[i], log_pred, 0);
 
@@ -127,6 +131,7 @@ std::pair<double, std::vector<std::shared_ptr<Node>>> cross_entropy_loss(
             node_list.push_back(neg_node);
             loss += sample_loss;
         } else {
+            // 기존 그래프 업데이트
             auto neg_node = node_list[i];
             auto add_term_node = neg_node->get_children()[0];
             auto mul_node1 = add_term_node->get_children()[0];

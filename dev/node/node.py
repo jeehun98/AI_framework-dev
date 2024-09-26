@@ -32,14 +32,7 @@ class Node:
         visited.add(node)
 
         # 현재 노드 정보 출력
-        print(node.weight_value)
-
-        # 부모 노드 출력
-        parents = node.get_parents()
-        if parents:
-            print(' ' * indent + 'Parents:')
-            for parent in parents:
-                self.print_relationships(parent, visited, indent + 4)
+        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value}, Grad Total: {node.grad_weight_total}")
 
         # 자식 노드 출력
         children = node.get_children()
@@ -48,7 +41,8 @@ class Node:
             for child in children:
                 self.print_relationships(child, visited, indent + 4)
         else:
-            print(' ' * (indent + 4) + 'Leaf node')     
+            print(' ' * (indent + 4) + 'Leaf node')
+
 
     
     # 리턴 값이 없음
@@ -57,7 +51,7 @@ class Node:
         visited = set()
         root_node.backpropagate(upstream_gradient, visited)
 
-    def weight_update(self, root_node, batch_count, learning_rate = 0.0005):
+    def weight_update(self, root_node, batch_count, learning_rate = 0.001):
         learning_rate = learning_rate / batch_count
 
         root_node.update_weights(learning_rate)
