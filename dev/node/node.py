@@ -4,6 +4,7 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 from dev.backend.operaters import operations_matrix
 from dev.backend.node import node
 
+
 # 노드 클래스 정의
 class Node:
 
@@ -57,6 +58,11 @@ class Node:
         root_node.update_weights(learning_rate)
         
 
+    def weight_update(self, root_node, batch_count, optimizer, learning_rate = 0.001):
+        optimizer.update_all_weights(root_node)
+        # optimizer.update(root_node)
+
+                      
     def find_child_node(self, node, leaf_nodes=None, visited=None):
         """
         노드의 리프 노드들을 찾는 함수

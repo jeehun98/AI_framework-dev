@@ -37,7 +37,8 @@ model.add(Dense(1))
 
 model.compile(optimizer='sgd',
               loss='mse',
-              p_metrics='mse')
+              p_metrics='mse',
+              learning_rate=0.001)
 
 model.fit(X, y, epochs=5)
 print("완료")

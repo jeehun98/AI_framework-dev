@@ -89,14 +89,13 @@ class Sequential(Node):
 
 
     # compile 시 저장되는 정보
-    def compile(self, optimizer=None, loss=None, p_metrics=None):
-        self.optimizer = optimizers.get(optimizer)
+    def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
+        # 옵티마이저 객체가 생성되는...
+        self.optimizer = optimizers.get(optimizer, learning_rate = 0.01)
         self.loss = losses.get(loss)
         self.metric = metrics.get(p_metrics)
 
-        #빌드 수행
         self.build()
-
         self.get_weight()
 
 
@@ -191,7 +190,7 @@ class Sequential(Node):
 
             # 배치 반복 끝, 가중치 갱신
             for root_node in self.node_list:
-                self.weight_update(root_node, n)
+                self.weight_update(root_node, n, self.optimizer)
 
         print("학습 끝, 마지막 가중치 갱신")
 
@@ -205,7 +204,7 @@ class Sequential(Node):
         
             loss_sum = loss_sum + data_loss
 
-        print(loss_sum / x.shape[0], "loss_sum")
+        #print(loss_sum / x.shape[0], "loss_sum")
 
     # 예측 수행
     def predict(self, data):

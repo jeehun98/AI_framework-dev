@@ -8,24 +8,12 @@ namespace py = pybind11;
 PYBIND11_MODULE(optimizers, m) {
     py::class_<SGD>(m, "SGD")
         .def(py::init<double>(), py::arg("learning_rate"))
-        .def("update", [](SGD& self, std::shared_ptr<Node> node) {
-                self.update(*node);
-            }, "Update a single node's weights using SGD", py::arg("node"))
-        .def("update_all_weights",
-             [](SGD& self, std::shared_ptr<Node> root) {
-                 self.update_all_weights(root);
-             },
-             py::arg("root"));
+        .def("update", &SGD::update, py::arg("node"))  // 바인딩에 문제가 없는지 확인
+        .def("update_all_weights", &SGD::update_all_weights, py::arg("root"));  // 올바른 메서드가 바인딩되어 있는지 확인
 
     py::class_<Adam>(m, "Adam")
         .def(py::init<double, double, double, double>(),
              py::arg("learning_rate"), py::arg("beta1") = 0.9, py::arg("beta2") = 0.999, py::arg("epsilon") = 1e-8)
-        .def("update", [](Adam& self, std::shared_ptr<Node> node) {
-                self.update(*node);
-            }, "Update a single node's weights using Adam", py::arg("node"))
-        .def("update_all_weights",
-             [](Adam& self, std::shared_ptr<Node> root) {
-                 self.update_all_weights(root);
-             },
-             py::arg("root"));
+        .def("update", &Adam::update, py::arg("node"))  // 바인딩에 문제가 없는지 확인
+        .def("update_all_weights", &Adam::update_all_weights, py::arg("root"));  // 올바른 메서드가 바인딩되어 있는지 확인
 }
