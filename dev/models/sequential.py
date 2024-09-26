@@ -151,142 +151,78 @@ class Sequential(Node):
     
     # fit 을 구현해보자잇~ forward 연산이라고 보면 될 듯
     def fit(self, x=None, y=None, epochs = 1):
-        """
-        모델의 연산 부분
-        
-        Parameters:
-        x (n, p): p 개의 특성을 가진, n 개의 데이터
-          (n, p_1, p_2) : p_1,2, 2차원의 특성을 가진 n 개의 데이터
-        y (n, 1): n 개의 타겟값
 
-        """
         # 초기 입력값, layer 입력값의 갱신
         # 행의 개수가 데이터의 개수
         n = x.shape[0]
 
         # 반복 횟수
         for epoch in range(epochs):
-            # 배치 크기만큼 반복
-            # 배치 크기 데이터 선택이 필요
             for batch_data in range(n):
-                
-                # 입, 출력 데이터 하나 선택
-                # 학습과 역전파 연산은 한 개 씩 수행됨
                 input_data = x[batch_data]
                 target = y[batch_data]
 
-                # layer_node_list1 의 초기화
-                layer_node_list1 = []
-
-                # 0 번쩨 유닛의 출력은 입력값과 동일하다
                 output = input_data
-
-                # 첫 데이터를 통해 계산 그래프 생성
-                if batch_data == 0:
-                    # 전체 데이터를 처리하도록
+                if batch_data == 0 and epoch == 0:
+                    layer_node_list1 = []
                     for layer in self._layers:
-                        
-                        # 레이어의 출력값 계산
                         output = layer.call(output)
-
-                        # 학습이 가능한 연산들에 대해서만 노드 링크 연결
                         if layer.trainable:
-                            
-                            # 해당 레이어의 루트 노드 리스트 획득
-                        
                             layer_node_list2 = layer.node_list
-                            
-                            # 두 개의 layer_node_list 의 연결
-
-                            # layer_node_list2 밑에 layer_node_list1 에 연결
                             self.node_list = self.link_node(layer_node_list2, layer_node_list1)
-
-                            # 업데이트를 위한 값 치환
                             layer_node_list1 = layer_node_list2 
 
-                    # 전체 레이어 계산 끝!
-                        
-                    # loss, metrics 연산의 수행
                     self.compute_loss_and_metrics(output, target.reshape(1,-1))
-                    
-                    # 비용 함수 계산 그래프와 lanode_list 의 연결
                     self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
 
-                    # 각 출력 유닛별 가중치 갱신량 계산
                     for root_node in  self.node_list:
-                        # 해당 유닛의 역전파 연산이 끝나고 나면,
-                        
-                        # 노드 정보가 바뀐 것을 확인해보자
                         self.backpropagate(root_node)
 
-                
-                # 두 번째 데이터 부터 계산 그래프의 생성이 필요 없음
-                # layer 연결의 생략 가능, self.node_list 로 전체 노드 트리에 접근 가능
                 else: 
                     for layer in self._layers:
                         output = layer.call(output)
-
-                        if layer.trainable:
-                            
-                            # 노드 리스트의 갱신
-                            self.node_list = layer.node_list
-
-                        
                     # loss, metrics 연산의 수행
                     self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
 
-                    # 각 출력 유닛별 가중치 갱신량 계산
                     for root_node in  self.node_list:
-                        # 해당 유닛의 역전파 연산이 끝나고 나면,
-                        
-                        # backpropagate 연산을 통해 가중치 업데이트 량 계산
                         self.backpropagate(root_node)
 
-                    # self.print_relationships(self.node_list[0])
+            print("각 추론 반복")
 
-            # 가중치 업데이트, 배치 데이터 개수도 넘겨줘야 해
+            # 배치 반복 끝, 가중치 갱신
             for root_node in self.node_list:
                 self.weight_update(root_node, n)
 
-            # 매 반복 연산이 끝난 후 초기화
-            self.node_list = []
+        print("학습 끝, 마지막 가중치 갱신")
 
-        # epoch 가 끝난 후 바뀐 가중치 값에 대해서 연산을 다시 수행.
+        loss_sum = 0
+
+        for data in range(x.shape[0]):
+            input_data = x[data]
+            target = y[data]
+            predict = self.predict(input_data)
+            data_loss = self.compute_loss_and_metrics(predict, target.reshape(1,-1))
         
-        # 전체 데이터에 대해 살펴보자
-        print("분리")
-        
-        for batch_data in range(n):
-            input_data = x[batch_data]
-            target = y[batch_data]
+            loss_sum = loss_sum + data_loss
 
-            # layer_node_list1 의 초기화
-            layer_node_list1 = []
+        print(loss_sum / x.shape[0], "loss_sum")
 
-            # 0 번쩨 유닛의 출력은 입력값과 동일하다
-            output = input_data
+    # 예측 수행
+    def predict(self, data):
+        output = data
+        for layer in self._layers:
+            output = layer.call(output)
+        return output
 
-            for layer in self._layers:
-                output = layer.call(output)
-
-                if layer.trainable:
-                            
-                    # 노드 리스트의 갱신
-                    self.node_list = layer.node_list
-
-                        
-            # loss, metrics 연산의 수행
-            self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
-
-
+    # 비용 함수값 계산
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
-        self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
+        self.loss_value, self.loss_node_list = self.loss(y_pred, y_true, self.loss_node_list)
         self.metric_value = self.metric(y_pred, y_true)
         print(y_pred, y_true, self.loss_value)
+        return self.loss_value
         
         
-
     def call(self, inputs):
         for layer in self.layers:
             outputs = layer(inputs)
