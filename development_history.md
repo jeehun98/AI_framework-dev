@@ -438,3 +438,7 @@
     - grad_weight_total / (learning_rate * batch_size) 의 값이 가중치 갱신량으로 사용, SGD 에선 단순히 그 값을 빼서 weight_update 수행
 
     - optimizer 객체를 무조건 생성해서 사용해야 하네...
+
+        - 인스턴스의 생성 확인 - 09/26
+
+        - 인스턴스의 attribute 호출 오류 문제 확인, 바인딩 및 cpp 코드 상 문제가 있을 거라고 생각된다. 
