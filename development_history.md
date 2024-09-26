@@ -427,4 +427,14 @@
 
             - loss 내의 노드 리스트 입력 시 구별 기능 구현, - 09/26
 
-            - loss 에 예측 결과, 타겟 리스트의 전달, 
+            - loss 에 예측 결과, 타겟 리스트의 전달, 완료 - 09/26
+
+# 6. optimizer 구현하기
+
+    - optimizer 에서 weight_update 수행하기, 지금은 weight_update 의 SGD 방법을 사용한 가중치 갱신을 사용하고 있음 node.h 내 구현
+
+    - optimizer 코드 내에서 루트 노드에서 시작하여 node 의 가중치, 업데이트, grad_weight_total 정보의 사용, 
+
+    - grad_weight_total / (learning_rate * batch_size) 의 값이 가중치 갱신량으로 사용, SGD 에선 단순히 그 값을 빼서 weight_update 수행
+
+    - optimizer 객체를 무조건 생성해서 사용해야 하네...

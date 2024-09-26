@@ -3,6 +3,8 @@
 #include <vector>
 #include <cmath>
 #include <map>
+#include <unordered_set>
+#include "../node/node.h"  // Node 클래스 헤더 파일을 올바른 경로로 포함
 
 namespace py = pybind11;
 
@@ -10,34 +12,33 @@ class SGD {
 public:
     SGD(double learning_rate) : learning_rate(learning_rate) {}
 
-    py::array_t<double> update(py::array_t<double> weights, py::array_t<double> gradients) {
-        // 버퍼 정보 가져오기
-        py::buffer_info buf_weights = weights.request();
-        py::buffer_info buf_gradients = gradients.request();
+    void update(Node& node) {
+        double updated_weight = node.get_weight() - learning_rate * node.get_gradient();
+        node.set_weight(updated_weight);
+    }
 
-        // 입력 크기 확인
-        if (buf_weights.size != buf_gradients.size) {
-            throw std::invalid_argument("Weights and gradients must have the same size");
-        }
-
-        // 결과 배열 생성
-        py::array_t<double> updated_weights(buf_weights.size);
-        py::buffer_info buf_updated_weights = updated_weights.request();
-
-        double* ptr_weights = static_cast<double*>(buf_weights.ptr);
-        double* ptr_gradients = static_cast<double*>(buf_gradients.ptr);
-        double* ptr_updated_weights = static_cast<double*>(buf_updated_weights.ptr);
-
-        // 업데이트 수행
-        for (size_t i = 0; i < buf_weights.size; ++i) {
-            ptr_updated_weights[i] = ptr_weights[i] - learning_rate * ptr_gradients[i];
-        }
-
-        return updated_weights;
+    // 루트 노드에서 시작하여 모든 하위 노드의 가중치를 갱신
+    void update_all_weights(std::shared_ptr<Node> root) {
+        std::unordered_set<Node*> visited; // 방문한 노드를 추적하기 위한 집합
+        update_all_weights_recursive(root, visited);
     }
 
 private:
     double learning_rate;
+
+    // 재귀적으로 모든 노드를 방문하여 가중치를 업데이트
+    void update_all_weights_recursive(std::shared_ptr<Node> node, std::unordered_set<Node*>& visited) {
+        if (!node || visited.find(node.get()) != visited.end()) return; // 이미 방문한 노드라면 반환
+        visited.insert(node.get());
+
+        // 현재 노드의 가중치를 업데이트
+        update(*node);
+
+        // 자식 노드들에 대해 재귀적으로 가중치 업데이트
+        for (auto& child : node->get_children()) {
+            update_all_weights_recursive(child, visited);
+        }
+    }
 };
 
 class Adam {
@@ -45,31 +46,28 @@ public:
     Adam(double learning_rate, double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8)
         : learning_rate(learning_rate), beta1(beta1), beta2(beta2), epsilon(epsilon), t(0) {}
 
-    py::array_t<double> update(py::array_t<double>& weights, py::array_t<double>& gradients) {
-        // 버퍼 정보 가져오기
-        py::buffer_info buf_weights = weights.request();
-        py::buffer_info buf_gradients = gradients.request();
+    void update(Node& node) {
+        size_t node_id = reinterpret_cast<size_t>(&node);
+        double gradient = node.get_gradient();
 
-        // 입력 크기 확인
-        if (buf_weights.size != buf_gradients.size) {
-            throw std::invalid_argument("Weights and gradients must have the same size");
-        }
+        // 모멘트 벡터 업데이트
+        m[node_id] = beta1 * m[node_id] + (1.0 - beta1) * gradient;
+        v[node_id] = beta2 * v[node_id] + (1.0 - beta2) * gradient * gradient;
 
-        double* ptr_weights = static_cast<double*>(buf_weights.ptr);
-        double* ptr_gradients = static_cast<double*>(buf_gradients.ptr);
+        // 모멘트 벡터 보정
+        double m_hat = m[node_id] / (1.0 - std::pow(beta1, t + 1));
+        double v_hat = v[node_id] / (1.0 - std::pow(beta2, t + 1));
 
-        t += 1;
-        for (size_t i = 0; i < buf_weights.size; ++i) {
-            m[i] = beta1 * m[i] + (1.0 - beta1) * ptr_gradients[i];
-            v[i] = beta2 * v[i] + (1.0 - beta2) * ptr_gradients[i] * ptr_gradients[i];
+        // 가중치 업데이트
+        double updated_weight = node.get_weight() - learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
+        node.set_weight(updated_weight);
+    }
 
-            double m_hat = m[i] / (1.0 - std::pow(beta1, t));
-            double v_hat = v[i] / (1.0 - std::pow(beta2, t));
-
-            ptr_weights[i] -= learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
-        }
-
-        return weights;
+    // 루트 노드에서 시작하여 모든 하위 노드의 가중치를 갱신
+    void update_all_weights(std::shared_ptr<Node> root) {
+        std::unordered_set<Node*> visited; // 방문한 노드를 추적하기 위한 집합
+        t++; // 타임스텝 증가
+        update_all_weights_recursive(root, visited);
     }
 
 private:
@@ -77,7 +75,21 @@ private:
     double beta1;
     double beta2;
     double epsilon;
-    int t;
-    std::map<size_t, double> m; // 1st moment vector
-    std::map<size_t, double> v; // 2nd moment vector
+    int t; // 타임스텝
+    std::map<size_t, double> m; // 1차 모멘트 벡터
+    std::map<size_t, double> v; // 2차 모멘트 벡터
+
+    // 재귀적으로 모든 노드를 방문하여 가중치를 업데이트
+    void update_all_weights_recursive(std::shared_ptr<Node> node, std::unordered_set<Node*>& visited) {
+        if (!node || visited.find(node.get()) != visited.end()) return; // 이미 방문한 노드라면 반환
+        visited.insert(node.get());
+
+        // 현재 노드의 가중치를 업데이트
+        update(*node);
+
+        // 자식 노드들에 대해 재귀적으로 가중치 업데이트
+        for (auto& child : node->get_children()) {
+            update_all_weights_recursive(child, visited);
+        }
+    }
 };
