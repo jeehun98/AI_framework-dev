@@ -2,11 +2,8 @@ import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
 from dev.layers.layer import Layer
-from dev import activations
-from dev.node.node import Node
+from dev.backend.convolution import convolution
 
-from dev.backend.operaters import operations_matrix
-from dev.backend.
 
 import numpy as np
 
@@ -29,6 +26,7 @@ class Conv2D(Layer):
         self.use_biss = use_bias
         self.weights = []
         self.bias = []
+        self.node_list = []
     
     # 가중치 생성
     def build(self):
@@ -49,5 +47,7 @@ class Conv2D(Layer):
 
         
         """
+
+        # 전달하는 데이터들
+        x, self.node_list = convolution.conv2d(input_data, self.filters, self.strides, self.padding, self.node_list)
         
-        pass
