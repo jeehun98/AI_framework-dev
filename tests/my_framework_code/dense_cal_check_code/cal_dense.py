@@ -31,8 +31,6 @@ model = Sequential()
 # input_shape 는 특성의 개수임
 model.add(Flatten(input_shape=(10,)))
 model.add(Dense(6, 'sigmoid'))
-model.add(Dense(4))
-model.add(Dense(4))
 model.add(Dense(1))
 
 model.compile(optimizer='sgd',
@@ -40,5 +38,5 @@ model.compile(optimizer='sgd',
               p_metrics='mse',
               learning_rate=0.001)
 
-model.fit(X, y, epochs=5)
+model.fit(X, y, epochs=15)
 print("완료")

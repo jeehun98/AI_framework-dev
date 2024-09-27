@@ -91,7 +91,7 @@ class Sequential(Node):
     # compile 시 저장되는 정보
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
         # 옵티마이저 객체가 생성되는...
-        self.optimizer = optimizers.get(optimizer, learning_rate = 0.01)
+        self.optimizer = optimizers.get(optimizer, learning_rate = learning_rate)
         self.loss = losses.get(loss)
         self.metric = metrics.get(p_metrics)
 
@@ -204,7 +204,7 @@ class Sequential(Node):
         
             loss_sum = loss_sum + data_loss
 
-        #print(loss_sum / x.shape[0], "loss_sum")
+        print(loss_sum / x.shape[0], "loss_sum")
 
     # 예측 수행
     def predict(self, data):
@@ -227,7 +227,4 @@ class Sequential(Node):
             outputs = layer(inputs)
             inputs = outputs
 
-        # fit sequential 클래스 fit 메서드 실행
-        # call 메서드 실행
-        # y_pred 값, outputs
         return outputs
