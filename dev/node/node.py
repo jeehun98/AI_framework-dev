@@ -156,7 +156,3 @@ class Node:
             child_nodes[i].add_parent(parent_nodes[i])
 
         return parent_nodes
-
-    def find_operation_node(self, node, operation):
-        
-        pass
