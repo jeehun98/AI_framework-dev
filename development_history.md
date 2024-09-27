@@ -443,4 +443,14 @@
 
         - 인스턴스의 attribute 호출 오류 문제 확인, 바인딩 및 cpp 코드 상 문제가 있을 거라고 생각된다. 
 
-        - 문제 해결, learning_rate 도 새로 입력받아서 사용하는 방법 적용 완료
+        - 문제 해결, learning_rate 도 새로 입력받아서 사용하는 방법 적용 완료 - 09/27
+
+# 7. Dense 과정 다 완료
+
+    - Sequential 모델 선언, layer 추가, compile 을 통한 세팅, fit 으로 학습
+
+# 8. CNN 구현하기
+
+    - Conv2D 의 구현
+
+        - 가중치 생성 build(), 합성곱 연산 수행 call() 
