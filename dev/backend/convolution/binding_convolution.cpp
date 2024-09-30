@@ -7,7 +7,7 @@
 namespace py = pybind11;
 
 // Python 바인딩 정의
-PYBIND11_MODULE(backend, m) {
+PYBIND11_MODULE(convolution, m) {
     m.doc() = "Convolution module using C++ backend with pybind11";  // 모듈 설명
 
     // conv2d 함수 바인딩
