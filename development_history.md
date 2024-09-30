@@ -454,3 +454,32 @@
     - Conv2D 의 구현
 
         - 가중치 생성 build(), 합성곱 연산 수행 call() 
+
+        - Conv2D.cpp 파일 작성, 패딩도 여기 안에서 수행하도록
+
+        - 계산 그래프가 어떻게 생성되는지 생각해보자. 
+
+        - call 연산에서 전달되는 형태의 문제 발생
+
+        - 가중치 생성 시 입력 데이터의 차원 수가 필요하다
+
+        - 차원 수 맞추기 완료
+
+        - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
+
+# epoch 별 반복 변환
+
+    - 각 epoch 시 사용되는 배치 데이터 셋이 달라져야 함 - 09/30 구현해야 해 
+
+# pytorch 와 비교해서...
+
+    - pytorch 에서 모델의 출력인 output 에 계산 그래프가 포함되어 있음, 해당 값을 사용한 loss 연산을 통해 계산 그래프가 연결
+
+    - 이전에 optimizer 에서 사용된 model.paramters 들로 어떤 값들이 해당 가중치 갱신 방법들을 사용할 것인지에 대한 선언이 수행된다.
+
+    
+# activation_layer 의 추가
+
+    - Dense layer 에선 activation 오브젝트를 지정받아옴.
+
+    - model.add(Activation('softmax)) 와 같이 activation layer 를 추가함

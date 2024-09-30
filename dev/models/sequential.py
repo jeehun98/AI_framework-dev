@@ -44,6 +44,7 @@ class Sequential(Node):
     # 레이어 추가
     # 파라미터, layer 는 여기서 이미 객체가 생성되면서 여기 메서드 파라미터로 들어가는데...
     def add(self, layer):
+        
         # 입력 형태가 layer 인스턴스가 아닐 경우 
         if not isinstance(layer, Layer):
             raise ValueError(
@@ -54,7 +55,7 @@ class Sequential(Node):
         # 레이어가 존재
         if self._layers:
             # input_shape 기본값 지정
-
+            
             # 마지막 layer 선택
             previous_layer = self._layers[-1]   
             # 이전 레이어의 units 개수가 이번 레이어의 input_shape
@@ -71,11 +72,17 @@ class Sequential(Node):
                 # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
                 # dense 의 경우 가중치 초기화
                 layer.build(input_shape)
-
-        # 입력된 layer 의 추가, 
+        
+        elif hasattr(layer, 'input_shape'):
+            layer.build()
+        
+        print(layer.input_shape)
         self._layers.append(layer)
+        """
+        if layer.built is False:
+            layer.build()
+        """
 
-    
     # layer build 는 가중치 초기화를 진행했음
     # model build 를 통해 build_config 정보를 구성, input_shape 정보
     # model.compile 을 통해 실행된다.
