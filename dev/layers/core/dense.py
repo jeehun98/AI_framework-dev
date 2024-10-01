@@ -114,7 +114,6 @@ class Dense(Layer, Node):
 
         if self.activation is not None:
 
-            # 여기서 오류가 발생
             x, act_node_list = self.activation(x, self.act_node_list)
 
             self.act_node_list = act_node_list

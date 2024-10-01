@@ -72,7 +72,7 @@ class Sequential(Node):
                 # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
                 # dense 의 경우 가중치 초기화
                 layer.build(input_shape)
-        
+
         elif hasattr(layer, 'input_shape'):
             layer.build()
         
@@ -156,48 +156,114 @@ class Sequential(Node):
     
     
     # fit 을 구현해보자잇~ forward 연산이라고 보면 될 듯
+    # layer 를 따라 call 연산을 수행하면서 layer 의 계산 그래프 연결하기
     def fit(self, x=None, y=None, epochs = 1):
+        """
+        parameters
+        x : 입력 데이터
+        y : 타겟 데이터
+        epochs : 학습 반복 횟수
+        """
 
-        # 초기 입력값, layer 입력값의 갱신
-        # 행의 개수가 데이터의 개수
-        n = x.shape[0]
 
-        # 반복 횟수
+        # 배치 데이터의 개수 
+        # 현재 배치를 전체 데이터로 사용하는 방식
+        # 원래 배치 데이터의 개수
+        batch_counts = 1
+
+
+        # 학습 반복 횟수
         for epoch in range(epochs):
-            for batch_data in range(n):
-                input_data = x[batch_data]
-                target = y[batch_data]
 
-                output = input_data
-                if batch_data == 0 and epoch == 0:
-                    layer_node_list1 = []
-                    for layer in self._layers:
-                        output = layer.call(output)
-                        if layer.trainable:
-                            layer_node_list2 = layer.node_list
-                            self.node_list = self.link_node(layer_node_list2, layer_node_list1)
-                            layer_node_list1 = layer_node_list2 
+            """
+            배치 데이터 나누는 로직이 추가되어야 함
 
-                    self.compute_loss_and_metrics(output, target.reshape(1,-1))
-                    self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
+            배치의 개수, batch_counts
 
-                    for root_node in  self.node_list:
-                        self.backpropagate(root_node)
+            배치내 데이터 개수, batch_datas
+        
+            """
+            batch_datas = x.shape[0]
 
-                else: 
-                    for layer in self._layers:
-                        output = layer.call(output)
-                    # loss, metrics 연산의 수행
-                    self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
+            # 배치의 개수만큼의 반복
+            # 다음 배치로 넘어갈 때 가중치 갱신량은 초기화, 바뀐 가중치 값은 그대로 들고간다.
+            for batch_counts in range(batch_counts):
 
-                    for root_node in  self.node_list:
-                        self.backpropagate(root_node)
+                # 하나의 배치 데이터의 반복
+                for batch_data in range(batch_datas):
+                    """
+                    여기선 x, y 를 그대로 사용하는 것이 아닌
+                    DataLoader 에서 나눈 새로운 데이터를 사용, 수정해야함
+                    """
+                    input_data = x[batch_data]
+                    target = y[batch_data]
 
-            print("각 추론 반복")
+                    # 입력 데이터를 0번째 layer 의 출력값이라고 생각, output 을 계속 업데이트
+                    output = input_data
 
-            # 배치 반복 끝, 가중치 갱신
-            for root_node in self.node_list:
-                self.weight_update(root_node, n, self.optimizer)
+                    # 가장 첫 번째의 학습에선 계산 그래프를 생성하고 이를 연결하는 과정이 필요
+                    if batch_data == 0 and epoch == 0:
+
+                        # 자식 노드 리스트, 
+                        child_layer_node_list = []
+
+                        # 이전에 레이어가 존재할 경우 계산 그래프를 연결해야함
+                        for layer in self._layers:
+
+                            # 출력값 갱신, layer 의 call 연산이 호출된다.
+                            output = layer.call(output)
+
+                            # 해당 레이어가 학습 가능한 경우 계산 그래프 연결하기
+                            if layer.trainable:
+
+                                # 새로 계산한 노드 리스트가 부모 노드 리스트 
+                                parent_layer_node_list = layer.node_list
+
+                                # 계산 그래프 연결
+                                self.node_list = self.link_node(parent_layer_node_list, child_layer_node_list)
+
+                                # 갱신한 부모 노드 리스트가 다음 레이어에선 자식 노드 리스트가 되어야 함
+                                child_layer_node_list = parent_layer_node_list 
+
+                        # loss_node_list 생성, 
+                        self.compute_loss_and_metrics(output, target.reshape(1,-1))
+
+                        # loss_node_list 의 연결
+                        self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
+
+                        # 계산 그래프 리스트들의 역전파 연산 수행
+
+                        """
+                        NODE 클래스, 혹은 다른 클래스에서 수행하도록 변경해야겠다.
+                        """
+                        for root_node in  self.node_list:
+                            self.backpropagate(root_node)
+
+                    else:
+                        # 계산 그래프가 생성되고 난 후...
+                        """
+                        조건문의 변경을 해야겠다.
+                        """ 
+
+                        # 각 layer 의 call 연산, 계산 그래프가 있을 경우
+                        # = self.node_list 가 존재할 경우임
+                        for layer in self._layers:
+                            output = layer.call(output)
+                        # loss, metrics 연산의 수행
+                        self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
+
+                        for root_node in  self.node_list:
+                            self.backpropagate(root_node)
+
+                print("각 추론 반복")
+
+                # 배치 반복 끝, 가중치 갱신
+                for root_node in self.node_list:
+                    self.weight_update(root_node, batch_datas, self.optimizer)
+
+                """
+                이후 계산 그래프의 가중치는 동일하게, 가중치 갱신량은 초기화해야함
+                """
 
         print("학습 끝, 마지막 가중치 갱신")
 

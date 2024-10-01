@@ -483,3 +483,20 @@
     - Dense layer 에선 activation 오브젝트를 지정받아옴.
 
     - model.add(Activation('softmax)) 와 같이 activation layer 를 추가함
+
+    - __init__, call 구현 완료
+
+    - Sequential 에서 add 부분의 로직을 추가해야해, input_shape 를 추가해줬음 - 완료 10/01
+
+# 후진 모드 자동 미분을 위한 계산 그래프 연결
+
+    - activation_layer 가 추가되면서 여기에서도 계산 그래프 연결 로직이 필요해졌음.
+
+    - 이전에는 이러한 로직이 loss_function 과 계산 그래프를 연결하는 과정을 따로 추가했지만, layer 를 따라 model.fit 연산을 수행하는 과정에서 layer 의 종류와는 상관없이 계산 그래프를 연결하는 로직이 추가되어야 함
+
+    - 각 layer 에 self.node_list, trainable 속성의 추가와 초기 계산 그래프 생성시 해당 레이어들을 연결해주는 로직을 추가, 완료 - 10/01
+
+
+# sequential Class
+
+    - 배치 데이터 나누는 로직, 
