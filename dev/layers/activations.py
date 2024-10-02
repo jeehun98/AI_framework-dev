@@ -22,7 +22,7 @@ class Activation(Layer):
     def call(self, inputs):
         output, activation_node_list = self.activation(inputs, self.node_list)
         self.node_list = activation_node_list
-        return output
+        return [output]
     
     def compute_output_shape(self, input_shape):
         return input_shape
