@@ -502,6 +502,8 @@
 
         - 먼저 activation_layer 인 경우 일대일 노드 리스트 연결 수행
 
+        - activation function 의 
+
 
 # sequential Class
 
