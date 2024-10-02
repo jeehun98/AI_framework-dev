@@ -76,7 +76,6 @@ class Sequential(Node):
         elif hasattr(layer, 'input_shape'):
             layer.build()
         
-        print(layer.input_shape)
         self._layers.append(layer)
         """
         if layer.built is False:
@@ -157,52 +156,49 @@ class Sequential(Node):
     
     # fit 을 구현해보자잇~ forward 연산이라고 보면 될 듯
     # layer 를 따라 call 연산을 수행하면서 layer 의 계산 그래프 연결하기
-    def fit(self, x=None, y=None, epochs = 1):
+    def fit(self, x=None, y=None, epochs = 1, batch_size = -1):
         """
         parameters
         x : 입력 데이터
         y : 타겟 데이터
         epochs : 학습 반복 횟수
+        batch_size : 배치 크기, -1일 경우 전체 데이터를 하나의 배치로 사용
         """
 
+        # 배치 사이즈가 주어지지 않았을 때, 전체 데이터를 하나의 배치로 사용
+        if batch_size == -1 or batch_size > x.shape[0]:
+            batch_size = x.shape[0]
 
-        # 배치 데이터의 개수 
-        # 현재 배치를 전체 데이터로 사용하는 방식
-        # 원래 배치 데이터의 개수
-        batch_counts = 1
+        # 배치 데이터의 개수
+        batch_counts = int(np.ceil(x.shape[0] / batch_size))
 
 
         # 학습 반복 횟수
         for epoch in range(epochs):
 
-            """
-            배치 데이터 나누는 로직이 추가되어야 함
-
-            배치의 개수, batch_counts
-
-            배치내 데이터 개수, batch_datas
-        
-            """
-            batch_datas = x.shape[0]
-
-            # 배치의 개수만큼의 반복
             # 다음 배치로 넘어갈 때 가중치 갱신량은 초기화, 바뀐 가중치 값은 그대로 들고간다.
-            for batch_counts in range(batch_counts):
+            # 배치의 개수만큼 반복
+            for batch_idx in range(batch_counts):
+                
+                # 배치 데이터 추출
+                start = batch_idx * batch_size
+                end = min(start + batch_size, x.shape[0])
+                batch_x = x[start:end]
+                batch_y = y[start:end]
 
-                # 하나의 배치 데이터의 반복
-                for batch_data in range(batch_datas):
-                    """
-                    여기선 x, y 를 그대로 사용하는 것이 아닌
-                    DataLoader 에서 나눈 새로운 데이터를 사용, 수정해야함
-                    """
-                    input_data = x[batch_data]
-                    target = y[batch_data]
+                # 배치내 데이터 개수
+                batch_datas = batch_x.shape[0]
+
+                # 각 배치 데이터에 대한 반복
+                for batch_data_idx in range(batch_datas):
+                    input_data = batch_x[batch_data_idx]
+                    target = batch_y[batch_data_idx]
 
                     # 입력 데이터를 0번째 layer 의 출력값이라고 생각, output 을 계속 업데이트
                     output = input_data
 
                     # 가장 첫 번째의 학습에선 계산 그래프를 생성하고 이를 연결하는 과정이 필요
-                    if batch_data == 0 and epoch == 0:
+                    if batch_data_idx == 0 and epoch == 0:
 
                         # 자식 노드 리스트, 
                         child_layer_node_list = []
@@ -211,16 +207,20 @@ class Sequential(Node):
                         for layer in self._layers:
 
                             # 출력값 갱신, layer 의 call 연산이 호출된다.
+                            print("call 연산 수행중", layer.name)
+                            print(len(output), "인풋")
                             output = layer.call(output)
+                            print(len(output), "아웃풋")
 
                             # 해당 레이어가 학습 가능한 경우 계산 그래프 연결하기
                             if layer.trainable:
-
+                                print("훈련 가능")
                                 # 새로 계산한 노드 리스트가 부모 노드 리스트 
+                                # 노드 리스트에는 루트 노드가 저장되어 있음
                                 parent_layer_node_list = layer.node_list
 
                                 # 계산 그래프 연결
-                                self.node_list = self.link_node(parent_layer_node_list, child_layer_node_list)
+                                self.node_list = self.link_node(parent_layer_node_list, child_layer_node_list, layer.name)
 
                                 # 갱신한 부모 노드 리스트가 다음 레이어에선 자식 노드 리스트가 되어야 함
                                 child_layer_node_list = parent_layer_node_list 
@@ -250,12 +250,12 @@ class Sequential(Node):
                         for layer in self._layers:
                             output = layer.call(output)
                         # loss, metrics 연산의 수행
-                        self.compute_loss_and_metrics(output, y[batch_data].reshape(1,-1))
+                        self.compute_loss_and_metrics(output, batch_y[batch_data_idx].reshape(1, -1))
 
                         for root_node in  self.node_list:
                             self.backpropagate(root_node)
 
-                print("각 추론 반복")
+                # print("각 추론 반복")
 
                 # 배치 반복 끝, 가중치 갱신
                 for root_node in self.node_list:
@@ -267,17 +267,16 @@ class Sequential(Node):
 
         print("학습 끝, 마지막 가중치 갱신")
 
+        # 에포크 끝난 후 평균 손실 출력
         loss_sum = 0
-
-        for data in range(x.shape[0]):
-            input_data = x[data]
-            target = y[data]
+        for data_idx in range(x.shape[0]):
+            input_data = x[data_idx]
+            target = y[data_idx]
             predict = self.predict(input_data)
-            data_loss = self.compute_loss_and_metrics(predict, target.reshape(1,-1))
-        
-            loss_sum = loss_sum + data_loss
+            data_loss = self.compute_loss_and_metrics(predict, target.reshape(1, -1))
+            loss_sum += data_loss
 
-        print(loss_sum / x.shape[0], "loss_sum")
+        print(f"Average Loss: {loss_sum / x.shape[0]}")
 
     # 예측 수행
     def predict(self, data):
@@ -291,7 +290,7 @@ class Sequential(Node):
         # 매 계산 마다 self.loss_node_list 가 갱신,
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true, self.loss_node_list)
         self.metric_value = self.metric(y_pred, y_true)
-        print(y_pred, y_true, self.loss_value)
+        # print(y_pred, y_true, self.loss_value)
         return self.loss_value
         
         

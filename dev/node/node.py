@@ -111,7 +111,7 @@ class Node:
         return current_node
 
 
-    def link_node(self, parent_nodes, child_nodes):
+    def link_node(self, parent_nodes, child_nodes, layer_name):
         """
         노드 리스트를 받음
         parent_nodes : 해당 노드의 리프 노드와
@@ -119,12 +119,21 @@ class Node:
         """
         if not child_nodes:
             return parent_nodes
+        
+        
+        if layer_name == "activation":
+            print("걸렸나")
+            # 일대일 연결 시행
+            self.link_loss_node(parent_nodes, child_nodes)
+            return [parent_nodes]
+        
 
+        # 각 부모 노드의 리프 노드 탐색을 하는데...
+        # 이렇게 나오게 된 이유가 dense 층끼리의 연결을 위한 방법이었네
+        # layer 의 종류별 연결 방법을 다르게
         for parent_node in parent_nodes:
             leaf_nodes = self.find_child_node(parent_node)
 
-            # 리프 노드와 자식 노드의 길이 확인
-            # print(len(leaf_nodes), len(child_nodes))
             if len(leaf_nodes) != len(child_nodes):
                 raise ValueError("Mismatch in number of leaf nodes and child nodes.")
 
