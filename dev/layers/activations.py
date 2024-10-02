@@ -16,10 +16,11 @@ class Activation(Layer):
         self.activation = activations.get(activation)
         self.node_list = []
         self.trainable = True
+        self.name = "activation"
 
     # call, 연산 수행시 실제 메서드가 위치하는 곳에서 연산 수행
     def call(self, inputs):
-        output, activation_node_list = self.activation(inputs, self.activation)
+        output, activation_node_list = self.activation(inputs, self.node_list)
         self.node_list = activation_node_list
         return output
     

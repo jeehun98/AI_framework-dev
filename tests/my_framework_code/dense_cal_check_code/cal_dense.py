@@ -31,6 +31,7 @@ model = Sequential()
 # input_shape 는 특성의 개수임
 model.add(Flatten(input_shape=(10,)))
 model.add(Dense(6, 'sigmoid'))
+model.add(Dense(3, 'sigmoid'))
 model.add(Dense(1))
 
 model.compile(optimizer='sgd',

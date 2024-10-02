@@ -496,7 +496,15 @@
 
     - 각 layer 에 self.node_list, trainable 속성의 추가와 초기 계산 그래프 생성시 해당 레이어들을 연결해주는 로직을 추가, 완료 - 10/01
 
+    - activation_layer 연산에서 노드 리스트 문제
+
+    - layer 의 종류별 link_node 를 다르게 구현해야 하네
+
+        - 먼저 activation_layer 인 경우 일대일 노드 리스트 연결 수행
+
 
 # sequential Class
 
-    - 배치 데이터 나누는 로직, 
+    - 배치 데이터 나누는 로직을 추가하자
+
+    - pytorch 에서는 DataLoader 를 통해 구현했음, 
