@@ -110,8 +110,8 @@ class Node:
             current_node = current_node.get_parents()[0]
         return current_node
 
-
-    def link_node(self, parent_nodes, child_nodes, layer_name):
+    # dense 층과의 연결, 일대일 대응
+    def link_dense_node(self, parent_nodes, child_nodes):
         """
         노드 리스트를 받음
         parent_nodes : 해당 노드의 리프 노드와
@@ -119,14 +119,45 @@ class Node:
         """
         if not child_nodes:
             return parent_nodes
-        
-        
-        if layer_name == "activation":
-            
-            # 일대일 연결 시행
-            self.link_loss_node(parent_nodes, child_nodes)
+
+        # 각 부모 노드의 리프 노드 탐색을 하는데...
+        # 이렇게 나오게 된 이유가 dense 층끼리의 연결을 위한 방법이었네
+        # layer 의 종류별 연결 방법을 다르게
+        for parent_node in parent_nodes:
+            leaf_nodes = self.find_child_node(parent_node)
+
+            print(len(leaf_nodes), len(child_nodes), "노드 길이 확인")
+            if len(leaf_nodes) != len(child_nodes):
+                raise ValueError("Mismatch in number of leaf nodes and child nodes.")
+
+            for i in range(len(leaf_nodes)):
+                # 순환 참조 방지
+                if child_nodes[i] not in leaf_nodes[i].get_children():
+                    leaf_nodes[i].add_child(child_nodes[i])
+                    child_nodes[i].add_parent(leaf_nodes[i])
+
+        return parent_nodes
+
+
+    def link_node(self, parent_nodes, child_nodes, layer):
+        """
+        노드 리스트를 받음
+        parent_nodes : 해당 노드의 리프 노드와
+        child_nodes : 해당 노드의 루트 노드와 연결해야 함
+        """
+
+        # 하나만 입력 시 그대로 반환
+        if not child_nodes:
             return parent_nodes
+
+        if layer.layer_name == "dense":
+            return self.link_dense_node(parent_nodes, child_nodes)        
         
+        elif layer.layer_name == "activation":
+            return self.link_loss_node(parent_nodes, child_nodes)
+        
+        elif layer.layer_name =="pooling":
+            return self.link_pool_node()
 
         # 각 부모 노드의 리프 노드 탐색을 하는데...
         # 이렇게 나오게 된 이유가 dense 층끼리의 연결을 위한 방법이었네
@@ -166,3 +197,84 @@ class Node:
             child_nodes[i].add_parent(parent_nodes[i])
 
         return parent_nodes
+    
+    def link_pool_node(self, parent_nodes, child_nodes, stride, pooling_size):
+        """
+        풀링 레이어에서 Conv2D의 리프 노드와 Pooling 연산의 루트 노드를 연결하는 함수.
+        parent_nodes : Conv2D 레이어의 리프 노드 (풀링 연산의 입력)
+        child_nodes : Pooling 레이어의 루트 노드 (풀링 연산의 출력)
+        stride : 풀링 연산의 stride 값
+        pooling_size : 풀링 크기 (예: (2, 2))
+        """
+
+        pool_height, pool_width = pooling_size  # 풀링 영역 크기
+        input_height = int(len(parent_nodes) ** 0.5)  # Conv2D 출력의 높이 (정사각형 가정)
+        input_width = input_height  # 정사각형 가정
+
+        output_height = (input_height - pool_height) // stride + 1
+        output_width = (input_width - pool_width) // stride + 1
+
+        if len(child_nodes) != output_height * output_width:
+            raise ValueError("Mismatch in number of pooling regions and child nodes.")
+
+        # 풀링 연산의 각 자식 노드를 그에 대응하는 부모 노드들과 연결
+        for h in range(output_height):
+            for w in range(output_width):
+                child_index = h * output_width + w  # Pooling 노드의 인덱스
+                child_node = child_nodes[child_index]  # 해당 풀링 노드
+
+                # 부모 노드들 중에서 풀링 영역에 속하는 노드를 찾아 연결
+                for i in range(pool_height):
+                    for j in range(pool_width):
+                        parent_h = h * stride + i  # 풀링에 포함되는 부모 노드의 y좌표
+                        parent_w = w * stride + j  # 풀링에 포함되는 부모 노드의 x좌표
+                        parent_index = parent_h * input_width + parent_w  # 부모 노드의 인덱스
+                        parent_node = parent_nodes[parent_index]  # 해당 부모 노드
+
+                        # 부모 노드와 자식 노드 연결
+                        if child_node not in parent_node.get_children():
+                            parent_node.add_child(child_node)
+                            child_node.add_parent(parent_node)
+
+        return parent_nodes
+    
+def link_pool_node(self, parent_nodes, child_nodes, conv_output_shape, stride, pooling_size):
+    """
+    풀링 레이어에서 Conv2D의 리프 노드와 Pooling 연산의 루트 노드를 연결하는 함수.
+    parent_nodes : Conv2D 레이어의 리프 노드 (풀링 연산의 입력)
+    child_nodes : Pooling 레이어의 루트 노드 (풀링 연산의 출력)
+    conv_output_shape : Conv2D 레이어의 출력 크기 (height, width)
+    stride : 풀링 연산의 stride 값
+    pooling_size : 풀링 크기 (예: (2, 2))
+    """
+
+    pool_height, pool_width = pooling_size  # 풀링 영역 크기
+    conv_output_height, conv_output_width = conv_output_shape  # Conv2D 출력의 크기 (height, width)
+
+    # 풀링 연산 후 출력 크기 계산
+    output_height = (conv_output_height - pool_height) // stride + 1
+    output_width = (conv_output_width - pool_width) // stride + 1
+
+    if len(child_nodes) != output_height * output_width:
+        raise ValueError("Mismatch in number of pooling regions and child nodes.")
+
+    # 풀링 연산의 각 자식 노드를 그에 대응하는 부모 노드들과 연결
+    for h in range(output_height):
+        for w in range(output_width):
+            child_index = h * output_width + w  # Pooling 노드의 인덱스
+            child_node = child_nodes[child_index]  # 해당 풀링 노드
+
+            # 부모 노드들 중에서 풀링 영역에 속하는 노드를 찾아 연결
+            for i in range(pool_height):
+                for j in range(pool_width):
+                    parent_h = h * stride + i  # 풀링에 포함되는 부모 노드의 y좌표
+                    parent_w = w * stride + j  # 풀링에 포함되는 부모 노드의 x좌표
+                    parent_index = parent_h * conv_output_width + parent_w  # 부모 노드의 인덱스
+                    parent_node = parent_nodes[parent_index]  # 해당 부모 노드
+
+                    # 부모 노드와 자식 노드 연결
+                    if child_node not in parent_node.get_children():
+                        parent_node.add_child(child_node)
+                        child_node.add_parent(parent_node)
+
+    return parent_nodes

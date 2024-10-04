@@ -208,8 +208,16 @@ class Sequential(Node):
                         child_layer_node_list = []
 
                         # 이전에 레이어가 존재할 경우 계산 그래프를 연결해야함
-                        for layer in self._layers:
+                        for idx, layer in enumerate(self._layers):
+                            
+                            # 첫번째 레이어의 경우
+                            if idx == 0 and layer.trainable:
+                                self.node_list = layer.node_list
+                                continue
 
+                            # 이전 layer
+                            previous_layer = self._layers[idx - 1]    
+                            
                             # 출력값 갱신, layer 의 call 연산이 호출된다.
                             output = layer.call(output)
                             
@@ -222,7 +230,7 @@ class Sequential(Node):
                                 parent_layer_node_list = layer.node_list
 
                                 # 계산 그래프 연결
-                                self.node_list = self.link_node(parent_layer_node_list, child_layer_node_list, layer.name)
+                                self.node_list = self.link_node(parent_layer_node_list, child_layer_node_list, layer)
 
                                 # 갱신한 부모 노드 리스트가 다음 레이어에선 자식 노드 리스트가 되어야 함
                                 child_layer_node_list = parent_layer_node_list 
