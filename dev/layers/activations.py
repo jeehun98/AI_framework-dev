@@ -22,6 +22,7 @@ class Activation(Layer):
     def call(self, inputs):
         output, activation_node_list = self.activation(inputs, self.node_list)
         self.node_list = activation_node_list
+        # dense 와의 연결 후 계산을 위해서 괄호로 연결해주기
         return [output]
     
     def compute_output_shape(self, input_shape):

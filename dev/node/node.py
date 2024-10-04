@@ -122,7 +122,7 @@ class Node:
         
         
         if layer_name == "activation":
-            print("걸렸나", len(parent_nodes), len(child_nodes))
+            
             # 일대일 연결 시행
             self.link_loss_node(parent_nodes, child_nodes)
             return parent_nodes

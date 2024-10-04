@@ -19,7 +19,7 @@ model = Sequential()
 
 # input_shape 는 특성의 개수임
 model.add(Flatten(input_shape=(4,)))
-model.add(Dense(4))
+model.add(Dense(10))
 model.add(Activation('sigmoid'))
 model.add(Dense(2))
 model.add(Activation('sigmoid'))
