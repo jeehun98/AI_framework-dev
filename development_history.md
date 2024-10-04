@@ -477,6 +477,10 @@
 
                 - pooling node 연결 로직을 추가해보자.
 
+                - link_pool_node 구현
+
+                - 
+
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
 
 # epoch 별 반복 변환

@@ -35,7 +35,7 @@ class Dense(Layer, Node):
             
         self.weights = None
         self.bias = None
-        self.name = "dense"
+        self.layer_name = "dense"
 
     def get_config(self):
         base_config = super().get_config()

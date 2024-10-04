@@ -21,6 +21,7 @@ class Pooling(Layer):
         self.built = True,
         self.trainable = True,
         self.node_list = []
+        self.layer_name = "pooling"
 
     def build(self, *args, **kwargs):
         super().build()
