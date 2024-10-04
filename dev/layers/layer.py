@@ -25,7 +25,7 @@ class Layer():
 
     # layer build 는 뭘 추가해야 할지
     # layer 가 build 되었는지에 대해..
-    def build(self):
+    def build(self, **kwargs):
        self.built = True
 
     

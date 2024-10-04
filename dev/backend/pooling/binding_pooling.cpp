@@ -5,15 +5,9 @@
 #include "pooling.cpp"
 
 PYBIND11_MODULE(pooling, m) {
-    m.doc() = "Pooling module using C++ backend with pybind11";  // 모듈 설명
-
-    // max_pooling 함수 바인딩
-    m.def("max_pooling", &max_pooling, 
-          py::arg("input"), 
-          py::arg("pool_size") = 2, 
-          py::arg("stride") = 2, 
-          py::arg("padding") = "valid", 
-          py::arg("node_list") = std::vector<std::shared_ptr<Node>>{},
-          "Perform 2D max pooling with optional padding and stride. "
-          "Returns the result and the node list.");
+    m.def("pooling2d", &pooling2d, "2D Pooling operation (Max/Avg)",
+          py::arg("input"), py::arg("pool_height"), py::arg("pool_width"),
+          py::arg("stride") = 1, 
+          py::arg("mode") = "max", 
+          py::arg("node_list") = std::vector<std::shared_ptr<Node>>());
 }

@@ -6,6 +6,7 @@ import numpy as np
 from dev.models.sequential import Sequential
 from dev.layers.core.dense import Dense
 from dev.layers.core.Conv2D import Conv2D
+from dev.layers.pooling import Pooling
 
 from tensorflow.keras.utils import to_categorical
 
@@ -24,7 +25,8 @@ target_data_one_hot = to_categorical(target_data, num_classes=num_classes)
 model = Sequential()
 
 # input_shape 를 어떻게 입력해야할까
-model.add(Conv2D(5, (3,3), input_shape=(7, 7, 1)))
+model.add(Conv2D(7, (3,3), input_shape=(7, 7, 1)))
+model.add(Pooling())
 model.compile(optimizer='sgd',
               loss='mse',
               p_metrics='mse',
