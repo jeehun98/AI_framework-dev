@@ -175,6 +175,10 @@ class Sequential(Node):
 
         # 학습 반복 횟수
         for epoch in range(epochs):
+            # 매 에포크마다 데이터를 섞음
+            indices = np.random.permutation(x.shape[0])
+            x = x[indices]
+            y = y[indices]
 
             # 다음 배치로 넘어갈 때 가중치 갱신량은 초기화, 바뀐 가중치 값은 그대로 들고간다.
             # 배치의 개수만큼 반복
@@ -207,14 +211,12 @@ class Sequential(Node):
                         for layer in self._layers:
 
                             # 출력값 갱신, layer 의 call 연산이 호출된다.
-                            print("call 연산 수행중", layer.name)
-                            print(len(output), "인풋")
                             output = layer.call(output)
-                            print(len(output), "아웃풋")
+                            
 
                             # 해당 레이어가 학습 가능한 경우 계산 그래프 연결하기
                             if layer.trainable:
-                                print("훈련 가능")
+                                
                                 # 새로 계산한 노드 리스트가 부모 노드 리스트 
                                 # 노드 리스트에는 루트 노드가 저장되어 있음
                                 parent_layer_node_list = layer.node_list
@@ -225,8 +227,11 @@ class Sequential(Node):
                                 # 갱신한 부모 노드 리스트가 다음 레이어에선 자식 노드 리스트가 되어야 함
                                 child_layer_node_list = parent_layer_node_list 
 
-                        # loss_node_list 생성, 
-                        self.compute_loss_and_metrics(output, target.reshape(1,-1))
+                        # loss_node_list 생성,
+                        output = np.array(output).reshape(1, -1)
+                        target = np.array(target).reshape(1, -1)
+                        print(output, "아웃풋", target)
+                        self.compute_loss_and_metrics(output, target)
 
                         # loss_node_list 의 연결
                         self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
@@ -264,8 +269,6 @@ class Sequential(Node):
                 """
                 이후 계산 그래프의 가중치는 동일하게, 가중치 갱신량은 초기화해야함
                 """
-
-        print("학습 끝, 마지막 가중치 갱신")
 
         # 에포크 끝난 후 평균 손실 출력
         loss_sum = 0

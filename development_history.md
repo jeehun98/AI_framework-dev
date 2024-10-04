@@ -488,6 +488,8 @@
 
     - Sequential 에서 add 부분의 로직을 추가해야해, input_shape 를 추가해줬음 - 완료 10/01
 
+    - output 을 리스트로 감싸주면서, Dense 층과의 연결은 되었지만, loss 와의 연결 및 연산의 문제 발생
+
 # 후진 모드 자동 미분을 위한 계산 그래프 연결
 
     - activation_layer 가 추가되면서 여기에서도 계산 그래프 연결 로직이 필요해졌음.
@@ -502,7 +504,7 @@
 
         - 먼저 activation_layer 인 경우 일대일 노드 리스트 연결 수행
 
-        - activation function 의 
+        - activation function 의 call 연산의 결과를 감싸줘서 해결 완료 - 10/02
 
 
 # sequential Class
@@ -510,3 +512,9 @@
     - 배치 데이터 나누는 로직을 추가하자
 
     - pytorch 에서는 DataLoader 를 통해 구현했음, 
+
+    - 구현 완료 - 10/02
+
+# activations, losses, optimizers 추가하기 - 10/02
+
+    - 먼저 activation 부터 하자
