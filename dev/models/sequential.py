@@ -230,7 +230,7 @@ class Sequential(Node):
                         # loss_node_list 생성,
                         output = np.array(output).reshape(1, -1)
                         target = np.array(target).reshape(1, -1)
-                        print(output, "아웃풋", target)
+                        
                         self.compute_loss_and_metrics(output, target)
 
                         # loss_node_list 의 연결
@@ -255,6 +255,9 @@ class Sequential(Node):
                         for layer in self._layers:
                             output = layer.call(output)
                         # loss, metrics 연산의 수행
+
+                        output = np.array(output).reshape(1, -1)
+
                         self.compute_loss_and_metrics(output, batch_y[batch_data_idx].reshape(1, -1))
 
                         for root_node in  self.node_list:
@@ -276,6 +279,7 @@ class Sequential(Node):
             input_data = x[data_idx]
             target = y[data_idx]
             predict = self.predict(input_data)
+            predict = np.array(predict).reshape(1, -1)
             data_loss = self.compute_loss_and_metrics(predict, target.reshape(1, -1))
             loss_sum += data_loss
 
