@@ -4,28 +4,30 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 from dev.layers.layer import Layer
 from dev.backend.pooling import pooling
 
-import numpy as np
-
-class Polling(Layer):
+class Pooling(Layer):
     def __init__(
         self,
         pool_size=(2, 2),
-        strides = None,
+        strides = 1,
         padding="valid",
+        pool_mode="max",
         **kwargs
     ):
-        super().__init__(
-            pool_size,
-            strides,
-            pool_dimensions=2,
-            pool_mode="max",
-            padding=padding,
-            **kwargs,
-        )
-        # 가중치 생성이 필요 없음
+        super().__init__()
+        self.pool_size = pool_size
+        self.strides = strides
+        self.padding = padding
+        self.pool_mode = pool_mode
         self.built = True,
+        self.trainable = True,
+        self.node_list = []
+
+    def build(self, *args, **kwargs):
+        super().build()
 
     # 입력에 대한 pooling 연산 수행
     def call(self, input_data):
-        if self.pool_mode == "max":
-            x, self.node_list = pooling.max_pooling()
+        # 파라미터들을 전달하기
+        print("pooling 시작", input_data)
+        x, self.node_list = pooling.pooling2d(input_data, self.pool_size[0], self.pool_size[1], self.strides, self.pool_mode, self.node_list)
+        print("pooling 끝", x, x.shape, len(self.node_list))

@@ -10,21 +10,33 @@ PYBIND11_MODULE(node, m) {
              py::arg("operation"), py::arg("input_value"), py::arg("weight_value"), py::arg("output"), py::arg("bias"))
         .def(py::init<const std::string&, double, double, double>(),
              py::arg("operation"), py::arg("input_value"), py::arg("output"), py::arg("bias"))
+        
+        // 부모 및 자식 노드 관련 메서드
         .def("add_parent", &Node::add_parent)
         .def("add_child", &Node::add_child)
         .def("remove_parent", &Node::remove_parent)
         .def("remove_child", &Node::remove_child)
+        
+        // 노드 업데이트 메서드
         .def("update", &Node::update)
+        
+        // 자식 및 부모 노드 반환
         .def("get_children", &Node::get_children)
         .def("get_parents", &Node::get_parents)
+        
+        // 그래디언트 계산 메서드
         .def("calculate_gradient", &Node::calculate_gradient)
+        
+        // 역전파 수행
         .def("backpropagate", &Node::backpropagate)
-        .def("update_weights",
-             [](Node& self, double learning_rate) {
-                 std::unordered_set<Node*> visited;
-                 self.update_weights(learning_rate, &visited);
-             },
-             py::arg("learning_rate"))
+        
+        // 가중치 업데이트 (unordered_set을 처리하여 중복 방문 방지)
+        .def("update_weights", [](Node& self, double learning_rate) {
+            std::unordered_set<Node*> visited;
+            self.update_weights(learning_rate, &visited);
+        }, py::arg("learning_rate"))
+        
+        // 속성 직접 접근 허용
         .def_readwrite("operation", &Node::operation)
         .def_readwrite("input_value", &Node::input_value)
         .def_readwrite("weight_value", &Node::weight_value)

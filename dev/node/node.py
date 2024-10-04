@@ -134,6 +134,7 @@ class Node:
         for parent_node in parent_nodes:
             leaf_nodes = self.find_child_node(parent_node)
 
+            print(len(leaf_nodes), len(child_nodes), "노드 길이 확인")
             if len(leaf_nodes) != len(child_nodes):
                 raise ValueError("Mismatch in number of leaf nodes and child nodes.")
 

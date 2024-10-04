@@ -216,6 +216,19 @@ public:
                 double grad_input = -upstream;
                 return std::make_pair(grad_input, 0.0);
             };
+
+            // 새롭게 추가할 풀링 연산
+            ops["max_pool"] = [](double input, double weight, double out, double upstream) {
+                // Max pooling은 선택된 입력에 대해서만 그래디언트가 전달됩니다.
+                double grad_input = (input == out) ? upstream : 0.0;
+                return std::make_pair(grad_input, 0.0);
+            };
+
+            ops["avg_pool"] = [](double input, double weight, double out, double upstream) {
+                // Average pooling은 풀링 영역 내 모든 입력에 대해 그래디언트가 고르게 전달됩니다.
+                double grad_input = upstream / weight;  // weight는 풀링 영역의 크기로 가정
+                return std::make_pair(grad_input, 0.0);
+            };
         }
         return ops;
     }

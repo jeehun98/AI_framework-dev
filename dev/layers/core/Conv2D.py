@@ -36,7 +36,7 @@ class Conv2D(Layer):
     # 가중치 생성
     def build(self):
         # 필터의 개수만큼 임의의 가중치 생성
-        print(self.input_shape, "인풋 쉐이프")
+        # print(self.input_shape, "인풋 쉐이프")
         # 입력 데이터의 차원 수 
         in_channels = self.input_shape[2]
 
@@ -59,11 +59,11 @@ class Conv2D(Layer):
         if not isinstance(self.node_list, list):
             self.node_list = []
 
-        print("타입확인", type(input_data), input_data.dtype, type(self.weights), self.weights.dtype, type(stride), type(self.padding), type(self.node_list))
+        # print("타입확인", type(input_data), input_data.dtype, type(self.weights), self.weights.dtype, type(stride), type(self.padding), type(self.node_list))
         print(input_data.shape, self.weights.shape)
         
         # conv2d 함수 호출
         x, self.node_list = convolution.conv2d(input_data, self.weights, stride, self.padding, self.node_list)
-        print("call 끝")
+        print("call 끝", x.shape)
 
         return x

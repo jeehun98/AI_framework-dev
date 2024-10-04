@@ -465,6 +465,18 @@
 
         - 차원 수 맞추기 완료
 
+        - pooling_layer 구현하기 10/04 시작
+
+            - max 와 mean pooling 구현
+
+            - 연산의 과정
+            
+                - pool_size 를 돌아다니면서 값의 갱신 - 10/04 완료
+            
+            - pooling 이후 계산 그래프 연결 과정 추가를 생각해보자
+
+                - pooling node 연결 로직을 추가해보자.
+
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
 
 # epoch 별 반복 변환
@@ -489,6 +501,8 @@
     - Sequential 에서 add 부분의 로직을 추가해야해, input_shape 를 추가해줬음 - 완료 10/01
 
     - output 을 리스트로 감싸주면서, Dense 층과의 연결은 되었지만, loss 와의 연결 및 연산의 문제 발생
+
+        - numpy_array 로 변환 과정 추가를 통한 문제 해결 - 10/04
 
 # 후진 모드 자동 미분을 위한 계산 그래프 연결
 
