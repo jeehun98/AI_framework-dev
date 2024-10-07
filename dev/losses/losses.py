@@ -17,6 +17,7 @@ class MSE():
         """
         MSE 클래스를 호출할 때 C++의 mean_squared_error 함수를 호출하도록 구성합니다.
         """
+        print(y_true.shape, y_pred.shape)
         return losses.mean_squared_error(y_true, y_pred, loss_node_list)
 
 class BinaryCrossentropy():

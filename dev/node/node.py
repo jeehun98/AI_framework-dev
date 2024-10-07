@@ -195,13 +195,10 @@ class Node:
 
         conv_output_height, conv_output_width, num_channels = previous_layer.output_shape
 
-        # 이거 수정해야 함
         output_height = (conv_output_height - pool_height) // stride_height + 1
         output_width = (conv_output_width - pool_width) // stride_width + 1
 
-        print("값 확인", output_height, output_width)
         # 각 루트 노드의 개수들, 5,5,7 - 175, 4,4,7 - 112 
-        print(len(previous_layer.node_list), "노드 길이 확인??", len(current_layer.node_list))
 
         child_nodes = current_layer.node_list
         parent_nodes = previous_layer.node_list
@@ -230,5 +227,4 @@ class Node:
                                 parent_node.add_child(child_node)
                                 child_node.add_parent(parent_node)
 
-        print("연결 완료~")
         return parent_nodes

@@ -497,9 +497,14 @@
 
                 - pooling 의 strides 값 형식 변경, layer 종류별 output_shape 의 구현 완료 - 10/07 
 
+        - conv2D layer 에 Flatten, Dense 층의 추가 형태 구현 확인
+
+            - 가중치 생성 문제 발생
+
+
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
 
-            - 
+        
 
 # epoch 별 반복 변환
 
