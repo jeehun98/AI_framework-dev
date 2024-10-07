@@ -188,15 +188,16 @@ class Node:
 
         current_layer, previous_layer 를 전달받고 layer 정보로 처리해야겠다.
         """
-        stride = current_layer.strides
+        stride_height = current_layer.strides[0]
+        stride_width = current_layer.strides[1]
 
         pool_height, pool_width = current_layer.pool_size
 
-        conv_output_height, conv_output_width, num_channels = previous_layer.output_size
+        conv_output_height, conv_output_width, num_channels = previous_layer.output_shape
 
         # 이거 수정해야 함
-        output_height = (conv_output_height - pool_height) // stride + 1
-        output_width = (conv_output_width - pool_width) // stride + 1
+        output_height = (conv_output_height - pool_height) // stride_height + 1
+        output_width = (conv_output_width - pool_width) // stride_width + 1
 
         print("값 확인", output_height, output_width)
         # 각 루트 노드의 개수들, 5,5,7 - 175, 4,4,7 - 112 
@@ -219,8 +220,8 @@ class Node:
                     # 부모 노드들 중에서 풀링 영역에 속하는 노드를 찾아 연결
                     for i in range(pool_height):
                         for j in range(pool_width):
-                            parent_h = h * stride + i  # 풀링에 포함되는 부모 노드의 y좌표
-                            parent_w = w * stride + j  # 풀링에 포함되는 부모 노드의 x좌표
+                            parent_h = h * stride_height + i  # 풀링에 포함되는 부모 노드의 y좌표
+                            parent_w = w * stride_width + j  # 풀링에 포함되는 부모 노드의 x좌표
                             parent_index = ch * conv_output_height * conv_output_width + parent_h * conv_output_width + parent_w  # 부모 노드의 인덱스
                             parent_node = parent_nodes[parent_index]  # 해당 부모 노드
 

@@ -10,7 +10,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
     py::array_t<double> input,  // 입력 이미지
     int pool_height,            // 풀링 필터 높이
     int pool_width,             // 풀링 필터 너비
-    int stride = 1,             // 스트라이드
+    std::pair<int, int> stride = {1, 1}, // 스트라이드: (stride_height, stride_width)
     std::string mode = "max",   // 풀링 모드: "max" 또는 "average"
     std::vector<std::shared_ptr<Node>> node_list = {}
 ) {
@@ -26,9 +26,13 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
     int input_width = bufInput.shape[1];
     int input_channels = bufInput.shape[2];
 
+    // stride 튜플에서 각각의 stride 값 추출
+    int stride_height = stride.first;
+    int stride_width = stride.second;
+
     // 출력 크기 계산
-    int output_height = (input_height - pool_height) / stride + 1;
-    int output_width = (input_width - pool_width) / stride + 1;
+    int output_height = (input_height - pool_height) / stride_height + 1;
+    int output_width = (input_width - pool_width) / stride_width + 1;
 
     // 결과 배열 생성
     py::array_t<double> result = py::array_t<double>({output_height, output_width, input_channels});
@@ -60,8 +64,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
                 // 각 풀링 영역을 탐색하며 연산 수행
                 for (int i = 0; i < pool_height; ++i) {
                     for (int j = 0; j < pool_width; ++j) {
-                        int input_i = h * stride + i;
-                        int input_j = w * stride + j;
+                        int input_i = h * stride_height + i;
+                        int input_j = w * stride_width + j;
                         int input_index = (input_i * input_width + input_j) * input_channels + ch;
 
                         double input_value = ptrInput[input_index];
@@ -83,7 +87,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
                             ptrResult[result_index] += input_value / (pool_height * pool_width);
 
                             if (is_new_graph) {
-                                active_node = std::make_shared<Node>("ave_pool", input_value, 1.0 / (pool_height * pool_width), input_value / (pool_height * pool_width), 1.0 / (pool_height * pool_width));
+                                active_node = std::make_shared<Node>("avg_pool", input_value, 1.0 / (pool_height * pool_width), input_value / (pool_height * pool_width), 1.0 / (pool_height * pool_width));
                             } else {
                                 active_node = node_list[result_index];
                                 active_node->update(input_value, 1.0 / (pool_height * pool_width), input_value / (pool_height * pool_width), 1.0 / (pool_height * pool_width));
