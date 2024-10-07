@@ -7,6 +7,7 @@ from dev.models.sequential import Sequential
 from dev.layers.core.dense import Dense
 from dev.layers.core.Conv2D import Conv2D
 from dev.layers.pooling import Pooling
+from dev.layers.flatten import Flatten
 
 from tensorflow.keras.utils import to_categorical
 
@@ -29,6 +30,10 @@ model.add(Conv2D(7, (3,3), input_shape=(7, 7, 1)))
 model.add(Pooling())
 model.add(Conv2D(14, (3,3)))
 model.add(Pooling())
+
+# 이후 dense 층 추가하기
+model.add(Flatten())
+model.add(Dense(5, activatoin="sigmoid"))
 
 model.compile(optimizer='sgd',
               loss='mse',

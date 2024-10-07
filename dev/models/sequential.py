@@ -78,8 +78,6 @@ class Sequential(Node):
 
         self._layers.append(layer)
 
-        print(layer.output_shape, "출력 형태 확인")
-
     # layer build 는 가중치 초기화를 진행했음
     # model build 를 통해 build_config 정보를 구성, input_shape 정보
     # model.compile 을 통해 실행된다.

@@ -15,7 +15,7 @@ class Dense(Layer, Node):
     def __init__(self, units, activation=None, name=None, **kwargs):
         super().__init__(name)
         self.units = units
-        self.output_shape = (units,)
+        self.output_shape = (1,units)
         # 가중치 갱신이 가능한 layer
         self.trainable = True
         # 노드 리스트의 저장
@@ -63,12 +63,14 @@ class Dense(Layer, Node):
         input_shape - 해당 레이어에 입력되는 데이터셋의 형태
         """
         # input_shape가 (784,)와 같은 경우라면, 실제 필요한 것은 input_shape[0]
-        input_dim = input_shape[0]
+        
+        input_dim = input_shape[1]
         self.input_shape = input_shape
 
         # 가중치 생성
         self.weights = np.random.randn(input_dim, self.units)
         self.bias = np.random.rand()
+
         super().build()
 
 

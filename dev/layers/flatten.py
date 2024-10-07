@@ -1,6 +1,9 @@
 from dev.layers.layer import Layer
 import numpy as np
 
+from functools import reduce
+from operator import mul
+
 class Flatten(Layer):
     def __init__(self, input_shape=None, **kwargs):
         # 인스턴스 생성 시 어떤 값이 추가되어야 할 지에 대한 고민
@@ -45,14 +48,25 @@ class Flatten(Layer):
         # 가중치와의 연산을 위한 적절하 변환
         flattened_array = inputs.reshape(1, -1)
 
+        self.output_shape = flattened_array.shape
+
         return flattened_array
 
     def compute_output_shape(self, input_shape):
         # 입력 shape 를 기반으로 출력 shape 를 계산, 모델의 구조 정의
         return (input_shape[0], np.prod(input_shape[1:]))
 
+    def multiply_tuple_elements(self, t):
+        return reduce(mul, t, 1)
     
     # build 는 가중치 초기화의 정의, 
     # flatten 은 별도의 가중치를 필요로 하지 않음
     def build(self, input_shape):
+        
+        result = self.multiply_tuple_elements(input_shape)
+
+        self.output_shape = (1, result)
+
         super().build()
+
+
