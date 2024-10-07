@@ -479,8 +479,22 @@
 
                 - link_pool_node 구현
 
-                - 
+                - current, previous_layer 의 변경 구현 완료 - 10/05
 
+        - conv 의 input_shape 에 대해 생각... 사용자가 직접 입력하긴 어려움, 모델 내에서 계산해 추가하는 로직을 생각해야 하나.
+
+            - 각 layer 의 input, output_shape 의 지정, 가중치가 없을 경우 이전 레이어의 값을 호출하는 로직의 추가
+
+            - layer 클래스의 input_shape, output_shape 완성시키기
+
+                - model.add 과정에서 추가하는 로직 구현 sequential 수정하기
+
+                - sequential.add 과정 수정중
+
+                - activation 연산 결과가 list 인 것을 수정하기, numpy_array 변환 완료 - 10/07
+
+                - conv2D 에서 출력 차원의 크기를 미리 계산하는 call_output_shape 를 구현하기
+    
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
 
 # epoch 별 반복 변환

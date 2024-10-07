@@ -1,6 +1,8 @@
 from dev.layers.layer import Layer
 from dev import activations
 
+import numpy as np
+
 # layer-Activation...
 
 class Activation(Layer):
@@ -16,18 +18,20 @@ class Activation(Layer):
         self.activation = activations.get(activation)
         self.node_list = []
         self.trainable = True
-        self.name = "activation"
+        self.layer_name = "activation"
 
     # call, 연산 수행시 실제 메서드가 위치하는 곳에서 연산 수행
     def call(self, inputs):
         output, activation_node_list = self.activation(inputs, self.node_list)
         self.node_list = activation_node_list
         # dense 와의 연결 후 계산을 위해서 괄호로 연결해주기
-        return [output]
+        output = np.array([output])
+        return output
     
     def compute_output_shape(self, input_shape):
         return input_shape
     
     def build(self, input_shape):
         self.input_shape = input_shape
+        self.output_shape = input_shape
         super()

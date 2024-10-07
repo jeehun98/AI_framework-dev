@@ -44,7 +44,7 @@ class Sequential(Node):
     # 레이어 추가
     # 파라미터, layer 는 여기서 이미 객체가 생성되면서 여기 메서드 파라미터로 들어가는데...
     def add(self, layer):
-        
+
         # 입력 형태가 layer 인스턴스가 아닐 경우 
         if not isinstance(layer, Layer):
             raise ValueError(
@@ -52,35 +52,31 @@ class Sequential(Node):
                 f"added to a Sequential model. Received: {layer} "
                 f"(of type {type(layer)})"
             )
-        # 레이어가 존재
+        # 기존 레이어가 존재
         if self._layers:
-            # input_shape 기본값 지정
-            
-            # 마지막 layer 선택
+            # input_shape 를 지정하기
             previous_layer = self._layers[-1]   
-            # 이전 레이어의 units 개수가 이번 레이어의 input_shape
-            if hasattr(previous_layer, 'units') and (previous_layer.units != None):
-                input_shape = (previous_layer.units,)
-            # units 이 없을 경우 input_shape 가 그대로 복사
-            # 이전 layer 가 input_shape 가 존재하는 flatten 층 일 경우
-            elif hasattr(previous_layer, 'input_shape') and (previous_layer.input_shape != None):
-                input_shape = previous_layer.input_shape
+
+            # 이전 layer 의 출력 차원 가져오기
+            if hasattr(previous_layer, 'output_shape') and (previous_layer.output_shape != None):
+                input_shape = previous_layer.output_shape
+                layer.build(input_shape)
             
-            # input_shape 값이 들어오거나, input_shape 값이 이미 있을 경우 
-            if hasattr(layer, "input_shape") or (layer.input_shape == None):
+            # layer 에 input_shape 값이 이미 있을 경우 
+            elif hasattr(layer, "input_shape") and (layer.input_shape != None):
                 # build 를 통해 input_shape 지정과 함께, 가중치 초기화
                 # 각 객체 클래스 인스턴스에 맞게 build 가 실행된다.
                 # dense 의 경우 가중치 초기화
                 layer.build(input_shape)
 
+    
+        # 처음 입력되는 layer 에는 반드시 input_shape 가 존재해야 함
         elif hasattr(layer, 'input_shape'):
-            layer.build()
-        
+            # 해당 레이어의 가중치 생성
+            input_shape = layer.input_shape
+            layer.build(input_shape)
+
         self._layers.append(layer)
-        """
-        if layer.built is False:
-            layer.build()
-        """
 
     # layer build 는 가중치 초기화를 진행했음
     # model build 를 통해 build_config 정보를 구성, input_shape 정보
@@ -192,7 +188,7 @@ class Sequential(Node):
 
                 # 배치내 데이터 개수
                 batch_datas = batch_x.shape[0]
-
+                
                 # 각 배치 데이터에 대한 반복
                 for batch_data_idx in range(batch_datas):
                     input_data = batch_x[batch_data_idx]
@@ -204,16 +200,8 @@ class Sequential(Node):
                     # 가장 첫 번째의 학습에선 계산 그래프를 생성하고 이를 연결하는 과정이 필요
                     if batch_data_idx == 0 and epoch == 0:
 
-                        # 자식 노드 리스트, 
-                        child_layer_node_list = []
-
                         # 이전에 레이어가 존재할 경우 계산 그래프를 연결해야함
                         for idx, layer in enumerate(self._layers):
-                            
-                            # 첫번째 레이어의 경우
-                            if idx == 0 and layer.trainable:
-                                self.node_list = layer.node_list
-                                continue
 
                             # 이전 layer
                             previous_layer = self._layers[idx - 1]    
@@ -221,19 +209,15 @@ class Sequential(Node):
                             # 출력값 갱신, layer 의 call 연산이 호출된다.
                             output = layer.call(output)
                             
-
+                            # 첫번째 레이어의 경우
+                            if idx == 0 and layer.trainable:
+                                self.node_list = layer.node_list
+                                continue
+                            
                             # 해당 레이어가 학습 가능한 경우 계산 그래프 연결하기
                             if layer.trainable:
-                                
-                                # 새로 계산한 노드 리스트가 부모 노드 리스트 
-                                # 노드 리스트에는 루트 노드가 저장되어 있음
-                                parent_layer_node_list = layer.node_list
-
                                 # 계산 그래프 연결
-                                self.node_list = self.link_node(parent_layer_node_list, child_layer_node_list, layer)
-
-                                # 갱신한 부모 노드 리스트가 다음 레이어에선 자식 노드 리스트가 되어야 함
-                                child_layer_node_list = parent_layer_node_list 
+                                self.node_list = self.link_node(layer, previous_layer)
 
                         # loss_node_list 생성,
                         output = np.array(output).reshape(1, -1)
@@ -270,8 +254,6 @@ class Sequential(Node):
 
                         for root_node in  self.node_list:
                             self.backpropagate(root_node)
-
-                # print("각 추론 반복")
 
                 # 배치 반복 끝, 가중치 갱신
                 for root_node in self.node_list:

@@ -22,6 +22,8 @@ class Pooling(Layer):
         self.trainable = True,
         self.node_list = []
         self.layer_name = "pooling"
+        self.output_shape = []
+        
 
     def build(self, *args, **kwargs):
         super().build()
@@ -29,6 +31,9 @@ class Pooling(Layer):
     # 입력에 대한 pooling 연산 수행
     def call(self, input_data):
         # 파라미터들을 전달하기
-        print("pooling 시작", input_data)
+        
         x, self.node_list = pooling.pooling2d(input_data, self.pool_size[0], self.pool_size[1], self.strides, self.pool_mode, self.node_list)
-        print("pooling 끝", x, x.shape, len(self.node_list))
+        
+        self.output_shape = x.shape
+
+        return x

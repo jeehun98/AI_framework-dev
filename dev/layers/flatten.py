@@ -6,8 +6,11 @@ class Flatten(Layer):
         # 인스턴스 생성 시 어떤 값이 추가되어야 할 지에 대한 고민
         super().__init__(input_shape, **kwargs)
         self.input_shape = input_shape
+        self.output_shape = input_shape
         # 가중치 갱신이 없는 layer, flatten
         self.trainable = False
+        self.node_list = []
+        self.layer_name = "flatten"
 
     # 객체 정보를 저장하는 get_config
     # 향후 from_config 를 통해 해당 객체를 복원할 수 있다. 
@@ -51,5 +54,5 @@ class Flatten(Layer):
     
     # build 는 가중치 초기화의 정의, 
     # flatten 은 별도의 가중치를 필요로 하지 않음
-    def build(self):
-        pass
+    def build(self, input_shape):
+        super().build()
