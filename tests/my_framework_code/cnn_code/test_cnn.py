@@ -27,12 +27,13 @@ model = Sequential()
 # input_shape 를 어떻게 입력해야할까
 model.add(Conv2D(7, (3,3), input_shape=(7, 7, 1)))
 model.add(Pooling())
+model.add(Conv2D(14, (3,3)))
+model.add(Pooling())
+
 model.compile(optimizer='sgd',
               loss='mse',
               p_metrics='mse',
               learning_rate=0.001)
-
-
 
 model.fit(input_data, target_data)
 print("완료", model.weigts)

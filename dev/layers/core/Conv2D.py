@@ -32,13 +32,15 @@ class Conv2D(Layer):
         self.node_list = []
         self.built = False
         self.trainable = True
+        self.output_shape = []
     
     # 가중치 생성
-    def build(self):
+    def build(self, input_shape):
         # 필터의 개수만큼 임의의 가중치 생성
         # print(self.input_shape, "인풋 쉐이프")
         # 입력 데이터의 차원 수 
-        in_channels = self.input_shape[2]
+        print(input_shape, "확인 중")
+        in_channels = input_shape[2]
 
         self.weights = np.random.randn(self.filters, self.kernel_size[0], self.kernel_size[1], in_channels)
 
@@ -47,6 +49,11 @@ class Conv2D(Layer):
             self.bias = np.random.rand(self.filters)
 
         super().build()
+
+    # 출력 차원의 크기를 미리 계산한다.
+    def call_output_shape(self):
+        
+        pass
     
     def call(self, input_data):
         """
@@ -65,5 +72,6 @@ class Conv2D(Layer):
         # conv2d 함수 호출
         x, self.node_list = convolution.conv2d(input_data, self.weights, stride, self.padding, self.node_list)
         print("call 끝", x.shape)
+        self.output_shape = x.shape
 
         return x
