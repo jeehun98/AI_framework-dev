@@ -56,6 +56,7 @@ class Sequential(Node):
         if self._layers:
             # input_shape 를 지정하기
             previous_layer = self._layers[-1]   
+            input_shape = previous_layer.output_shape
 
             # 이전 layer 의 출력 차원 가져오기
             if hasattr(previous_layer, 'output_shape') and (previous_layer.output_shape != None):
@@ -69,7 +70,6 @@ class Sequential(Node):
                 # dense 의 경우 가중치 초기화
                 layer.build(input_shape)
 
-    
         # 처음 입력되는 layer 에는 반드시 input_shape 가 존재해야 함
         elif hasattr(layer, 'input_shape'):
             # 해당 레이어의 가중치 생성
@@ -77,6 +77,8 @@ class Sequential(Node):
             layer.build(input_shape)
 
         self._layers.append(layer)
+
+        print(layer.output_shape, "출력 형태 확인")
 
     # layer build 는 가중치 초기화를 진행했음
     # model build 를 통해 build_config 정보를 구성, input_shape 정보

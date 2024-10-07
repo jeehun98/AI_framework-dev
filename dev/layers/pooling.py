@@ -8,7 +8,7 @@ class Pooling(Layer):
     def __init__(
         self,
         pool_size=(2, 2),
-        strides = 1,
+        strides=(1,1),
         padding="valid",
         pool_mode="max",
         **kwargs
@@ -25,8 +25,33 @@ class Pooling(Layer):
         self.output_shape = []
         
 
-    def build(self, *args, **kwargs):
+    def build(self, input_shape):
+        self.call_output_shape(input_shape)
         super().build()
+
+    def call_output_shape(self, input_shape):
+        """
+        Pooling 레이어의 출력 크기를 계산하는 함수.
+        input_shape: 입력 특성 맵의 크기 (height, width, channels)
+        """
+        input_height, input_width, input_channels = input_shape
+        pool_height, pool_width = self.pool_size
+        stride_height, stride_width = self.strides
+
+        if self.padding == 'same':
+            output_height = int((input_height + stride_height - 1) / stride_height)
+            output_width = int((input_width + stride_width - 1) / stride_width)
+        elif self.padding == 'valid':
+            output_height = int((input_height - pool_height) / stride_height) + 1
+            output_width = int((input_width - pool_width) / stride_width) + 1
+        else:
+            raise ValueError("Invalid padding type. Use 'same' or 'valid'.")
+
+        # 채널 수는 변하지 않음
+        output_channels = input_channels
+
+        # 출력 크기 저장 또는 반환
+        self.output_shape = (output_height, output_width, output_channels)
 
     # 입력에 대한 pooling 연산 수행
     def call(self, input_data):

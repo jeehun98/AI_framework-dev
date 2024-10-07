@@ -494,8 +494,12 @@
                 - activation 연산 결과가 list 인 것을 수정하기, numpy_array 변환 완료 - 10/07
 
                 - conv2D 에서 출력 차원의 크기를 미리 계산하는 call_output_shape 를 구현하기
-    
+
+                - pooling 의 strides 값 형식 변경, layer 종류별 output_shape 의 구현 완료 - 10/07 
+
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
+
+            - 
 
 # epoch 별 반복 변환
 
