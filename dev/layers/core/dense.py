@@ -86,7 +86,7 @@ class Dense(Layer, Node):
 
         """
         root_node_list = self.node_list
-
+        
         # 개별 데이터의 행렬 곱셈 수행
         x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.mul_mat_node_list)
 

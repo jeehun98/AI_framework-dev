@@ -1,4 +1,9 @@
+import os
+os.add_dll_directory("C:\\msys64\\mingw64\\bin")
+
 from dev.layers.layer import Layer
+from dev.backend.flatten import flatten
+
 import numpy as np
 
 from functools import reduce
@@ -32,25 +37,25 @@ class Flatten(Layer):
     # 계산시 (batch_size, flattened_dim) 형태,
     # 전체 데이터에 대해 생각해야해, 데이터 하나에 대한 flatten 연산이 아님
 
-    # 여러 데이터의 입력으로 확장시킬 수 있을 것
     def call(self, inputs):
         """
-        p~ 차원 입력 데이터를 펼침
-        
+        n x p 차원 입력 데이터를 펼침
+
         Parameters:
-        inputs (1, p) 
-               (1, p_1, p_2) : 특정 차원별 n개의 데이터가 입력으로 들어옴 - 배치!!
-        
+        inputs: np.ndarray 
+            (1, p) 또는 (1, p_1, p_2) 형태의 데이터
+
         Returns:
-        (1, p*) : 펼친 데이터, 1개의 데이터가 입력 될 경우 행 벡터 출력
+        np.ndarray:
+            (1, p*) 형태로 펼친 데이터. 단일 배치의 행 벡터 형태로 출력.
         """
+        # 입력 데이터를 1차원으로 변환
+        flattened_data, self.node_list = flatten.flatten(inputs, self.node_list)
 
-        # 가중치와의 연산을 위한 적절하 변환
-        flattened_array = inputs.reshape(1, -1)
+        # 출력 차원 설정
+        self.output_shape = flattened_data.shape
 
-        self.output_shape = flattened_array.shape
-
-        return flattened_array
+        return flattened_data
 
     def compute_output_shape(self, input_shape):
         # 입력 shape 를 기반으로 출력 shape 를 계산, 모델의 구조 정의

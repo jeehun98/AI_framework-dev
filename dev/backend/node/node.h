@@ -30,7 +30,6 @@ public:
 
     // 부모 노드 추가
     void add_parent(std::shared_ptr<Node> parent) {
-        // 중복 추가 방지
         if (std::find_if(parents.begin(), parents.end(),
             [&](const std::weak_ptr<Node>& wp) {
                 return !wp.expired() && wp.lock() == parent;
@@ -74,7 +73,6 @@ public:
     double get_gradient() const { return grad_weight_total; }
     void set_weight(double new_weight) { weight_value = new_weight; }
 
-
     // 자식 노드 반환
     std::vector<std::shared_ptr<Node>> get_children() const {
         return children;
@@ -102,40 +100,25 @@ public:
         }
     }
 
-    // 역전파 메서드 (루트 노드에서 자식 노드로 내려가는 방식)
-    // 순환 구조 방지를 위해 visited 집합을 추가
+    // 역전파 메서드
     void backpropagate(double upstream_gradient = 1.0, std::unordered_set<Node*>* visited = nullptr) {
-        // 방문 집합 초기화
         if (!visited) {
             std::unordered_set<Node*> local_visited;
             backpropagate(upstream_gradient, &local_visited);
             return;
         }
-
-        // 현재 노드가 이미 방문된 노드라면 재귀 호출을 중단
         if (visited->find(this) != visited->end()) {
-            
             return;
         }
-
-        // 현재 노드를 방문한 것으로 기록
         visited->insert(this);
-
-        // 1. 현재 노드에서 그래디언트 계산
         auto gradients = calculate_gradient(upstream_gradient);
-        double grad_input = gradients.first;   // 입력값에 대한 그래디언트
-        double grad_weight = gradients.second; // 가중치에 대한 그래디언트
-
-        // 2. 가중치에 대한 그래디언트 누적
+        double grad_input = gradients.first;
+        double grad_weight = gradients.second;
         grad_weight_total += grad_weight;
-
-        // 3. 자식 노드로 그래디언트 전달
         for (auto& child : children) {
-            // 자식 노드로 현재 노드의 grad_input 값을 전달
             child->backpropagate(grad_input, visited);
         }
     }
-
 
     void update_weights(double learning_rate, std::unordered_set<Node*>* visited = nullptr) {
         if (!visited) {
@@ -143,17 +126,12 @@ public:
             update_weights(learning_rate, &local_visited);
             return;
         }
-
         if (visited->find(this) != visited->end()) {
             return;
         }
         visited->insert(this);
-
-        // 현재 노드의 가중치 업데이트
         weight_value -= learning_rate * grad_weight_total;
         grad_weight_total = 0.0;
-
-        // 자식 노드에 대해 재귀적으로 가중치 업데이트
         for (auto& child : children) {
             child->update_weights(learning_rate, visited);
         }
@@ -161,31 +139,27 @@ public:
 
 public:
     std::string operation;
-    double input_value = 0.0;          // 입력값
-    double weight_value = 0.0;         // 가중치 값
+    double input_value = 0.0;
+    double weight_value = 0.0;
     double output = 0.0;
-    double bias = 0.0;                 // 바이어스
-    double grad_bias = 0.0;            // 바이어스에 대한 그래디언트
-    double grad_weight_total = 0.0;    // 가중치에 대한 누적 그래디언트
+    double bias = 0.0;
+    double grad_bias = 0.0;
+    double grad_weight_total = 0.0;
     std::vector<std::weak_ptr<Node>> parents;
     std::vector<std::shared_ptr<Node>> children;
 
-    // 연산자 맵을 정적 멤버로 선언하여 모든 인스턴스에서 공유
     static const std::map<std::string, std::function<std::pair<double, double>(double, double, double, double)>>& operations() {
         static std::map<std::string, std::function<std::pair<double, double>(double, double, double, double)>> ops;
         if (ops.empty()) {
             ops["add"] = [](double input, double weight, double out, double upstream) {
                 return std::make_pair(upstream, upstream);
             };
-
             ops["subtract"] = [](double input, double weight, double out, double upstream) {
                 return std::make_pair(upstream, -upstream);
             };
-
             ops["multiply"] = [](double input, double weight, double out, double upstream) {
                 return std::make_pair(upstream * weight, upstream * input);
             };
-
             ops["divide"] = [](double input, double weight, double out, double upstream) {
                 if (weight == 0.0) {
                     throw std::runtime_error("Division by zero.");
@@ -194,16 +168,13 @@ public:
                 double grad_weight = -upstream * input / (weight * weight);
                 return std::make_pair(grad_input, grad_weight);
             };
-
             ops["exp"] = [](double input, double weight, double out, double upstream) {
                 return std::make_pair(upstream * out, 0.0);
             };
-
             ops["square"] = [](double input, double weight, double out, double upstream) {
                 double grad_input = 2 * input * upstream;
                 return std::make_pair(grad_input, 0.0);
             };
-
             ops["reciprocal"] = [](double input, double weight, double out, double upstream) {
                 if (input == 0.0) {
                     throw std::runtime_error("Reciprocal of zero.");
@@ -211,23 +182,22 @@ public:
                 double grad_input = -upstream / (input * input);
                 return std::make_pair(grad_input, 0.0);
             };
-
             ops["negate"] = [](double input, double weight, double out, double upstream) {
                 double grad_input = -upstream;
                 return std::make_pair(grad_input, 0.0);
             };
-
-            // 새롭게 추가할 풀링 연산
             ops["max_pool"] = [](double input, double weight, double out, double upstream) {
-                // Max pooling은 선택된 입력에 대해서만 그래디언트가 전달됩니다.
                 double grad_input = (input == out) ? upstream : 0.0;
                 return std::make_pair(grad_input, 0.0);
             };
-
             ops["avg_pool"] = [](double input, double weight, double out, double upstream) {
-                // Average pooling은 풀링 영역 내 모든 입력에 대해 그래디언트가 고르게 전달됩니다.
-                double grad_input = upstream / weight;  // weight는 풀링 영역의 크기로 가정
+                double grad_input = upstream / weight;
                 return std::make_pair(grad_input, 0.0);
+            };
+
+            // flatten 연산 추가
+            ops["flatten"] = [](double input, double weight, double out, double upstream) {
+                return std::make_pair(upstream, 0.0); // Flatten은 단순히 일대일 전달이므로 그래디언트는 그대로 전달
             };
         }
         return ops;
