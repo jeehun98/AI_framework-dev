@@ -549,6 +549,8 @@
 
                 - flatten 의 node_list 를 구현할까
 
+                - node_list 구현 완료, trainable 의 제거 - 10/10
+
 # epoch 별 반복 변환
 
     - 각 epoch 시 사용되는 배치 데이터 셋이 달라져야 함 - 09/30 구현해야 해 
