@@ -44,12 +44,14 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
     bool is_new_graph = node_list.empty();
 
     // 출력 인덱스 계산하기
-    // 출력 인덱스의 한 부분을 선택하고, 해당 선택된 부분에 해당하는 패딩영역에 대한 검사
+    // 출력 인덱스의 한 부분을 선택하고, 
+    // 해당 선택된 부분에 해당하는 패딩영역에 대한 검사
     for (int ch = 0; ch < input_channels; ++ch) {  // 채널별 반복
         for (int h = 0; h < output_height; ++h) {
             for (int w = 0; w < output_width; ++w) {
-                int result_index = (h * output_width + w) * input_channels + ch;
+                int result_index = (ch * output_height * output_width) + (h * output_width) + w;
 
+                // result_index 는 순차적으로 늘어남
                 ptrResult[result_index] = (mode == "max") ? -std::numeric_limits<double>::infinity() : 0.0;
 
                 std::shared_ptr<Node> pool_node;
@@ -62,6 +64,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
                     pool_node->output = ptrResult[result_index];
                 }
 
+                // pool 사이즈만큼의 반복 수행
+                
                 for (int i = 0; i < pool_height; ++i) {
                     for (int j = 0; j < pool_width; ++j) {
                         int input_i = h * stride_height + i;
@@ -71,7 +75,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> pooling2d(
                             continue;
                         }
 
-                        int input_index = (input_i * input_width + input_j) * input_channels + ch;
+                         int input_index = (ch * input_height * input_width) + (input_i * input_width) + input_j;
                         double input_value = ptrInput[input_index];
 
                         if (mode == "max" && input_value > ptrResult[result_index]) {
