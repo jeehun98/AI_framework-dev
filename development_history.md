@@ -547,7 +547,7 @@
 
             - flatten 층 연결하기
 
-            - 
+                - flatten 의 node_list 를 구현할까
 
 # epoch 별 반복 변환
 
