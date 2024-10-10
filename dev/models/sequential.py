@@ -210,22 +210,19 @@ class Sequential(Node):
                             output = layer.call(output)
                             
                             # 첫번째 레이어의 경우
-                            if idx == 0 and layer.trainable:
+                            if idx == 0:
                                 self.node_list = layer.node_list
-                                
-                                # 출력의 한 부분을 구성하는 계산식, 커널의 크기와 동일
                                 continue
                             
-                            # 해당 레이어가 학습 가능한 경우 계산 그래프 연결하기
-                            if layer.trainable:
-                                # 계산 그래프 연결
-                                # 여기서 previous_layer 에 대한 업데이트를 수행해야 할 지
-                                print("변화를 보자", layer.layer_name, "밑에", previous_layer.layer_name)
-                                self.node_list = self.link_node(layer, previous_layer)
-                                # self.print_relationships(self.node_list[0])
-                                self.print_summary(self.node_list[0])
-                                print("길이 확인", len(self.node_list))
-                                
+                            # 계산 그래프 연결
+                            # 여기서 previous_layer 에 대한 업데이트를 수행해야 할 지
+                            print("변화를 보자", layer.layer_name, "밑에", previous_layer.layer_name)
+                            print(len(layer.node_list), len(previous_layer.node_list))
+                            self.node_list = self.link_node(layer, previous_layer)
+                            # self.print_relationships(self.node_list[0])
+                            self.print_summary(self.node_list[0])
+                            print(len(self.node_list), layer.layer_name)
+                            
 
                         # loss_node_list 생성,
                         output = np.array(output).reshape(1, -1)

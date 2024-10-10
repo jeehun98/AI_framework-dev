@@ -25,7 +25,7 @@ class Node:
         """
         if visited is None:
             visited = set()
-        
+
         # 순환 참조 방지
         if node in visited:
             return
@@ -173,6 +173,7 @@ class Node:
         parent_nodes : 해당 노드의 리프 노드와
         child_nodes : 해당 노드의 루트 노드와 연결해야 함
         """
+        
         if not child_nodes:
             return parent_nodes
 
@@ -191,6 +192,7 @@ class Node:
                     leaf_nodes[i].add_child(child_nodes[i])
                     child_nodes[i].add_parent(leaf_nodes[i])
 
+        
         return parent_nodes
 
 
@@ -203,6 +205,7 @@ class Node:
 
 
         if current_layer.layer_name == "dense":
+            print("연결하니?")
             return self.link_dense_node(current_layer.node_list, previous_layer.node_list)        
         
         elif current_layer.layer_name == "activation":
@@ -213,6 +216,35 @@ class Node:
         
         elif current_layer.layer_name =="conv2d":
             return self.link_conv2d_node(current_layer, previous_layer)
+
+        elif current_layer.layer_name =="flatten":
+            return self.link_flatten_node(current_layer, previous_layer)
+
+    def link_flatten_node(self, current_layer, previous_layer):
+        """
+        Flatten 레이어의 노드를 이전 Conv2D 레이어의 노드들과 연결.
+        current_layer : Flatten 레이어 (출력)
+        previous_layer : Conv2D 또는 Pooling 레이어 (입력)
+        """
+        input_nodes = previous_layer.node_list  # Conv2D 또는 Pooling 레이어의 출력 노드
+        flattened_nodes = current_layer.node_list  # Flatten 레이어의 1차원 노드
+
+        print(len(input_nodes), len(flattened_nodes), "길이 확인")
+
+        # Conv2D 또는 Pooling의 출력을 Flatten한 노드 수가 동일해야 함
+        if len(flattened_nodes) != len(input_nodes):
+            raise ValueError("Flatten 레이어의 출력 노드와 Conv2D 레이어의 노드 수가 일치하지 않습니다.")
+
+        # 일대일 연결 (Flatten이므로 순서대로 직접 연결)
+        for i in range(len(input_nodes)):
+            input_node = input_nodes[i]
+            flattened_node = flattened_nodes[i]
+
+            # Flatten 레이어로 직접 연결
+            input_node.add_parent(flattened_node)
+            flattened_node.add_child(input_node)
+
+        return flattened_nodes
 
 
 

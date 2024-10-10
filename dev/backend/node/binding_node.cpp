@@ -20,9 +20,9 @@ PYBIND11_MODULE(node, m) {
         // 노드 업데이트 메서드
         .def("update", &Node::update)
         
-        // 자식 및 부모 노드 반환
-        .def("get_children", &Node::get_children)
-        .def("get_parents", &Node::get_parents)
+        // 자식 및 부모 노드 반환, std::shared_ptr 처리를 위해 reference_internal 사용
+        .def("get_children", &Node::get_children, py::return_value_policy::reference_internal)
+        .def("get_parents", &Node::get_parents, py::return_value_policy::reference_internal)
         
         // 그래디언트 계산 메서드
         .def("calculate_gradient", &Node::calculate_gradient)
