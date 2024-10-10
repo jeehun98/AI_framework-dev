@@ -7,7 +7,7 @@
 namespace py = pybind11;
 
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> conv2d(
-    py::array_t<double> input,  // 입력 이미지
+    py::array_t<double> input,  // 입력 데이터
     py::array_t<double> filters, // 필터 (커널)
     int stride = 1,
     std::string padding = "valid",

@@ -14,6 +14,64 @@ class Node:
     def is_leaf(self):
         return not self.get_children()
 
+    def print_summary(self, node, visited=None, indent=0):
+        """
+        노드의 간단한 관계 요약을 출력하는 함수
+
+        Parameters:
+        node: 탐색을 시작할 노드
+        visited: 이미 방문한 노드를 추적하기 위한 집합 (기본값은 None)
+        indent: 출력 시 들여쓰기 수준 (기본값은 0)
+        """
+        if visited is None:
+            visited = set()
+
+        # 순환 참조 방지
+        if node in visited:
+            return
+        visited.add(node)
+
+        # 현재 노드 정보 출력 (간단하게 표현)
+        children = node.get_children()
+        children_count = len(children)
+        if children_count > 0:
+            print(' ' * indent + f"Node: {node.operation}, Children Count: {children_count}")
+        else:
+            print(' ' * indent + f"Node: {node.operation} (Leaf)")
+
+        # 동일한 연산 노드 요약 및 리프 노드 출력
+        current_operation = None
+        current_count = 0
+        previous_child = None
+        for child in children:
+            if child.operation == current_operation:
+                current_count += 1
+            else:
+                if current_count > 1:
+                    print(' ' * (indent + 2) + f"Repeated Node: {current_operation}, Count: {current_count}")
+                    if previous_child:
+                        self.print_summary(previous_child, visited, indent + 4)
+                elif current_count == 1:
+                    self.print_summary(previous_child, visited, indent + 2)
+
+                current_operation = child.operation
+                current_count = 1
+                previous_child = child
+
+        # 마지막 반복 노드 출력 및 리프 노드 출력
+        if current_count > 1:
+            print(' ' * (indent + 2) + f"Repeated Node: {current_operation}, Count: {current_count}")
+            if previous_child:
+                self.print_summary(previous_child, visited, indent + 4)
+        elif current_count == 1:
+            self.print_summary(previous_child, visited, indent + 2)
+
+        # 자식 노드 개별 출력
+        for child in children:
+            if child.operation != current_operation or current_count == 1:
+                self.print_summary(child, visited, indent + 2)
+
+
     def print_relationships(self, node, visited=None, indent=0):
         """
         노드의 관계를 출력하는 함수
@@ -143,6 +201,7 @@ class Node:
         child_nodes : 해당 노드의 루트 노드와 연결해야 함
         """
 
+
         if current_layer.layer_name == "dense":
             return self.link_dense_node(current_layer.node_list, previous_layer.node_list)        
         
@@ -150,9 +209,11 @@ class Node:
             return self.link_loss_node(current_layer.node_list, previous_layer.node_list)
         
         elif current_layer.layer_name =="pooling":
-            current_layer
-            previous_layer
             return self.link_pool_node(current_layer, previous_layer)
+        
+        elif current_layer.layer_name =="conv2d":
+            return self.link_conv2d_node(current_layer, previous_layer)
+
 
 
     def link_loss_node(self, parent_nodes, child_nodes):
@@ -203,11 +264,6 @@ class Node:
         child_nodes = previous_layer.node_list
         parent_nodes = current_layer.node_list
 
-        print("개수 확인", len(parent_nodes))
-        self.print_relationships(parent_nodes[0])
-        print("보자보자", len(child_nodes))
-        self.print_relationships(child_nodes[0])
-
        # Pooling 레이어의 노드 수가 올바르게 계산되었는지 확인
         if len(parent_nodes) != output_height * output_width * num_channels:
             raise ValueError("Mismatch in number of pooling regions and child nodes.")
@@ -235,6 +291,65 @@ class Node:
                                 parent_node.add_child(child_node)
                                 child_node.add_parent(parent_node)
 
-        print("연결 확인")
-        self.print_relationships(parent_nodes[0])
+        current_layer.node_list = parent_nodes
+
+        # self.print_relationships(parent_nodes[0])
+        # print("단계 끝")
+
+        return parent_nodes
+
+    def link_conv2d_node(self, current_layer, previous_layer):
+        """
+        Conv2D 레이어의 리프 노드를 Pooling 레이어의 루트 노드와 연결하는 함수.
+        current_layer : Conv2D 레이어 (출력)
+        previous_layer : Pooling 레이어 (입력)
+        """
+        stride_height = current_layer.strides[0]
+        stride_width = current_layer.strides[1]
+        filter_height, filter_width = current_layer.kernel_size
+        pool_output_height, pool_output_width, num_channels = previous_layer.output_shape
+
+        output_height = (pool_output_height - filter_height) // stride_height + 1
+        output_width = (pool_output_width - filter_width) // stride_width + 1
+
+        parent_nodes = current_layer.node_list
+        child_nodes = previous_layer.node_list
+
+        # Conv2D 레이어의 리프 노드를 찾음
+        leaf_nodes = [self.find_child_node(node) for node in parent_nodes]
+        leaf_nodes_flat = [leaf for sublist in leaf_nodes for leaf in sublist]
+
+        # 노드 개수 검증
+        if len(leaf_nodes_flat) != output_height * output_width * current_layer.output_shape[2] * filter_height * filter_width * num_channels:
+            raise ValueError("Mismatch in number of conv regions and leaf nodes.")
+
+        leaf_index = 0  # 리프 노드를 순차적으로 접근하기 위한 인덱스
+
+        for out_ch in range(current_layer.output_shape[2]):  # 출력 채널 반복
+            for h in range(output_height):
+                for w in range(output_width):
+                    for i in range(filter_height):
+                        for j in range(filter_width):
+                            leaf_node = leaf_nodes_flat[leaf_index]  # 리프 노드 가져오기
+
+                            # Pooling 레이어의 자식 노드를 연결
+                            for ch in range(num_channels):  # Pooling 채널 반복
+                                child_h = h * stride_height + i
+                                child_w = w * stride_width + j
+
+                                if child_h >= pool_output_height or child_w >= pool_output_width:
+                                    continue
+
+                                child_index = ch * pool_output_height * pool_output_width + child_h * pool_output_width + child_w
+                                child_node = child_nodes[child_index]
+
+                                # 리프 노드와 Pooling 루트 노드 연결
+                                if child_node not in leaf_node.get_children():
+                                    leaf_node.add_child(child_node)
+                                    child_node.add_parent(leaf_node)
+
+                            leaf_index += 1  # 다음 리프 노드로 이동
+
+        current_layer.node_list = parent_nodes
+
         return parent_nodes

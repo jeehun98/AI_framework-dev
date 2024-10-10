@@ -60,5 +60,4 @@ class Pooling(Layer):
         x, self.node_list = pooling.pooling2d(input_data, self.pool_size[0], self.pool_size[1], self.strides, self.pool_mode, self.node_list)
         
         self.output_shape = x.shape
-
         return x
