@@ -11,6 +11,8 @@ from dev.layers.flatten import Flatten
 
 from tensorflow.keras.utils import to_categorical
 
+np.random.seed(42)
+
 # 입력 데이터 생성 (10개의 샘플, 7x7 크기, 1 채널)
 num_samples = 10
 input_shape = (7, 7, 1)
@@ -25,7 +27,7 @@ target_data_one_hot = to_categorical(target_data, num_classes=num_classes)
 
 model = Sequential()
 
-# input_shape 를 어떻게 입력해야할까
+# input_shape 를 어떻게 입력해야할까    
 model.add(Conv2D(7, (3,3), input_shape=(7, 7, 1)))
 model.add(Pooling())
 model.add(Conv2D(14, (3,3)))
@@ -33,12 +35,12 @@ model.add(Pooling())
 
 # 이후 dense 층 추가하기
 model.add(Flatten())
-model.add(Dense(5, activatoin="sigmoid"))
+model.add(Dense(5, activation="sigmoid"))
 
 model.compile(optimizer='sgd',
               loss='mse',
               p_metrics='mse',
               learning_rate=0.001)
 
-model.fit(input_data, target_data)
-print("완료", model.weigts)
+model.fit(input_data, target_data_one_hot, epochs=1)
+print("완료")
