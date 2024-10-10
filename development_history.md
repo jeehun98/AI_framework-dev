@@ -501,6 +501,14 @@
 
             - 가중치 생성 문제 발생, 해결 완료 각 layer 의 input, output_shape 의 재지정 완료 - 10/07
 
+        - node 의 연결 문제, seqential 코드에서 link_node 가 잘 작동하는지, self.node_list 를 업데이트할 지에 대한 고민
+
+            - node_list 연결 중, 두 번째 연결부터 이상한데 이걸 해결해보자
+
+                - root_node, leaf_node 간 연결 문제일 수도 있음
+
+            -
+
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
 
             - (1,5) 형태의 예측과 (1,1) 의 타겟값, 각 타겟에 대한 확률값을 출력한 것
@@ -528,6 +536,10 @@
                 - layer_node_list 를 업데이트 해야 할 지
 
                 - pooling.cpp 내의 반복문 순서의 차이로 인한 오류였음, 수정 완료 - 10/10
+
+                - 연산을 잘 수행해보자.
+
+                - link_conv2d_node 제대로 구현된 것을 확인
 
                 -
 
