@@ -212,12 +212,15 @@ class Sequential(Node):
                             # 첫번째 레이어의 경우
                             if idx == 0 and layer.trainable:
                                 self.node_list = layer.node_list
+                                
+                                # 출력의 한 부분을 구성하는 계산식, 커널의 크기와 동일
                                 continue
                             
                             # 해당 레이어가 학습 가능한 경우 계산 그래프 연결하기
                             if layer.trainable:
                                 # 계산 그래프 연결
                                 self.node_list = self.link_node(layer, previous_layer)
+                                
 
                         # loss_node_list 생성,
                         output = np.array(output).reshape(1, -1)
@@ -234,6 +237,7 @@ class Sequential(Node):
                         NODE 클래스, 혹은 다른 클래스에서 수행하도록 변경해야겠다.
                         """
                         for root_node in  self.node_list:
+                            
                             self.backpropagate(root_node)
 
                     else:
@@ -257,11 +261,13 @@ class Sequential(Node):
 
                 # 배치 반복 끝, 가중치 갱신
                 for root_node in self.node_list:
+                    
                     self.weight_update(root_node, batch_datas, self.optimizer)
 
                 """
                 이후 계산 그래프의 가중치는 동일하게, 가중치 갱신량은 초기화해야함
                 """
+        
 
         # 에포크 끝난 후 평균 손실 출력
         loss_sum = 0
@@ -274,6 +280,8 @@ class Sequential(Node):
             loss_sum += data_loss
 
         print(f"Average Loss: {loss_sum / x.shape[0]}")
+        
+        self.print_relationships(self.node_list[0])
 
     # 예측 수행
     def predict(self, data):
@@ -285,9 +293,12 @@ class Sequential(Node):
     # 비용 함수값 계산
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
+        
+
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true, self.loss_node_list)
         self.metric_value = self.metric(y_pred, y_true)
-        # print(y_pred, y_true, self.loss_value)
+        
+
         return self.loss_value
         
         

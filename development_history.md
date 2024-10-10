@@ -499,13 +499,33 @@
 
         - conv2D layer 에 Flatten, Dense 층의 추가 형태 구현 확인
 
-            - 가중치 생성 문제 발생
-
+            - 가중치 생성 문제 발생, 해결 완료 각 layer 의 input, output_shape 의 재지정 완료 - 10/07
 
         - loss 출력 맞추기 - 이걸 하기 위해서는 비용 함수를 추가해야해 이전까지는 binary cross entropy 만 구현했어
 
-        
+            - (1,5) 형태의 예측과 (1,1) 의 타겟값, 각 타겟에 대한 확률값을 출력한 것
 
+            - 추후에 구현 같이해야해
+
+            - 까먹지 말기 - 10/07 ~~~ 킵고잉
+
+    - backpropagate 도 구현해야해
+
+        - node_list 연결 문제 발생!! 어디서 문제인건지\
+
+        - 필터 가중치, (3,3,14,28) 에서 각 필터가 (3,3,14) 크기의 가중치, 28개가 존재
+
+        - link_node 의 수정 필요
+
+            - 지금까지 세 가지 조건문, layer 종류별 link_node 수행,  dense, activation, pooling 층만 구현
+
+            - link_conv2d_node 를 구현하자
+
+                - pooling 내애서 연결을 구현할 수 있을 듯
+        
+                - pooling.cpp 코드 상의 문제 먼저 해결해보자. max 가 제대로 작동하지 않음
+
+                - layer_node_list 를 업데이트 해야 할 지
 # epoch 별 반복 변환
 
     - 각 epoch 시 사용되는 배치 데이터 셋이 달라져야 함 - 09/30 구현해야 해 
@@ -558,4 +578,10 @@
 
 # activations, losses, optimizers 추가하기 - 10/02
 
-    - 먼저 activation 부터 하자
+    - 먼저 activation 부터 하자..
+
+
+
+# RNN 구현하기
+
+    - 

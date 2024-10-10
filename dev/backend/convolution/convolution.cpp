@@ -72,11 +72,16 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> conv2d(
     }
 
     // Convolution 연산
+    // 출력 height,
     for (int h = 0; h < output_height; ++h) {
+        // 출력 width
         for (int w = 0; w < output_width; ++w) {
+            // 출력 차원
             for (int out_ch = 0; out_ch < filter_out_channels; ++out_ch) {
+                // 인덱스 값 계산, 
                 int result_index = (h * output_width + w) * filter_out_channels + out_ch;
-                ptrResult[result_index] = 0;  // 결과 초기화
+                // 해당 인덱스 값 초기화
+                ptrResult[result_index] = 0;  
 
                 std::shared_ptr<Node> sum_node;
 
@@ -103,24 +108,22 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> conv2d(
 
                             double input_value = padded_input[padded_index];
                             double filter_value = ptrFilters[filter_index];
-
-                            double weight = is_new_graph ? filter_value : sum_node->children[in_ch]->weight_value;  
-                            double product = input_value * weight;
-
+                            double product = input_value * filter_value;
+                    
                             if (is_new_graph) {
-                                std::shared_ptr<Node> mul_node = std::make_shared<Node>("multiply", input_value, weight, product, weight);
+                                std::shared_ptr<Node> mul_node = std::make_shared<Node>("multiply", input_value, filter_value, product, filter_value);
                                 sum_node->add_child(mul_node);
                                 mul_node->add_parent(sum_node);
                             } else {
                                 auto mul_node = sum_node->get_children()[in_ch];
-                                mul_node->update(input_value, weight, product, weight);
+                                mul_node->update(input_value, filter_value, product, filter_value);
                             }
 
                             ptrResult[result_index] += product;
                         }
                     }
                 }
-
+                // 여기서 갱신되는구나
                 sum_node->output = ptrResult[result_index];
             }
         }

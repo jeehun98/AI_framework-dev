@@ -28,12 +28,12 @@ class Node:
 
         # 순환 참조 방지
         if node in visited:
-            print(' ' * indent + f'(Already visited node: {node.operation})')
+            #print(' ' * indent + f'(Already visited node: {node.operation})')
             return
         visited.add(node)
 
         # 현재 노드 정보 출력
-        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value}, Grad Total: {node.grad_weight_total}")
+        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value}, Grad Total: {node.grad_weight_total}, node_value: {node.output}")
 
         # 자식 노드 출력
         children = node.get_children()
@@ -44,8 +44,6 @@ class Node:
         else:
             print(' ' * (indent + 4) + 'Leaf node')
 
-
-    
     # 리턴 값이 없음
     # node.h 코드의 실행
     def backpropagate(self, root_node, upstream_gradient = 1.0):
@@ -198,33 +196,45 @@ class Node:
         output_height = (conv_output_height - pool_height) // stride_height + 1
         output_width = (conv_output_width - pool_width) // stride_width + 1
 
-        # 각 루트 노드의 개수들, 5,5,7 - 175, 4,4,7 - 112 
+        # 각 루트 노드의 개수들, 
+        # previous 5,5,7 - 175, 
+        # current 4,4,7 - 112 
 
-        child_nodes = current_layer.node_list
-        parent_nodes = previous_layer.node_list
+        child_nodes = previous_layer.node_list
+        parent_nodes = current_layer.node_list
+
+        print("개수 확인", len(parent_nodes))
+        self.print_relationships(parent_nodes[0])
+        print("보자보자", len(child_nodes))
+        self.print_relationships(child_nodes[0])
 
        # Pooling 레이어의 노드 수가 올바르게 계산되었는지 확인
-        if len(child_nodes) != output_height * output_width * num_channels:
+        if len(parent_nodes) != output_height * output_width * num_channels:
             raise ValueError("Mismatch in number of pooling regions and child nodes.")
 
         # 풀링 연산의 각 자식 노드를 그에 대응하는 부모 노드들과 연결
         for ch in range(num_channels):  # 채널 차원을 고려하여 각 채널별로 연결
             for h in range(output_height):
                 for w in range(output_width):
-                    child_index = ch * output_height * output_width + h * output_width + w  # Pooling 노드의 인덱스
-                    child_node = child_nodes[child_index]  # 해당 풀링 노드
+                    parent_index = ch * output_height * output_width + h * output_width + w  # Pooling 노드의 인덱스
+                    parent_node = parent_nodes[parent_index]  # 해당 풀링 노드
 
                     # 부모 노드들 중에서 풀링 영역에 속하는 노드를 찾아 연결
                     for i in range(pool_height):
                         for j in range(pool_width):
                             parent_h = h * stride_height + i  # 풀링에 포함되는 부모 노드의 y좌표
                             parent_w = w * stride_width + j  # 풀링에 포함되는 부모 노드의 x좌표
-                            parent_index = ch * conv_output_height * conv_output_width + parent_h * conv_output_width + parent_w  # 부모 노드의 인덱스
-                            parent_node = parent_nodes[parent_index]  # 해당 부모 노드
+                            child_index = ch * conv_output_height * conv_output_width + parent_h * conv_output_width + parent_w  # 부모 노드의 인덱스
+                            
+                            # print(parent_index, child_index)
+                            
+                            child_node = child_nodes[child_index]  # 해당 부모 노드
 
                             # 부모 노드와 자식 노드 연결
                             if child_node not in parent_node.get_children():
                                 parent_node.add_child(child_node)
                                 child_node.add_parent(parent_node)
 
+        print("연결 확인")
+        self.print_relationships(parent_nodes[0])
         return parent_nodes
