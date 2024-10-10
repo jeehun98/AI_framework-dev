@@ -541,7 +541,13 @@
 
                 - link_conv2d_node 제대로 구현된 것을 확인
 
-                -
+                - cpp 파일 이상이 있는지 확인해보자
+
+                    - 특히 pooling, relation_node 가 이상하게 보임
+
+            - flatten 층 연결하기
+
+            - 
 
 # epoch 별 반복 변환
 

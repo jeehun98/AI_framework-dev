@@ -68,11 +68,12 @@ class Conv2D(Layer):
         else:
             raise ValueError("Invalid padding type. Use 'same' or 'valid'.")
 
+
         output_channels = self.filters  # 필터 개수만큼 출력 채널 생성
 
         # 출력 차원을 저장하거나 반환
         self.output_shape = (output_height, output_width, output_channels)
-        
+      
         # return self.output_shape
     
     def call(self, input_data):
