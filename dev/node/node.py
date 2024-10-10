@@ -25,7 +25,7 @@ class Node:
         """
         if visited is None:
             visited = set()
-
+        
         # 순환 참조 방지
         if node in visited:
             return

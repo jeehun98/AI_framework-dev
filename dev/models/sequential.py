@@ -222,8 +222,9 @@ class Sequential(Node):
                                 # 여기서 previous_layer 에 대한 업데이트를 수행해야 할 지
                                 print("변화를 보자", layer.layer_name, "밑에", previous_layer.layer_name)
                                 self.node_list = self.link_node(layer, previous_layer)
-                                #self.print_relationships(self.node_list[0])
+                                # self.print_relationships(self.node_list[0])
                                 self.print_summary(self.node_list[0])
+                                print("길이 확인", len(self.node_list))
                                 
 
                         # loss_node_list 생성,
@@ -298,10 +299,8 @@ class Sequential(Node):
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
         
-
         self.loss_value, self.loss_node_list = self.loss(y_pred, y_true, self.loss_node_list)
         self.metric_value = self.metric(y_pred, y_true)
-        
 
         return self.loss_value
         
