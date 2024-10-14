@@ -1,18 +1,22 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl.h>
 #include <vector>
 #include <memory>
 #include <cmath>
-#include "../node/node.h"  // Node 클래스 포함
+#include <string>
+#include <unordered_map>
+#include "../node/node.h"
+#include "../activations/activations.h"  // 활성화 함수 헤더 파일 포함
 
 namespace py = pybind11;
 
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
-    py::array_t<double> input,  // 입력 시퀀스 데이터
-    py::array_t<double> weights,  // 입력에 대한 가중치
-    py::array_t<double> recurrent_weights,  // 상태에 대한 가중치
-    py::array_t<double> bias,  // 바이어스
-    std::string activation,  // 활성화 함수 ("tanh" 또는 "sigmoid" 등)
+    py::array_t<double> input,  
+    py::array_t<double> weights,  
+    py::array_t<double> recurrent_weights,  
+    py::array_t<double> bias,  
+    const std::string& activation,  
     std::vector<std::shared_ptr<Node>> node_list = {}
 ) {
     py::buffer_info bufInput = input.request();
@@ -41,21 +45,38 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
     double* ptrBias = static_cast<double*>(bufBias.ptr);
     double* ptrResult = static_cast<double*>(bufResult.ptr);
 
+    // 노드 리스트에는 그럼 어떤 값들이 저장되어 있는지에 대해 생각
+    // activation 의 결과값, activation node 를 node_list 에 추가했었음, unit 의 개수임!
     bool is_new_graph = node_list.empty();
-
     std::vector<double> state(units, 0.0);
+
+    // 활성화 함수 맵 설정
+    std::unordered_map<std::string, std::function<std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>>(
+        py::array_t<double>, std::vector<std::shared_ptr<Node>>)>> activations_map = {
+        {"relu", relu},
+        {"sigmoid", sigmoid},
+        {"tanh", tanh_activation},
+        {"leaky_relu", [alpha = 0.01](py::array_t<double> x, std::vector<std::shared_ptr<Node>> y) { return leaky_relu(x, alpha, y); }},
+        {"softmax", softmax}
+    };
+
+    if (activations_map.find(activation) == activations_map.end()) {
+        throw std::runtime_error("Unsupported activation function: " + activation);
+    }
 
     for (int t = 0; t < timesteps; ++t) {
         for (int u = 0; u < units; ++u) {
             std::shared_ptr<Node> input_sum_node;
             std::shared_ptr<Node> recurrent_sum_node;
             std::shared_ptr<Node> sum_node;
+            std::shared_ptr<Node> activation_node;  // 활성화 노드 정의 추가
 
             if (is_new_graph) {
                 input_sum_node = std::make_shared<Node>("add", 0.0, 0.0, 0.0, 0.0);
                 recurrent_sum_node = std::make_shared<Node>("add", 0.0, 0.0, 0.0, 0.0);
                 sum_node = std::make_shared<Node>("add", 0.0, 0.0, 0.0, 0.0);
             } else {
+                // 각 노드 접근, 정해진 형태임!
                 input_sum_node = node_list[t * units + u]->get_children()[0]->get_children()[0];
                 recurrent_sum_node = node_list[t * units + u]->get_children()[0]->get_children()[1];
                 sum_node = node_list[t * units + u]->get_children()[0];
@@ -64,7 +85,6 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 sum_node->output = 0.0;
             }
 
-            // 입력 벡터와 가중치 곱의 결과를 input_sum_node에 추가하고 누적
             for (int i = 0; i < input_dim; ++i) {
                 double input_value = ptrInput[t * input_dim + i];
                 double weight = ptrWeights[i * units + u];
@@ -82,7 +102,6 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 input_sum_node->output += product;
             }
 
-            // 이전 은닉 상태와 순환 가중치 곱의 결과를 recurrent_sum_node에 추가하고 누적
             for (int h = 0; h < units; ++h) {
                 double prev_state_value = state[h];
                 double recurrent_weight = ptrRecurrentWeights[h * units + u];
@@ -100,10 +119,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 recurrent_sum_node->output += product;
             }
 
-            // input_sum_node와 recurrent_sum_node를 sum_node에 연결하고 합산
             sum_node->output = input_sum_node->output + recurrent_sum_node->output;
-
-            // 바이어스를 sum_node에 추가
             double bias_value = ptrBias[u];
             std::shared_ptr<Node> bias_node;
             if (is_new_graph) {
@@ -116,28 +132,20 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             }
             sum_node->output += bias_value;
 
-            // 활성화 노드 생성 또는 업데이트
-            std::shared_ptr<Node> activation_node;
+            py::array_t<double> sum_node_output({1}, &sum_node->output);
+            std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> activation_result = activations_map[activation](sum_node_output, node_list);
+
+            // activation 노드의 생성
             if (is_new_graph) {
-                if (activation == "tanh") {
-                    activation_node = std::make_shared<Node>("tanh", sum_node->output, std::tanh(sum_node->output), 0);
-                } else if (activation == "sigmoid") {
-                    activation_node = std::make_shared<Node>("sigmoid", sum_node->output, 1.0 / (1.0 + std::exp(-sum_node->output)), 0);
-                }
-                activation_node->add_child(bias_node);
-                bias_node->add_parent(activation_node);
+                activation_node = activation_result.second.back();  // 새 노드 생성
                 node_list.push_back(activation_node);
             } else {
-                activation_node = node_list[t * units + u];
-                if (activation == "tanh") {
-                    activation_node->update(sum_node->output, 0.0, std::tanh(sum_node->output), 0);
-                } else if (activation == "sigmoid") {
-                    activation_node->update(sum_node->output, 0.0, 1.0 / (1.0 + std::exp(-sum_node->output)), 0);
-                }
+                activation_node = node_list[t * units + u];  // 기존 노드 업데이트
+                // 가중치 변화량이 딱히 필요한 것이 아니므로 input, weight, output, bias
+                activation_node->update(sum_node->output, 0.0, activation_result.first.at(0), 0);
             }
-
-            ptrResult[t * units + u] = activation_node->output;
-            state[u] = activation_node->output;
+            ptrResult[t * units + u] = activation_result.first.at(0);
+            state[u] = ptrResult[t * units + u];
         }
     }
 
