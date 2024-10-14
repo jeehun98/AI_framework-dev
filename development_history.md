@@ -636,3 +636,7 @@
                 - activation_node 가 루트노드가 되는게 맞겠다.
 
                 - 활성화 함수 연산, 노드 연산 가져오기
+
+                - 컴파일 명령어에 activation.cpp 파일의 추가, g++ -shared -m64 -I"C:\Users\owner\AppData\Local\Programs\Python\Python312\include" -I"C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include" -L"C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib" binding_recurrent.cpp ../activations/activations.cpp -o recurrent.pyd "C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib"   
+
+                - 
