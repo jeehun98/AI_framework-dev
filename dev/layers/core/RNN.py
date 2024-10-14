@@ -24,11 +24,23 @@ class RNN(Layer):
         self.state = None
 
     def build(self, input_shape):
+        """
+        rnn 의 가중치
+        W (커널) : 입력 데이터에서 은닉 상태로 전달되는 가중치 ( 입력 데이터의 차원, 은닉 유닛의 수 )
+        U (순환 커널) : 이전 은닉 상태에서 현재 은닉 상태로 전달되는 가중치 ( 은닉 유닛의 수, 은닉 유닛의 수 )
+        b (바이어스) : 각 은닉 상태의 바이어스 ( 은닉 유닛의 수 )
+
+        """
         input_dim = input_shape[-1]
         
         # 가중치 초기화
-        self.kernel = np.random.randn(input_dim, self.units)
-        self.recurrent_kernel = np.random.randn(self.units, self.units)
+
+        # 입력 데이터에 대한 가중치, (벡터화된 토큰의 입력 차원 수, 은닉 차원 수)
+        # 연산 이후 차원의 변화 생각을 해야해
+        self.weight = np.random.randn(input_dim, self.units)
+
+        # 순환 가중치 
+        self.recurrent_weight = np.random.randn(self.units, self.units)
         self.bias = np.zeros((self.units,)) if self.use_bias else None
 
         # 상태 초기화
@@ -40,8 +52,8 @@ class RNN(Layer):
         # C++로 구현한 RNN 레이어 호출
         output_sequence, node_list = recurrent.rnn_layer(
             inputs, 
-            self.kernel, 
-            self.recurrent_kernel, 
+            self.weight, 
+            self.recurrent_weight, 
             self.bias, 
             self.activation
         )

@@ -216,12 +216,11 @@ class Sequential(Node):
                             
                             # 계산 그래프 연결
                             # 여기서 previous_layer 에 대한 업데이트를 수행해야 할 지
-                            print("변화를 보자", layer.layer_name, "밑에", previous_layer.layer_name)
-                            print(len(layer.node_list), len(previous_layer.node_list))
+                            
                             self.node_list = self.link_node(layer, previous_layer)
                             # self.print_relationships(self.node_list[0])
                             self.print_summary(self.node_list[0])
-                            print(len(self.node_list), layer.layer_name)
+                            
                             
 
                         # loss_node_list 생성,

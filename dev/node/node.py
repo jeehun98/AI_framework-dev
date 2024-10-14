@@ -205,7 +205,6 @@ class Node:
 
 
         if current_layer.layer_name == "dense":
-            print("연결하니?")
             return self.link_dense_node(current_layer.node_list, previous_layer.node_list)        
         
         elif current_layer.layer_name == "activation":
@@ -228,9 +227,7 @@ class Node:
         """
         input_nodes = previous_layer.node_list  # Conv2D 또는 Pooling 레이어의 출력 노드
         flattened_nodes = current_layer.node_list  # Flatten 레이어의 1차원 노드
-
-        print(len(input_nodes), len(flattened_nodes), "길이 확인")
-
+        
         # Conv2D 또는 Pooling의 출력을 Flatten한 노드 수가 동일해야 함
         if len(flattened_nodes) != len(input_nodes):
             raise ValueError("Flatten 레이어의 출력 노드와 Conv2D 레이어의 노드 수가 일치하지 않습니다.")
