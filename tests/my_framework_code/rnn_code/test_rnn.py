@@ -5,6 +5,7 @@ sys.path.insert(0, 'C:/Users/owner/Desktop/AI_framework-dev')
 import numpy as np
 
 from dev.models.sequential import Sequential
+from dev.layers.core.Rnn import RNN
 
 np.random.seed(42)
 
@@ -19,3 +20,6 @@ y_train = np.random.random((samples, 1))
 
 model = Sequential()
 
+model.add(RNN(50, activation="sigmoid", input_shape=(timesteps, features)))
+
+model.fit(x_train, y_train, epochs=1)

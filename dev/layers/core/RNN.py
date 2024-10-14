@@ -14,6 +14,7 @@ class RNN(Layer):
         activation="tanh",
         recurrent_activation="sigmoid",
         use_bias=True,
+        input_shape = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -22,24 +23,21 @@ class RNN(Layer):
         self.recurrent_activation = recurrent_activation
         self.use_bias = use_bias
         self.state = None
+        self.input_shape = input_shape
 
     def build(self, input_shape):
         """
-        rnn 의 가중치
+        RNN의 가중치 초기화
         W (커널) : 입력 데이터에서 은닉 상태로 전달되는 가중치 ( 입력 데이터의 차원, 은닉 유닛의 수 )
         U (순환 커널) : 이전 은닉 상태에서 현재 은닉 상태로 전달되는 가중치 ( 은닉 유닛의 수, 은닉 유닛의 수 )
         b (바이어스) : 각 은닉 상태의 바이어스 ( 은닉 유닛의 수 )
-
         """
+        self.input_shape = input_shape
+
         input_dim = input_shape[-1]
         
         # 가중치 초기화
-
-        # 입력 데이터에 대한 가중치, (벡터화된 토큰의 입력 차원 수, 은닉 차원 수)
-        # 연산 이후 차원의 변화 생각을 해야해
         self.weight = np.random.randn(input_dim, self.units)
-
-        # 순환 가중치 
         self.recurrent_weight = np.random.randn(self.units, self.units)
         self.bias = np.zeros((self.units,)) if self.use_bias else None
 
@@ -47,19 +45,33 @@ class RNN(Layer):
         self.state = np.zeros((1, self.units))
 
     def call(self, inputs):
-        timesteps = inputs.shape[1]
+        """
+        RNN 레이어의 순전파 연산
+        """
+        # inputs의 shape: (batch_size, timesteps, input_dim)
+        batch_size, timesteps, input_dim = inputs.shape
 
-        # C++로 구현한 RNN 레이어 호출
-        output_sequence, node_list = recurrent.rnn_layer(
-            inputs, 
-            self.weight, 
-            self.recurrent_weight, 
-            self.bias, 
-            self.activation
-        )
+        # 결과를 담을 배열 초기화
+        outputs = np.zeros((batch_size, timesteps, self.units))
 
-        # 결과를 numpy array로 변환하여 반환
-        return output_sequence
+        # 노드 리스트 초기화 (첫 실행 시 빈 리스트 전달)
+        node_list = []
+
+        # 배치 단위로 RNN 수행
+        for b in range(batch_size):
+            # 각 배치의 순전파 수행
+            result, node_list = recurrent.rnn_layer(
+                inputs[b],                    # 각 배치의 입력 데이터 (timesteps, input_dim)
+                self.weight,                  # 가중치 (input_dim, units)
+                self.recurrent_weight,        # 순환 가중치 (units, units)
+                self.bias,                    # 바이어스 (units,)
+                self.activation,              # 활성화 함수
+                node_list                     # 노드 리스트 (첫 실행시 빈 리스트)
+            )
+            # 결과 저장
+            outputs[b] = np.array(result)
+
+        return outputs
 
     def get_config(self):
         config = {
