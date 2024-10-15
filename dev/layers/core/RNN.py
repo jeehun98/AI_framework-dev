@@ -45,8 +45,6 @@ class RNN(Layer):
         # 상태 초기화
         self.state = np.zeros((1, self.units))
 
-        print("가중치 shape 확인", self.weight.shape, self.bias.shape)
-
     def call(self, inputs):
         """
         RNN 레이어의 순전파 연산 (단일 입력 데이터)
@@ -76,7 +74,7 @@ class RNN(Layer):
 
         self.node_list = node_list
 
-        print("출력 확인", outputs, outputs.shape)
+        print("출력 노드 리스트의 개수, ", len(self.node_list))
 
         return outputs
 

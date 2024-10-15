@@ -206,9 +206,9 @@ class Sequential(Node):
                             # 이전 layer
                             previous_layer = self._layers[idx - 1]    
                             
-                            # 출력값 갱신, layer 의 call 연산이 호출된다.
-                            output = layer.call(output)
-                            
+                            # 출력값 갱신, layer 의 call 연산이 호출된다
+                            output = layer.call(output)                
+
                             # 첫번째 레이어의 경우
                             if idx == 0:
                                 self.node_list = layer.node_list
