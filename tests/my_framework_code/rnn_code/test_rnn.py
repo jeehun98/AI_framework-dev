@@ -20,6 +20,7 @@ y_train = np.random.random((samples, 1))
 
 model = Sequential()
 
-model.add(RNN(50, activation="sigmoid", input_shape=(timesteps, features)))
+# 은닉 유닛의 개수...
+model.add(RNN(1, activation="sigmoid", input_shape=(timesteps, features), use_bias=True))
 
 model.fit(x_train, y_train, epochs=1)

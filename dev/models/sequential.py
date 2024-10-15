@@ -212,6 +212,9 @@ class Sequential(Node):
                             # 첫번째 레이어의 경우
                             if idx == 0:
                                 self.node_list = layer.node_list
+                                self.print_relationships(self.node_list[0])
+                                print(len(self.node_list))
+                                # self.print_summary(self.node_list[0])
                                 continue
                             
                             # 계산 그래프 연결
@@ -219,7 +222,7 @@ class Sequential(Node):
                             
                             self.node_list = self.link_node(layer, previous_layer)
                             # self.print_relationships(self.node_list[0])
-                            self.print_summary(self.node_list[0])
+                            
                             
                             
 

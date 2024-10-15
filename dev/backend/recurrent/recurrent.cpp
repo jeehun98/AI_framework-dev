@@ -69,14 +69,13 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             std::shared_ptr<Node> input_sum_node;
             std::shared_ptr<Node> recurrent_sum_node;
             std::shared_ptr<Node> sum_node;
-            std::shared_ptr<Node> activation_node;  // 활성화 노드 정의 추가
+            std::shared_ptr<Node> activation_node;
 
             if (is_new_graph) {
                 input_sum_node = std::make_shared<Node>("add", 0.0, 0.0, 0.0, 0.0);
                 recurrent_sum_node = std::make_shared<Node>("add", 0.0, 0.0, 0.0, 0.0);
                 sum_node = std::make_shared<Node>("add", 0.0, 0.0, 0.0, 0.0);
             } else {
-                // 각 노드 접근, 정해진 형태임!
                 input_sum_node = node_list[t * units + u]->get_children()[0]->get_children()[0];
                 recurrent_sum_node = node_list[t * units + u]->get_children()[0]->get_children()[1];
                 sum_node = node_list[t * units + u]->get_children()[0];
@@ -120,6 +119,13 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             }
 
             sum_node->output = input_sum_node->output + recurrent_sum_node->output;
+
+            // sum_node에 input_sum_node와 recurrent_sum_node를 연결
+            sum_node->add_child(input_sum_node);
+            sum_node->add_child(recurrent_sum_node);
+            input_sum_node->add_parent(sum_node);
+            recurrent_sum_node->add_parent(sum_node);
+
             double bias_value = ptrBias[u];
             std::shared_ptr<Node> bias_node;
             if (is_new_graph) {
@@ -135,19 +141,31 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             py::array_t<double> sum_node_output({1}, &sum_node->output);
             std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> activation_result = activations_map[activation](sum_node_output, node_list);
 
-            // activation 노드의 생성
             if (is_new_graph) {
                 activation_node = activation_result.second.back();  // 새 노드 생성
                 node_list.push_back(activation_node);
+
+                auto leaf_nodes = activation_node->find_leaf_nodes();
+                for (auto& leaf : leaf_nodes) {
+                    leaf->add_child(bias_node);
+                    bias_node->add_parent(leaf);
+                }
             } else {
-                activation_node = node_list[t * units + u];  // 기존 노드 업데이트
-                // 가중치 변화량이 딱히 필요한 것이 아니므로 input, weight, output, bias
+                activation_node = node_list[t * units + u];
                 activation_node->update(sum_node->output, 0.0, activation_result.first.at(0), 0);
+
+                auto leaf_nodes = activation_node->find_leaf_nodes();
+                for (auto& leaf : leaf_nodes) {
+                    leaf->add_child(bias_node);
+                    bias_node->add_parent(leaf);
+                }
             }
+
             ptrResult[t * units + u] = activation_result.first.at(0);
             state[u] = ptrResult[t * units + u];
         }
     }
+
 
     return std::make_pair(result, node_list);
 }

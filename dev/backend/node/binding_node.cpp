@@ -23,6 +23,9 @@ PYBIND11_MODULE(node, m) {
         // 자식 및 부모 노드 반환, std::shared_ptr 처리를 위해 reference_internal 사용
         .def("get_children", &Node::get_children, py::return_value_policy::reference_internal)
         .def("get_parents", &Node::get_parents, py::return_value_policy::reference_internal)
+
+        // 리프 노드를 찾는 메서드 추가
+        .def("find_leaf_nodes", &Node::find_leaf_nodes, py::return_value_policy::reference_internal)
         
         // 그래디언트 계산 메서드
         .def("calculate_gradient", &Node::calculate_gradient)
