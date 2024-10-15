@@ -108,7 +108,7 @@ class Node:
         visited = set()
         root_node.backpropagate(upstream_gradient, visited)
         
-    # 새로운 laerning_rate 를 적용하는 방법
+    # 새로운 learning_rate 를 적용하는 방법
     def weight_update(self, root_node, batch_count, optimizer, learning_rate = 0.001):
         adjusted_lr = learning_rate / batch_count
         optimizer.update_all_weights(root_node, adjusted_lr)

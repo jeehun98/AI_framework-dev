@@ -2,6 +2,7 @@
 #include <pybind11/numpy.h>
 #include <vector>
 #include "../node/node.h"  // Node 클래스가 정의된 헤더 파일 포함
+#include "operations_matrix.h"
 
 namespace py = pybind11;
 
@@ -22,6 +23,10 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
     // 행과 열의 크기 확인
     if (bufA.shape[0] != bufB.shape[0] || bufA.shape[1] != bufB.shape[1]) {
         throw std::runtime_error("Input matrices must have the same shape");
+    }
+
+    if (!node_list.empty() && node_list.size() != bufA.shape[0] * bufB.shape[1]) {
+        throw std::runtime_error("Size of node_list does not match the result matrix dimensions.");
     }
 
     size_t rows = bufA.shape[0];
