@@ -639,4 +639,8 @@
 
                 - 컴파일 명령어에 activation.cpp 파일의 추가, g++ -shared -m64 -I"C:\Users\owner\AppData\Local\Programs\Python\Python312\include" -I"C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include" -L"C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib" binding_recurrent.cpp ../activations/activations.cpp -o recurrent.pyd "C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib"   
 
-                - 
+                - activation_node, bias_node 연결 수정
+
+                    - node.h 에 필요한 함수를 구현하자
+
+                - recurrent.cpp, node 연결 수정하기 - 완료 10/14

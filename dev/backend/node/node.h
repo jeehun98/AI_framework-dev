@@ -89,6 +89,13 @@ public:
         return result;
     }
 
+    // 리프 노드를 찾는 함수
+    std::vector<std::shared_ptr<Node>> find_leaf_nodes() {
+        std::vector<std::shared_ptr<Node>> leaf_nodes;
+        find_leaf_nodes_recursive(shared_from_this(), leaf_nodes);
+        return leaf_nodes;
+    }
+
     // 그래디언트 계산
     std::pair<double, double> calculate_gradient(double upstream_gradient = 1.0) {
         auto it = operations().find(operation);
@@ -199,6 +206,11 @@ public:
             ops["flatten"] = [](double input, double weight, double out, double upstream) {
                 return std::make_pair(upstream, 0.0); // Flatten은 단순히 일대일 전달이므로 그래디언트는 그대로 전달
             };
+
+            ops["bias"] = [](double input, double weight, double out, double upstream) {
+            // 바이어스는 입력값을 그대로 전달하므로, 그래디언트는 상수 1입니다.
+            return std::make_pair(upstream, 0.0); // 바이어스의 가중치는 갱신하지 않음
+            };
         }
         return ops;
     }
@@ -219,6 +231,17 @@ public:
             available_operations.pop_back();
         }
         return available_operations;
+    }
+
+    // 리프 노드를 재귀적으로 찾는 헬퍼 함수
+    void find_leaf_nodes_recursive(std::shared_ptr<Node> node, std::vector<std::shared_ptr<Node>>& leaf_nodes) {
+        if (node->get_children().empty()) {
+            leaf_nodes.push_back(node);
+        } else {
+            for (const auto& child : node->get_children()) {
+                find_leaf_nodes_recursive(child, leaf_nodes);
+            }
+        }
     }
 };
 

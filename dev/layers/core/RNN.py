@@ -14,7 +14,7 @@ class RNN(Layer):
         activation="tanh",
         recurrent_activation="sigmoid",
         use_bias=True,
-        input_shape = None,
+        input_shape=None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -24,6 +24,7 @@ class RNN(Layer):
         self.use_bias = use_bias
         self.state = None
         self.input_shape = input_shape
+        self.node_list = []
 
     def build(self, input_shape):
         """
@@ -44,32 +45,38 @@ class RNN(Layer):
         # 상태 초기화
         self.state = np.zeros((1, self.units))
 
+        print("가중치 shape 확인", self.weight.shape, self.bias.shape)
+
     def call(self, inputs):
         """
-        RNN 레이어의 순전파 연산
+        RNN 레이어의 순전파 연산 (단일 입력 데이터)
         """
-        # inputs의 shape: (batch_size, timesteps, input_dim)
-        batch_size, timesteps, input_dim = inputs.shape
+        # inputs의 shape: (timesteps, input_dim)
+        timesteps, input_dim = inputs.shape
 
         # 결과를 담을 배열 초기화
-        outputs = np.zeros((batch_size, timesteps, self.units))
+        outputs = np.zeros((timesteps, self.units))
 
         # 노드 리스트 초기화 (첫 실행 시 빈 리스트 전달)
         node_list = []
 
-        # 배치 단위로 RNN 수행
-        for b in range(batch_size):
-            # 각 배치의 순전파 수행
-            result, node_list = recurrent.rnn_layer(
-                inputs[b],                    # 각 배치의 입력 데이터 (timesteps, input_dim)
-                self.weight,                  # 가중치 (input_dim, units)
-                self.recurrent_weight,        # 순환 가중치 (units, units)
-                self.bias,                    # 바이어스 (units,)
-                self.activation,              # 활성화 함수
-                node_list                     # 노드 리스트 (첫 실행시 빈 리스트)
-            )
-            # 결과 저장
-            outputs[b] = np.array(result)
+        # 단일 입력 데이터에 대해 RNN 수행
+        result, node_list = recurrent.rnn_layer(
+            inputs,                   # 입력 데이터 (timesteps, input_dim)
+            self.weight,              # 가중치 (input_dim, units)
+            self.recurrent_weight,    # 순환 가중치 (units, units)
+            self.bias,                # 바이어스 (units,)
+            self.activation,          # 활성화 함수
+            node_list                 # 노드 리스트 (첫 실행시 빈 리스트)
+        )
+
+        # 결과를 numpy array로 변환하여 반환
+        # 출력의 형태 (timesteps, units)
+        outputs = np.array(result)
+
+        self.node_list = node_list
+
+        print("출력 확인", outputs, outputs.shape)
 
         return outputs
 
