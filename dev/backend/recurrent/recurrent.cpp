@@ -68,7 +68,6 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 {input_dim * sizeof(double), sizeof(double)},
                 ptrInput + t * input_dim
             );
-            std::cout << node_list.size() << "check" << std::endl;
 
             // 입력 가중치 간 연산 수행
             auto input_multiply_result = matrix_multiply(input_at_t, weights, node_list);
@@ -76,9 +75,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             // 직접 참조
             auto& input_multiply = input_multiply_result.first;
 
+            // 길이는 unit 의 개수와 동일
             auto& input_multiply_node_list = input_multiply_result.second;
-
-            std::cout << "[Time " << t << "] After input multiplication, node_list size: " << input_multiply_node_list.size() << std::endl;
 
             // Recurrent multiplication
             py::array_t<double> state_arr = py::array_t<double>(
@@ -92,9 +90,8 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
 
             auto& recurrent_multiply = recurrent_multiply_result.first;
             
+            // 길이는 unit 의 개수와 동일, 
             auto& recurrent_multiply_node_list = recurrent_multiply_result.second;
-            
-            std::cout << "[Time " << t << "] After recurrent multiplication, node_list size: " << recurrent_multiply_node_list.size() << std::endl;
 
             // Sum with bias
             if (input_multiply.ndim() == 1) {
@@ -108,9 +105,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             auto sum_with_bias_result = matrix_add(input_multiply, recurrent_multiply, node_list);
             
             auto& sum_with_bias = sum_with_bias_result.first;
-            
             auto& state_sum_node_list = sum_with_bias_result.second;
-            std::cout << "[Time " << t << "] After summing with bias, node_list size: " << state_sum_node_list.size() << std::endl;
 
             // Final output with bias
             if (sum_with_bias.ndim() == 1) {
@@ -123,17 +118,42 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             auto output_with_bias_result = matrix_add(sum_with_bias, bias, node_list);
             auto& output_with_bias = output_with_bias_result.first;
             auto& output_bias_node_list = output_with_bias_result.second;
-            std::cout << "[Time " << t << "] After output with bias, node_list size: " << output_bias_node_list.size() << std::endl;
 
             auto activation_result = activations_map[activation](output_with_bias, node_list);
 
+             // 연결하는 로직 구현하기
+            // 각 연산 노드 간의 연결 설정
+            for (size_t i = 0; i < units; ++i) {
+                // 'state_sum_node_list'에서 현재 유닛의 노드 가져오기
+                auto state_sum_node = state_sum_node_list[i];
+                
+                // 'input_multiply_node_list'에서 해당 유닛의 노드 가져오기
+                auto input_multiply_node = input_multiply_node_list[i];
+                // 'recurrent_multiply_node_list'에서 해당 유닛의 노드 가져오기
+                auto recurrent_multiply_node = recurrent_multiply_node_list[i];
+
+                // 'state_sum_node'에 'input_multiply_node'와 'recurrent_multiply_node' 추가
+                state_sum_node->add_child(input_multiply_node);
+                input_multiply_node->add_parent(state_sum_node);
+
+                state_sum_node->add_child(recurrent_multiply_node);
+                recurrent_multiply_node->add_parent(state_sum_node);
+
+                auto output_bias_node = output_bias_node_list[i];
+
+                output_bias_node->add_child(state_sum_node);
+                state_sum_node->add_parent(output_bias_node);
+            }
+
             for (int u = 0; u < units; ++u) {
-                std::cout << "call" << std::endl;
                 ptrResult[t * units + u] = activation_result.first.at(u);
                 state[u] = activation_result.first.at(u);
                 //node_list.insert(node_list.end(), activation_result.second.begin(), activation_result.second.end());
             }
-
+            
+            if (t == timesteps - 1){
+                node_list = output_bias_node_list;
+            }
         }
 
         return std::make_pair(result, node_list);

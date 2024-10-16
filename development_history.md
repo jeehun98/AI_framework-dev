@@ -673,6 +673,10 @@
 
                 - bias 의 값은 input_multiply, recurrent_multiply 의 합에 추가로 더해짐
 
+                    - operations_matrix 의 add 부분 수정하기
+
+                        - 여길 수정하진 않고 recurrent.cpp 부분에서 노드 연결 부분 구현했음 - 10/16
+
             - 벡터 투 시퀀스 개념으로 기본 모델 구현, 반한되는 node_list 는 마지막 타임 스텝에 대한 연산 결과로 활성화 함수의 연산 결과, activation_node_list 임
 
 # 계산 그래프에 대해 상기
