@@ -58,6 +58,8 @@ class RNN(Layer):
         # 노드 리스트 초기화 (첫 실행 시 빈 리스트 전달)
         node_list = []
 
+        print(inputs.shape, self.weight.shape, self.recurrent_weight.shape)
+
         # 단일 입력 데이터에 대해 RNN 수행
         result, node_list = recurrent.rnn_layer(
             inputs,                   # 입력 데이터 (timesteps, input_dim)

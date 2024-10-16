@@ -1,4 +1,3 @@
-// operations_matrix.h
 #ifndef OPERATIONS_MATRIX_H
 #define OPERATIONS_MATRIX_H
 
@@ -13,13 +12,13 @@ namespace py = pybind11;
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
     py::array_t<double> A, 
     py::array_t<double> B,
-    std::vector<std::shared_ptr<Node>> node_list = {}
+    std::vector<std::shared_ptr<Node>> node_list = {} // 기본 인자 여기에만 지정
 );
 
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multiply(
     py::array_t<double> A, 
     py::array_t<double> B, 
-    std::vector<std::shared_ptr<Node>> node_list = {}
+    std::vector<std::shared_ptr<Node>> node_list = {} // 기본 인자 여기에만 지정
 );
 
 #endif // OPERATIONS_MATRIX_H
