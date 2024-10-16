@@ -61,47 +61,72 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             throw std::runtime_error("Unsupported activation function: " + activation);
         }
 
-        // 입력 데이터의 각 타임 스텝, 길이 별로 반복 수행
+        // Loop through each timestep
         for (int t = 0; t < timesteps; ++t) {
-            // input_at_t 에 대한 데이터의 이해
-            // input 배열에서 t 번째 타임스텝의 데이터를 배열로 생성
-            // 배열의 모양을 지정하는 부분, (1, input_dim) - 행 벡터
-            // input 의 t 번째 타임스텝 데이터를 가리키는 시작 주소 지정
-            // 메모리 주소에 대한 연산
-            // 미리 지정된 크기
-            py::array_t<double> input_at_t({1, input_dim}, ptrInput + t * input_dim);
+            py::array_t<double> input_at_t = py::array_t<double>(
+                {1, input_dim},
+                {input_dim * sizeof(double), sizeof(double)},
+                ptrInput + t * input_dim
+            );
+            std::cout << node_list.size() << "check" << std::endl;
+
+
 
             // Matrix multiplication for input
-            // 입력 데이터의 연산
-            // 초기의 경우 비어있는 node_list 가 전달되지만,
-            // 계산 그래프가 존재하는 경우 node_list 를 어떻게 전달해줄지에 대한 고민
-            // 적절한 연산으로 node_list 의 인덱스에 접근해야 한다.
             auto input_multiply_result = matrix_multiply(input_at_t, weights, node_list);
             auto& input_multiply = input_multiply_result.first;
-            node_list = input_multiply_result.second;
+            // node_list = input_multiply_result.second;
+            std::cout << "[Time " << t << "] After input multiplication, node_list size: " << node_list.size() << std::endl;
 
-            // Update for recurrent multiply
-            py::array_t<double> state_arr({1, units}, state.data());
+            // Recurrent multiplication
+            py::array_t<double> state_arr = py::array_t<double>(
+                {1, units},
+                {units * sizeof(double), sizeof(double)},
+                state.data()
+            );
+
+            // 여기서 오류
+            std::cout << "start check" << state_arr.size() << "and" << recurrent_weights.size() << std::endl;
             auto recurrent_multiply_result = matrix_multiply(state_arr, recurrent_weights, node_list);
             auto& recurrent_multiply = recurrent_multiply_result.first;
-            node_list = recurrent_multiply_result.second;
+            // node_list = recurrent_multiply_result.second;
+            std::cout << "[Time " << t << "] After recurrent multiplication, node_list size: " << node_list.size() << std::endl;
 
-            // Update for sum with bias
+            // Sum with bias
+            if (input_multiply.ndim() == 1) {
+                input_multiply = input_multiply.reshape(std::vector<py::ssize_t>{1, input_multiply.size()});
+            }
+            if (recurrent_multiply.ndim() == 1) {
+                recurrent_multiply = recurrent_multiply.reshape(std::vector<py::ssize_t>{1, recurrent_multiply.size()});
+            }
+
             auto sum_with_bias_result = matrix_add(input_multiply, recurrent_multiply, node_list);
             auto& sum_with_bias = sum_with_bias_result.first;
-            node_list = sum_with_bias_result.second;
+            //node_list = sum_with_bias_result.second;
+            std::cout << "[Time " << t << "] After summing with bias, node_list size: " << node_list.size() << std::endl;
 
-            // Update for output with bias
+            // Final output with bias
+            if (sum_with_bias.ndim() == 1) {
+                sum_with_bias = sum_with_bias.reshape(std::vector<py::ssize_t>{1, sum_with_bias.size()});
+            }
+            if (bias.ndim() == 1) {
+                bias = bias.reshape(std::vector<py::ssize_t>{1, bias.size()});
+            }
+
             auto output_with_bias_result = matrix_add(sum_with_bias, bias, node_list);
             auto& output_with_bias = output_with_bias_result.first;
-            node_list = output_with_bias_result.second;
+            //node_list = output_with_bias_result.second;
+            std::cout << "[Time " << t << "] After output with bias, node_list size: " << node_list.size() << std::endl;
 
             auto activation_result = activations_map[activation](output_with_bias, node_list);
 
             for (int u = 0; u < units; ++u) {
+                std::cout << "call" << std::endl;
                 ptrResult[t * units + u] = activation_result.first.at(u);
                 state[u] = activation_result.first.at(u);
+                node_list.insert(node_list.end(), activation_result.second.begin(), activation_result.second.end());
             }
+
         }
 
         return std::make_pair(result, node_list);

@@ -9,7 +9,7 @@ namespace py = pybind11;
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
     py::array_t<double> A, 
     py::array_t<double> B,
-    std::vector<std::shared_ptr<Node>> node_list = {}
+    std::vector<std::shared_ptr<Node>> node_list
 ) {
     // Numpy 배열의 버퍼 정보 가져오기
     py::buffer_info bufA = A.request(); 
@@ -17,7 +17,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
 
     // 입력 배열이 2D인지 확인 (행 크기 x 열 크기)
     if (bufA.ndim != 2 || bufB.ndim != 2) {
-        throw std::runtime_error("Input should be 2-D NumPy arrays");
+        throw std::runtime_error("Input should be 2-D NumPy arrays add");
     }
 
     // 행과 열의 크기 확인
@@ -80,7 +80,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_add(
 std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> matrix_multiply(
     py::array_t<double> A, 
     py::array_t<double> B, 
-    std::vector<std::shared_ptr<Node>> node_list = {}
+    std::vector<std::shared_ptr<Node>> node_list
 ) {
     py::buffer_info bufA = A.request(), bufB = B.request();
 
