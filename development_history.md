@@ -665,6 +665,14 @@
 
             - 각 타임 스텝에 대한 반복, 동일한 계산 그래프를 사용하는 것이 아님, 계산 그래프가 계속 이어져서 생성되어야 함
 
+                - 각 node_list 를 연결해줘야하기 때문에 각 상태 이후 node_list를 다른 이름으로 저장하고 있음
+
+                - is_new_graph 조건문을 없애는 것부터 시작, 구현 완료 후 기존 모델들의 수정을 시행할거야
+
+                - input_multiply_node_list, recurrent_multiply_node_list 두 노드 리스트의 길이는 동일
+
+                - bias 의 값은 input_multiply, recurrent_multiply 의 합에 추가로 더해짐
+
             - 벡터 투 시퀀스 개념으로 기본 모델 구현, 반한되는 node_list 는 마지막 타임 스텝에 대한 연산 결과로 활성화 함수의 연산 결과, activation_node_list 임
 
 # 계산 그래프에 대해 상기
