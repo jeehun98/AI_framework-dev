@@ -123,14 +123,20 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
 
              // 연결하는 로직 구현하기
             // 각 연산 노드 간의 연결 설정
-            for (size_t i = 0; i < units; ++i) {
-                // 'state_sum_node_list'에서 현재 유닛의 노드 가져오기
-                auto state_sum_node = state_sum_node_list[i];
+
+            for (int u = 0; u < units; ++u) {
+                ptrResult[t * units + u] = activation_result.first.at(u);
+                state[u] = activation_result.first.at(u);
+                auto& activation_node = activation_result.second[u];
+
+                auto activation_leaf_node = activation_node->find_leaf_nodes()[0];
+
+                auto state_sum_node = state_sum_node_list[u];
                 
                 // 'input_multiply_node_list'에서 해당 유닛의 노드 가져오기
-                auto input_multiply_node = input_multiply_node_list[i];
+                auto input_multiply_node = input_multiply_node_list[u];
                 // 'recurrent_multiply_node_list'에서 해당 유닛의 노드 가져오기
-                auto recurrent_multiply_node = recurrent_multiply_node_list[i];
+                auto recurrent_multiply_node = recurrent_multiply_node_list[u];
 
                 // 'state_sum_node'에 'input_multiply_node'와 'recurrent_multiply_node' 추가
                 state_sum_node->add_child(input_multiply_node);
@@ -139,20 +145,17 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 state_sum_node->add_child(recurrent_multiply_node);
                 recurrent_multiply_node->add_parent(state_sum_node);
 
-                auto output_bias_node = output_bias_node_list[i];
+                auto output_bias_node = output_bias_node_list[u];
 
                 output_bias_node->add_child(state_sum_node);
                 state_sum_node->add_parent(output_bias_node);
-            }
 
-            for (int u = 0; u < units; ++u) {
-                ptrResult[t * units + u] = activation_result.first.at(u);
-                state[u] = activation_result.first.at(u);
-                //node_list.insert(node_list.end(), activation_result.second.begin(), activation_result.second.end());
-            }
-            
-            if (t == timesteps - 1){
-                node_list = output_bias_node_list;
+                output_bias_node->add_parent(activation_leaf_node);
+                activation_leaf_node->add_child(output_bias_node);
+
+                if (t == timesteps - 1){
+                    node_list.push_back(activation_node);
+                }
             }
         }
 
