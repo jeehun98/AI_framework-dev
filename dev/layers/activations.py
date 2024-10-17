@@ -22,7 +22,7 @@ class Activation(Layer):
 
     # call, 연산 수행시 실제 메서드가 위치하는 곳에서 연산 수행
     def call(self, inputs):
-        output, activation_node_list = self.activation(inputs, self.node_list)
+        output, activation_node_list = self.activation(inputs)
         self.node_list = activation_node_list
         # dense 와의 연결 후 계산을 위해서 괄호로 연결해주기
         output = np.array([output])

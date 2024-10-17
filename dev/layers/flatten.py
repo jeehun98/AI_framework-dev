@@ -50,7 +50,7 @@ class Flatten(Layer):
             (1, p*) 형태로 펼친 데이터. 단일 배치의 행 벡터 형태로 출력.
         """
         # 입력 데이터를 1차원으로 변환
-        flattened_data, self.node_list = flatten.flatten(inputs, self.node_list)
+        flattened_data, self.node_list = flatten.flatten(inputs)
 
         # 출력 차원 설정
         self.output_shape = flattened_data.shape

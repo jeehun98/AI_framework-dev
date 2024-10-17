@@ -13,7 +13,7 @@ class MSE():
             "name": self.name,
         }
 
-    def __call__(self, y_true, y_pred, loss_node_list):
+    def __call__(self, y_true, y_pred, loss_node_list = []):
         """
         MSE 클래스를 호출할 때 C++의 mean_squared_error 함수를 호출하도록 구성합니다.
         """

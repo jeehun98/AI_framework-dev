@@ -89,7 +89,7 @@ class Conv2D(Layer):
         
         # conv2d 함수 호출
         # node_list 는 각 성분을 이루는 요소들임, 개많아
-        x, self.node_list = convolution.conv2d(input_data, self.weights, stride, self.padding, self.node_list)
+        x, self.node_list = convolution.conv2d(input_data, self.weights, stride, self.padding)
 
         self.output_shape = x.shape
 

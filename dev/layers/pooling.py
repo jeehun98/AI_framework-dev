@@ -57,7 +57,7 @@ class Pooling(Layer):
     def call(self, input_data):
         # 파라미터들을 전달하기
         
-        x, self.node_list = pooling.pooling2d(input_data, self.pool_size[0], self.pool_size[1], self.strides, self.pool_mode, self.node_list)
+        x, self.node_list = pooling.pooling2d(input_data, self.pool_size[0], self.pool_size[1], self.strides, self.pool_mode)
         
         self.output_shape = x.shape
         return x
