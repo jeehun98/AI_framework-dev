@@ -683,7 +683,11 @@
 
     - RNN layer 에 대해서 출력 shape 를 계산, build 단계에서 output_shape 를 지정해줬음
 
+# 배치 학습 내용 수정
 
+    - stochastic 의 경우 오류 발생 - 10/17
+
+        -  
 
 # 계산 그래프에 대해 상기
 

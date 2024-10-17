@@ -163,9 +163,9 @@ class Sequential(Node):
         batch_size : 배치 크기, -1일 경우 전체 데이터를 하나의 배치로 사용
         """
 
-        # 배치 사이즈가 주어지지 않았을 때, 전체 데이터를 하나의 배치로 사용
+        # 배치 입력이 없는 경우의 처리를 어떻게
         if batch_size == -1 or batch_size < x.shape[0]:
-            batch_size = 1
+            batch_size = x.shape[0]
         elif batch_size > x.shape[0]:
             batch_size = x.shape[0]
 
