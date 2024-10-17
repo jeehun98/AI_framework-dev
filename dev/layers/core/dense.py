@@ -62,7 +62,7 @@ class Dense(Layer, Node):
         Parameters:
         input_shape - 해당 레이어에 입력되는 데이터셋의 형태
         """
-        # input_shape가 (784,)와 같은 경우라면, 실제 필요한 것은 input_shape[0]
+        # input_shape 가 직접 입력되는 경우 (n,1) 과 같은 형태, n 이 차원임
         
         input_dim = input_shape[1]
         self.input_shape = input_shape
@@ -70,7 +70,7 @@ class Dense(Layer, Node):
         # 가중치 생성
         self.weights = np.random.randn(input_dim, self.units)
         self.bias = np.random.rand()
-
+        
         super().build()
 
 
@@ -85,6 +85,7 @@ class Dense(Layer, Node):
         result (배치 단위 출력)
 
         """
+
         root_node_list = self.node_list
         
         # 개별 데이터의 행렬 곱셈 수행

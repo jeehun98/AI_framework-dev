@@ -61,6 +61,8 @@ class Sequential(Node):
             # 이전 layer 의 출력 차원 가져오기
             if hasattr(previous_layer, 'output_shape') and (previous_layer.output_shape != None):
                 input_shape = previous_layer.output_shape
+                
+
                 layer.build(input_shape)
             
             # layer 에 input_shape 값이 이미 있을 경우 
@@ -162,7 +164,9 @@ class Sequential(Node):
         """
 
         # 배치 사이즈가 주어지지 않았을 때, 전체 데이터를 하나의 배치로 사용
-        if batch_size == -1 or batch_size > x.shape[0]:
+        if batch_size == -1 or batch_size < x.shape[0]:
+            batch_size = 1
+        elif batch_size > x.shape[0]:
             batch_size = x.shape[0]
 
         # 배치 데이터의 개수
@@ -212,7 +216,7 @@ class Sequential(Node):
                             # 첫번째 레이어의 경우
                             if idx == 0:
                                 self.node_list = layer.node_list
-                                self.print_relationships(self.node_list[0])
+                                # self.print_relationships(self.node_list[0])
                                 print(len(self.node_list))
                                 # self.print_summary(self.node_list[0])
                                 continue
@@ -222,8 +226,6 @@ class Sequential(Node):
                             
                             self.node_list = self.link_node(layer, previous_layer)
                             # self.print_relationships(self.node_list[0])
-                            
-                            
                             
 
                         # loss_node_list 생성,
