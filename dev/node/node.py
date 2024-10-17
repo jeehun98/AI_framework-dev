@@ -183,8 +183,6 @@ class Node:
         for parent_node in parent_nodes:
             leaf_nodes = self.find_child_node(parent_node)
 
-            print(len(leaf_nodes), "보자 보자")
-
             if len(leaf_nodes) != len(child_nodes):
                 raise ValueError("Mismatch in number of leaf nodes and child nodes.")
 
@@ -204,8 +202,6 @@ class Node:
         parent_nodes : 해당 노드의 리프 노드와
         child_nodes : 해당 노드의 루트 노드와 연결해야 함
         """
-
-        print(len(current_layer.node_list), len(previous_layer.node_list), "확인")
 
         if current_layer.layer_name == "dense":
             return self.link_dense_node(current_layer.node_list, previous_layer.node_list)        

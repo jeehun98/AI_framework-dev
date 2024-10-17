@@ -165,7 +165,7 @@ class Sequential(Node):
 
         # 배치 입력이 없는 경우의 처리를 어떻게
         if batch_size == -1 or batch_size < x.shape[0]:
-            batch_size = x.shape[0]
+            batch_size = 1
         elif batch_size > x.shape[0]:
             batch_size = x.shape[0]
 
@@ -217,7 +217,7 @@ class Sequential(Node):
                             if idx == 0:
                                 self.node_list = layer.node_list
                                 # self.print_relationships(self.node_list[0])
-                                print(len(self.node_list))
+                                
                                 # self.print_summary(self.node_list[0])
                                 continue
                             
@@ -300,7 +300,7 @@ class Sequential(Node):
     def compute_loss_and_metrics(self, y_pred, y_true):
         # 매 계산 마다 self.loss_node_list 가 갱신,
         
-        self.loss_value, self.loss_node_list = self.loss(y_pred, y_true, self.loss_node_list)
+        self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
         self.metric_value = self.metric(y_pred, y_true)
 
         return self.loss_value

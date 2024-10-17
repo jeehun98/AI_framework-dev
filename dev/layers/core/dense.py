@@ -89,7 +89,7 @@ class Dense(Layer, Node):
         root_node_list = self.node_list
         
         # 개별 데이터의 행렬 곱셈 수행
-        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights, self.mul_mat_node_list)
+        x, mul_mat_node_list = operations_matrix.matrix_multiply(input_data, self.weights)
 
         root_node_list = mul_mat_node_list
         
@@ -100,7 +100,7 @@ class Dense(Layer, Node):
         if self.bias is not None:
             bias_reshaped = np.tile(self.bias, (1, x.shape[1]))
             
-            x, add_node_list = operations_matrix.matrix_add(x, bias_reshaped, self.add_bias_node_list)
+            x, add_node_list = operations_matrix.matrix_add(x, bias_reshaped)
 
             self.add_bias_node_list = add_node_list
             # add_node_list 노드들을 mul_mat_node_list에 연결
@@ -118,7 +118,7 @@ class Dense(Layer, Node):
 
         if self.activation is not None:
 
-            x, act_node_list = self.activation(x, self.act_node_list)
+            x, act_node_list = self.activation(x)
 
             self.act_node_list = act_node_list
 

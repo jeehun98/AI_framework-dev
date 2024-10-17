@@ -67,7 +67,6 @@ class RNN(Layer):
             self.recurrent_weight,    # 순환 가중치 (units, units)
             self.bias,                # 바이어스 (units,)
             self.activation,          # 활성화 함수
-            node_list                 # 노드 리스트 (첫 실행시 빈 리스트)
         )
 
         # 결과를 numpy array로 변환하여 반환
