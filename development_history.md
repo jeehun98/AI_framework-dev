@@ -677,7 +677,13 @@
 
                         - 여길 수정하진 않고 recurrent.cpp 부분에서 노드 연결 부분 구현했음 - 10/16
 
-            - 벡터 투 시퀀스 개념으로 기본 모델 구현, 반한되는 node_list 는 마지막 타임 스텝에 대한 연산 결과로 활성화 함수의 연산 결과, activation_node_list 임
+            - 벡터 투 시퀀스 개념으로 기본 모델 구현, 반한되는 node_list 는 마지막 타임 스텝에 대한 연산 결과로 활성화 함수의 연산 결과, activation_node_list 임 
+
+                - 마지막 타임 스텝만 출력 완료 - 10/17
+
+    - RNN layer 에 대해서 출력 shape 를 계산, build 단계에서 output_shape 를 지정해줬음
+
+
 
 # 계산 그래프에 대해 상기
 

@@ -6,6 +6,7 @@ import numpy as np
 
 from dev.models.sequential import Sequential
 from dev.layers.core.Rnn import RNN
+from dev.layers.core.dense import Dense
 
 np.random.seed(42)
 
@@ -22,6 +23,7 @@ model = Sequential()
 
 # 은닉 유닛의 개수...
 model.add(RNN(7, activation="sigmoid", input_shape=(timesteps, features), use_bias=True))
+model.add(Dense(1))
 
 model.fit(x_train, y_train, epochs=1)
 print("완료")

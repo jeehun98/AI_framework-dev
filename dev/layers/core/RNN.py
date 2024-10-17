@@ -45,6 +45,8 @@ class RNN(Layer):
         # 상태 초기화
         self.state = np.zeros((1, self.units))
 
+        self.output_shape = (1, self.units)
+
     def call(self, inputs):
         """
         RNN 레이어의 순전파 연산 (단일 입력 데이터)
@@ -57,8 +59,6 @@ class RNN(Layer):
 
         # 노드 리스트 초기화 (첫 실행 시 빈 리스트 전달)
         node_list = []
-
-        print(inputs.shape, self.weight.shape, self.recurrent_weight.shape)
 
         # 단일 입력 데이터에 대해 RNN 수행
         result, node_list = recurrent.rnn_layer(
@@ -75,8 +75,6 @@ class RNN(Layer):
         outputs = np.array(result)
 
         self.node_list = node_list
-
-        print("출력 노드 리스트의 개수, ", len(self.node_list))
 
         return outputs
 
