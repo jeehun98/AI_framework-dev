@@ -86,12 +86,12 @@ class Node:
 
         # 순환 참조 방지
         if node in visited:
-            #print(' ' * indent + f'(Already visited node: {node.operation})')
+            print(' ' * indent + f'(Already visited node: {node.operation})')
             return
         visited.add(node)
 
         # 현재 노드 정보 출력
-        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value:.2f}, Grad Total: {node.grad_weight_total:.2f}, node_value: {node.output:.2f}")
+        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value:.2f}, Grad Total: {node.grad_weight_total:.2f}, node_value: {node.output:.4f}")
 
         # 자식 노드 출력
         children = node.get_children()
