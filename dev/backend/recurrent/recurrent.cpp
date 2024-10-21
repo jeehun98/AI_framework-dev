@@ -61,7 +61,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             throw std::runtime_error("Unsupported activation function: " + activation);
         }
 
-        // 각 유닛별 이전 타임스텝의 activation 노드를 저장하는 리스트
+        // 각 유닛별 이전 타임스텝의 activation unit을 저장하는 리스트
         std::vector<std::shared_ptr<Node>> previous_activation_nodes(units);
 
         for (int t = 0; t < timesteps; ++t) {
@@ -87,35 +87,6 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             auto& recurrent_multiply = recurrent_multiply_result.first;
             auto& recurrent_multiply_node_list = recurrent_multiply_result.second;
 
-            std::cout << t << "check" << std::endl;
-            std::cout << "recurrent_multiply_node_list size: " << recurrent_multiply_node_list.size() << std::endl;
-            std::cout << "recurrent_multiply_node_list_leaf_node size: " << recurrent_multiply_node_list[0]->find_leaf_nodes().size() << std::endl;
-            
-            // 순환 구조 연결: 현재 타임스텝에서 이전 타임스텝의 activation_nodes와 연결
-            // 이것만 잘 수정하면 돼 
-            if (t > 0) {  // 첫 번째 타임스텝 제외
-                for (int u = 0; u < units; u++) {
-                    // 현재 유닛의 recurrent_multiply_node에서 리프 노드를 가져옴
-                    auto recurrent_leaf_nodes = recurrent_multiply_node_list[u]->find_leaf_nodes();
-
-                    // 리프 노드의 수와 previous_activation_nodes의 크기를 비교하여 반복
-                    int num_leaf_nodes = recurrent_leaf_nodes.size();
-                    for (int j = 0; j < num_leaf_nodes && j < units; j++) {
-
-                        // 출력 확인
-                        std::cout << t << "check" << std::endl;
-                        previous_activation_nodes[j]->print_tree(previous_activation_nodes[j]);
-                        std::cout << t << "check" << std::endl;
-
-                        // 이전 타임스텝의 activation_nodes[j]를 현재 타임스텝의 리프 노드들과 연결
-                        recurrent_leaf_nodes[j]->add_child(previous_activation_nodes[j]);
-                        previous_activation_nodes[j]->add_parent(recurrent_leaf_nodes[j]);
-                    }
-                }
-            }
-
-
-
             if (input_multiply.ndim() == 1) {
                 input_multiply = input_multiply.reshape(std::vector<py::ssize_t>{1, input_multiply.size()});
             }
@@ -140,6 +111,34 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
 
             auto activation_result = activations_map[activation](output_with_bias, node_list);
 
+            // 순환 구조 연결: 현재 타임스텝에서 이전 타임스텝의 activation_nodes와 연결
+            // 이것만 잘 수정하면 돼 
+            if (t > 0) {  // 첫 번째 타임스텝 제외
+                for (int u = 0; u < units; u++) {
+                    // 각 은닉 유닛, recurrent_multiply_node에서 리프 노드를 가져옴
+                    auto recurrent_leaf_nodes = recurrent_multiply_node_list[u]->find_leaf_nodes();
+
+                    // 리프 노드의 수와 previous_activation_nodes의 크기를 비교하여 반복
+                    int num_leaf_nodes = recurrent_leaf_nodes.size();
+
+                    if (num_leaf_nodes != units) {
+                        std::cerr << "Error: Leaf nodes size mismatch. Expected: " << units << ", Found: " << num_leaf_nodes << std::endl;
+                        throw std::runtime_error("Leaf nodes size mismatch.");
+                    }
+
+
+                    for (int j = 0; j < units; j++) {
+
+                        // 이전 타임스텝의 activation_nodes[j]를 현재 타임스텝의 리프 노드들과 연결
+                        recurrent_leaf_nodes[j]->add_child(previous_activation_nodes[j]);
+                        previous_activation_nodes[j]->add_parent(recurrent_leaf_nodes[j]);
+                    }
+                    
+                }
+            }   
+
+
+            // 노드 연결 부분
             for (int u = 0; u < units; ++u) {
                 if (return_sequences) {
                     ptrResult[t * units + u] = activation_result.first.at(u);  // 모든 타임스텝의 출력 값을 저장
@@ -175,8 +174,11 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 }
 
                 // 현재 타임스텝의 activation 노드를 저장
+                // 맞아 이건 unit 의 개수만큼 존재해야하고
                 previous_activation_nodes[u] = activation_node;
             }
+            
+            
         }
 
         return std::make_pair(result, node_list);
