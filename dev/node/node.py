@@ -91,7 +91,7 @@ class Node:
         visited.add(node)
 
         # 현재 노드 정보 출력
-        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value}, Grad Total: {node.grad_weight_total}, node_value: {node.output}")
+        print(' ' * indent + f"Node: {node.operation}, Weight: {node.weight_value:.2f}, Grad Total: {node.grad_weight_total:.2f}, node_value: {node.output:.2f}")
 
         # 자식 노드 출력
         children = node.get_children()

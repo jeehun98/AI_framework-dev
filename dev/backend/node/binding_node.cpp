@@ -6,6 +6,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(node, m) {
     py::class_<Node, std::shared_ptr<Node>>(m, "Node")
+        // 생성자 정의
         .def(py::init<const std::string&, double, double, double, double>(),
              py::arg("operation"), py::arg("input_value"), py::arg("weight_value"), py::arg("output"), py::arg("bias"))
         .def(py::init<const std::string&, double, double, double>(),
@@ -30,14 +31,22 @@ PYBIND11_MODULE(node, m) {
         // 그래디언트 계산 메서드
         .def("calculate_gradient", &Node::calculate_gradient)
         
-        // 역전파 수행
-        .def("backpropagate", &Node::backpropagate)
+        // 역전파 수행 (람다 함수를 사용하여 visited 집합을 내부에서 생성)
+        .def("backpropagate", [](Node& self, double upstream_gradient = 1.0) {
+            std::unordered_set<Node*> visited;
+            self.backpropagate(upstream_gradient, &visited);
+        }, py::arg("upstream_gradient") = 1.0)
         
-        // 가중치 업데이트 (unordered_set을 처리하여 중복 방문 방지)
+        // 가중치 업데이트 (람다 함수를 사용하여 visited 집합을 내부에서 생성)
         .def("update_weights", [](Node& self, double learning_rate) {
             std::unordered_set<Node*> visited;
             self.update_weights(learning_rate, &visited);
         }, py::arg("learning_rate"))
+        
+        // 트리 출력 메서드
+        .def("print_tree", [](std::shared_ptr<Node> self) {
+            self->print_tree(self);
+        })
         
         // 속성 직접 접근 허용
         .def_readwrite("operation", &Node::operation)
