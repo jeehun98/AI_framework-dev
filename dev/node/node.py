@@ -105,8 +105,8 @@ class Node:
     # 리턴 값이 없음
     # node.h 코드의 실행
     def backpropagate(self, root_node, upstream_gradient = 1.0):
-        visited = set()
-        root_node.backpropagate(upstream_gradient, visited)
+        
+        root_node.backpropagate(upstream_gradient)
         
     # 새로운 learning_rate 를 적용하는 방법
     def weight_update(self, root_node, batch_count, optimizer, learning_rate = 0.001):

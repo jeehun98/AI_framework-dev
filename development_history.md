@@ -689,6 +689,8 @@
 
     - result 의 값과 root_node 의 output 이 다른 문제 - 10/21
 
+        - 해결 완료 - 10/21
+
 # 배치 학습 내용 수정
 
     - stochastic 의 경우 오류 발생 - 10/17
@@ -728,3 +730,9 @@
         - dense 는 bias, activation 을 밖에서 불러와서 연결 연산 수행
 
         - rnn 는 안에서 다 했음
+
+    - backpropagate 에서 visited 부분의 삭제 - 10/21
+
+# layer 쌓기...
+
+    - 기본 연산 구현과 연결을 하는걸로 해볼까..
