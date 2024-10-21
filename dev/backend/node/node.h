@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <stack>
 #include <unordered_set>
+#include <iostream>
 
 namespace py = pybind11;
 
@@ -143,6 +144,43 @@ public:
             child->update_weights(learning_rate, visited);
         }
     }
+
+    void print_tree(const std::shared_ptr<Node>& node, int depth = 0, std::unordered_set<Node*>* visited = nullptr) {
+    if (!node) {
+        return;
+    }
+    
+    // 순환 참조 방지를 위한 방문 노드 추적
+    if (!visited) {
+        std::unordered_set<Node*> local_visited;
+        print_tree(node, depth, &local_visited);
+        return;
+    }
+    if (visited->find(node.get()) != visited->end()) {
+        // 이미 방문한 노드이면 순환 참조가 발생하므로 표시하고 반환
+        std::cout << std::string(depth * 4, ' ') << "Node: " << node->operation << " (already visited)" << std::endl;
+        return;
+    }
+    visited->insert(node.get());
+
+    // 현재 노드의 정보 출력
+    std::cout << std::string(depth * 4, ' ') 
+              << "Node: " << node->operation 
+              << ", Weight: " << node->weight_value 
+              << ", Grad Total: " << node->grad_weight_total 
+              << ", Output: " << node->output 
+              << std::endl;
+
+    // 자식 노드가 있는 경우 출력
+    if (!node->children.empty()) {
+        std::cout << std::string(depth * 4, ' ') << "Children:" << std::endl;
+        for (const auto& child : node->children) {
+            print_tree(child, depth + 1, visited);
+        }
+    } else {
+        std::cout << std::string((depth + 1) * 4, ' ') << "Leaf node" << std::endl;
+    }
+}
 
 public:
     std::string operation;

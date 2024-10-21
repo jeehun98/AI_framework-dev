@@ -19,6 +19,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
     py::array_t<double> recurrent_weights,
     py::array_t<double> bias,
     const std::string& activation,
+    bool return_sequences = false,
     std::vector<std::shared_ptr<Node>> node_list = {}
 ) {
     try {
@@ -39,29 +40,30 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             throw std::runtime_error("Shape mismatch among inputs, weights, recurrent weights, or bias.");
         }
 
-        py::array_t<double> result({1, units});  // 마지막 타임스텝의 결과만 저장할 배열
+        // output_shape은 return_sequences 값에 따라 결정됨
+        py::array_t<double> result(return_sequences ? py::array_t<double>({timesteps, units}) : py::array_t<double>({1, units}));
         py::buffer_info bufResult = result.request();
+
         double* ptrInput = static_cast<double*>(bufInput.ptr);
         double* ptrResult = static_cast<double*>(bufResult.ptr);
 
         bool is_new_graph = node_list.empty();
         std::vector<double> state(units, 0.0);
 
-        std::unordered_map<std::string, std::function<std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>>(
-            py::array_t<double>, std::vector<std::shared_ptr<Node>>)>> activations_map;
-
+        std::unordered_map<std::string, std::function<std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>>(py::array_t<double>, std::vector<std::shared_ptr<Node>>)>> activations_map;
         activations_map["relu"] = relu;
         activations_map["sigmoid"] = sigmoid;
         activations_map["tanh"] = tanh_activation;
         activations_map["leaky_relu"] = [alpha = 0.01](py::array_t<double> x, std::vector<std::shared_ptr<Node>> y) { return leaky_relu(x, alpha, y); };
         activations_map["softmax"] = softmax;
 
-
         if (activations_map.find(activation) == activations_map.end()) {
             throw std::runtime_error("Unsupported activation function: " + activation);
         }
 
-        // Loop through each timestep
+        // 각 유닛별 이전 타임스텝의 activation 노드를 저장하는 리스트
+        std::vector<std::shared_ptr<Node>> previous_activation_nodes(units);
+
         for (int t = 0; t < timesteps; ++t) {
             py::array_t<double> input_at_t = py::array_t<double>(
                 {1, input_dim},
@@ -69,6 +71,7 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 ptrInput + t * input_dim
             );
 
+            // 입력 값에 대한 연산 이후의 상태값이 저장
             auto input_multiply_result = matrix_multiply(input_at_t, weights, node_list);
             auto& input_multiply = input_multiply_result.first;
             auto& input_multiply_node_list = input_multiply_result.second;
@@ -79,9 +82,39 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 state.data()
             );
 
+            // 순환 값에 대한 연산 이후의 상태값이 저장
             auto recurrent_multiply_result = matrix_multiply(state_arr, recurrent_weights, node_list);
             auto& recurrent_multiply = recurrent_multiply_result.first;
             auto& recurrent_multiply_node_list = recurrent_multiply_result.second;
+
+            std::cout << t << "check" << std::endl;
+            std::cout << "recurrent_multiply_node_list size: " << recurrent_multiply_node_list.size() << std::endl;
+            std::cout << "recurrent_multiply_node_list_leaf_node size: " << recurrent_multiply_node_list[0]->find_leaf_nodes().size() << std::endl;
+            
+            // 순환 구조 연결: 현재 타임스텝에서 이전 타임스텝의 activation_nodes와 연결
+            // 이것만 잘 수정하면 돼 
+            if (t > 0) {  // 첫 번째 타임스텝 제외
+                for (int u = 0; u < units; u++) {
+                    // 현재 유닛의 recurrent_multiply_node에서 리프 노드를 가져옴
+                    auto recurrent_leaf_nodes = recurrent_multiply_node_list[u]->find_leaf_nodes();
+
+                    // 리프 노드의 수와 previous_activation_nodes의 크기를 비교하여 반복
+                    int num_leaf_nodes = recurrent_leaf_nodes.size();
+                    for (int j = 0; j < num_leaf_nodes && j < units; j++) {
+
+                        // 출력 확인
+                        std::cout << t << "check" << std::endl;
+                        previous_activation_nodes[j]->print_tree(previous_activation_nodes[j]);
+                        std::cout << t << "check" << std::endl;
+
+                        // 이전 타임스텝의 activation_nodes[j]를 현재 타임스텝의 리프 노드들과 연결
+                        recurrent_leaf_nodes[j]->add_child(previous_activation_nodes[j]);
+                        previous_activation_nodes[j]->add_parent(recurrent_leaf_nodes[j]);
+                    }
+                }
+            }
+
+
 
             if (input_multiply.ndim() == 1) {
                 input_multiply = input_multiply.reshape(std::vector<py::ssize_t>{1, input_multiply.size()});
@@ -108,10 +141,15 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
             auto activation_result = activations_map[activation](output_with_bias, node_list);
 
             for (int u = 0; u < units; ++u) {
-                if (t == timesteps - 1) {
-                    ptrResult[u] = activation_result.first.at(u);  // 마지막 타임스텝의 결과만 저장
+                if (return_sequences) {
+                    ptrResult[t * units + u] = activation_result.first.at(u);  // 모든 타임스텝의 출력 값을 저장
+                } else if (t == timesteps - 1) {
+                    ptrResult[u] = activation_result.first.at(u);  // 마지막 타임스텝의 출력 값만 저장
                 }
+
+                // state 값의 update
                 state[u] = activation_result.first.at(u);
+
                 auto& activation_node = activation_result.second[u];
                 auto activation_leaf_node = activation_node->find_leaf_nodes()[0];
 
@@ -135,6 +173,9 @@ std::pair<py::array_t<double>, std::vector<std::shared_ptr<Node>>> rnn_layer(
                 if (t == timesteps - 1) {
                     node_list.push_back(activation_node);
                 }
+
+                // 현재 타임스텝의 activation 노드를 저장
+                previous_activation_nodes[u] = activation_node;
             }
         }
 

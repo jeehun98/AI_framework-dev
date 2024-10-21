@@ -165,13 +165,10 @@ class Sequential(Node):
 
         # 배치 입력이 없는 경우의 처리를 어떻게
         if batch_size == -1 or batch_size < x.shape[0]:
-            batch_size = 1
-        elif batch_size > x.shape[0]:
             batch_size = x.shape[0]
 
         # 배치 데이터의 개수
         batch_counts = int(np.ceil(x.shape[0] / batch_size))
-
 
         # 학습 반복 횟수
         for epoch in range(epochs):
@@ -201,79 +198,39 @@ class Sequential(Node):
                     # 입력 데이터를 0번째 layer 의 출력값이라고 생각, output 을 계속 업데이트
                     output = input_data
 
-                    # 가장 첫 번째의 학습에선 계산 그래프를 생성하고 이를 연결하는 과정이 필요
-                    if batch_data_idx == 0 and epoch == 0:
+                    # 이전에 레이어가 존재할 경우 계산 그래프를 연결해야함
+                    for idx, layer in enumerate(self._layers):
 
-                        # 이전에 레이어가 존재할 경우 계산 그래프를 연결해야함
-                        for idx, layer in enumerate(self._layers):
-
-                            # 이전 layer
-                            previous_layer = self._layers[idx - 1]    
-                            
-                            # 출력값 갱신, layer 의 call 연산이 호출된다
-                            output = layer.call(output)                
-
-                            # 첫번째 레이어의 경우
-                            if idx == 0:
-                                self.node_list = layer.node_list
-                                # self.print_relationships(self.node_list[0])
-                                
-                                # self.print_summary(self.node_list[0])
-                                continue
-                            
-                            # 계산 그래프 연결
-                            # 여기서 previous_layer 에 대한 업데이트를 수행해야 할 지
-                            
-                            self.node_list = self.link_node(layer, previous_layer)
-                            # self.print_relationships(self.node_list[0])
-                            
-
-                        # loss_node_list 생성,
-                        output = np.array(output).reshape(1, -1)
-                        target = np.array(target).reshape(1, -1)
+                        # 이전 layer
+                        previous_layer = self._layers[idx - 1]    
                         
-                        self.compute_loss_and_metrics(output, target)
+                        # 출력값 갱신, layer 의 call 연산이 호출된다
+                        output = layer.call(output)                
 
-                        # loss_node_list 의 연결
-                        self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
+                        # 첫번째 레이어의 경우
+                        if idx == 0:
+                            self.node_list = layer.node_list
+                            continue
+                        
+                        self.node_list = self.link_node(layer, previous_layer)
+                        
+                    # loss_node_list 생성,
+                    output = np.array(output).reshape(1, -1)
+                    target = np.array(target).reshape(1, -1)
+                    
+                    self.compute_loss_and_metrics(output, target)
 
-                        # 계산 그래프 리스트들의 역전파 연산 수행
+                    # loss_node_list 의 연결
+                    self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
 
-                        """
-                        NODE 클래스, 혹은 다른 클래스에서 수행하도록 변경해야겠다.
-                        """
-                        for root_node in  self.node_list:
-                            
-                            self.backpropagate(root_node)
+                    # 계산 그래프 리스트들의 역전파 연산 수행
 
-                    else:
-                        # 계산 그래프가 생성되고 난 후...
-                        """
-                        조건문의 변경을 해야겠다.
-                        """ 
-
-                        # 각 layer 의 call 연산, 계산 그래프가 있을 경우
-                        # = self.node_list 가 존재할 경우임
-                        for layer in self._layers:
-                            output = layer.call(output)
-                        # loss, metrics 연산의 수행
-
-                        output = np.array(output).reshape(1, -1)
-
-                        self.compute_loss_and_metrics(output, batch_y[batch_data_idx].reshape(1, -1))
-
-                        for root_node in  self.node_list:
-                            self.backpropagate(root_node)
-
+                    for root_node in  self.node_list:                    
+                        self.backpropagate(root_node)
+                        
                 # 배치 반복 끝, 가중치 갱신
                 for root_node in self.node_list:
-                    
                     self.weight_update(root_node, batch_datas, self.optimizer)
-
-                """
-                이후 계산 그래프의 가중치는 동일하게, 가중치 갱신량은 초기화해야함
-                """
-        
 
         # 에포크 끝난 후 평균 손실 출력
         loss_sum = 0
@@ -287,7 +244,8 @@ class Sequential(Node):
 
         print(f"Average Loss: {loss_sum / x.shape[0]}")
         
-        # self.print_relationships(self.node_list[0])
+        self.print_relationships(self.node_list[0])
+        # self.print_summary(self.node_list[0])
 
     # 예측 수행
     def predict(self, data):
