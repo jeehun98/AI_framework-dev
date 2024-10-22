@@ -179,6 +179,7 @@ class Sequential(Node):
 
             # 다음 배치로 넘어갈 때 가중치 갱신량은 초기화, 바뀐 가중치 값은 그대로 들고간다.
             # 배치의 개수만큼 반복
+
             for batch_idx in range(batch_counts):
                 
                 # 배치 데이터 추출
@@ -190,7 +191,10 @@ class Sequential(Node):
                 # 배치내 데이터 개수
                 batch_datas = batch_x.shape[0]
                 
+                batch_loss_sum = None
+
                 # 각 배치 데이터에 대한 반복
+                # 해당 배치동안 loss 값의 누적 필요
                 for batch_data_idx in range(batch_datas):
                     input_data = batch_x[batch_data_idx]
                     target = batch_y[batch_data_idx]
@@ -207,13 +211,9 @@ class Sequential(Node):
                         # 출력값 갱신, layer 의 call 연산이 호출된다
                         output = layer.call(output)             
 
-                        print(output, "출력 확인!!!!!!!!!!!")   
-
                         # 첫번째 레이어의 경우
                         if idx == 0:
                             self.node_list = layer.node_list
-                            print("계산 그래프 확인")
-                            # self.print_relationships(self.node_list[0])
                             continue
                         
                         self.node_list = self.link_node(layer, previous_layer)
@@ -222,16 +222,41 @@ class Sequential(Node):
                     output = np.array(output).reshape(1, -1)
                     target = np.array(target).reshape(1, -1)
                     
-                    self.compute_loss_and_metrics(output, target)
+                    # 배치 손실 누적
+                    loss_value = self.compute_loss_and_metrics(output, target)
 
                     # loss_node_list 의 연결
                     self.node_list = self.link_loss_node(self.loss_node_list, self.node_list)
 
-                    # 계산 그래프 리스트들의 역전파 연산 수행
+                    if isinstance(loss_value, list):
+                        if batch_loss_sum is None:
+                            batch_loss_sum = [0] * len(loss_value)
+                        for i in range(loss_value):
+                            batch_loss_sum[i] += loss_value[i]
+                    
+                    else:
+                        if batch_loss_sum is None:
+                            batch_loss_sum = 0
+                        batch_loss_sum += loss_value
 
-                    for root_node in  self.node_list:                    
-                        self.backpropagate(root_node)
+                # root_node 의 개수는 binary, categorical 에 따라 달라짐
+                # root_node 의 값을 치환해야 함
+                if isinstance(batch_loss_sum, list):
+                    batch_loss = [loss / batch_datas for loss in batch_loss_sum]  # 리스트 항목별로 평균 계산
+
+                    # node_list 각 노드에 대해 배치 손실 값 업데이트
+                    for i, node in enumerate(self.node_list):
+                        node.update(node.input_value, node.weight_value, batch_loss[i], node.bias)
+
+                else:
+                    batch_loss = batch_loss_sum / batch_datas
+                    self.node_list[0].update(self.node_list[0].input_value, self.node_list[0].weight_value, batch_loss, self.node_list[0].bias)
+
+                # 바뀐 root_node 에 대한 backpropagate 연산 수행
+                for root_node in self.node_list:                    
+                    self.backpropagate(root_node)
                         
+                # 누적된 loss 값에 대한 정보가 필요함
                 # 배치 반복 끝, 가중치 갱신
                 for root_node in self.node_list:
                     self.weight_update(root_node, batch_datas, self.optimizer)
