@@ -4,7 +4,8 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "g++",
+            //"command": "g++",
+            "command": "nvcc",
             "args": [
                 "-g",
                 "-o",
