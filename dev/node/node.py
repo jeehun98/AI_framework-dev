@@ -14,6 +14,30 @@ class Node:
     def is_leaf(self):
         return not self.get_children()
 
+    def update(self, input_value=None, weight_value=None, output=None, bias=None):
+        """
+        노드의 정보를 업데이트하는 메서드.
+        
+        Parameters:
+        input_value : 새로운 입력 값 (기본값: None)
+        weight_value : 새로운 가중치 값 (기본값: None)
+        output : 새로운 출력 값 (기본값: None)
+        bias : 새로운 바이어스 값 (기본값: None)
+        """
+        if input_value is not None:
+            self.input_value = input_value
+        
+        if weight_value is not None:
+            self.weight_value = weight_value
+        
+        if output is not None:
+            self.output = output
+        
+        if bias is not None:
+            self.bias = bias
+
+        print(f"Node updated: input={self.input_value}, weight={self.weight_value}, output={self.output}, bias={self.bias}")
+
     def print_summary(self, node, visited=None, indent=0):
         """
         노드의 간단한 관계 요약을 출력하는 함수
