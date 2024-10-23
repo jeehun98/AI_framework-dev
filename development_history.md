@@ -741,13 +741,26 @@
 
         - 
 
-# layer 쌓기...
+# layer 쌓기에 더해서 연산을 쌓아보자
 
-    - 기본 연산 구현과 연결을 하는걸로 해볼까..
+    - operation 을 쌓기 위한 새로운 model, operaion_combination_layer, OCL 을 구현
 
+    - keras 구현 내용
+    
+        - x = layers.Dense(64, activation='relu')(inputs) 
+
+        - 사전 정의된 layer 를 사용
+
+        - 동일하게 사전 정의된 연산자들이 있어야 함
+
+        - 
 
 # CUDA 구현
 
     - CUDA 설치 및 실행 완료, GPU 정보 확인 - 10/22
 
-    
+    - json 파일 상의 문제인지, 컴파일러 정보를 못 가져오는 문제 발생
+
+        - Native tools 를 사용하면 문제가 없음, 컴파일 file_path 나 컴파일러 자체의 문제일 것 (cl.exe 를 왜왜왜왜오 못 불러오니...)
+
+        - 일단 외부 도구를 사용해서 빌드 및 실행을 확인하자
