@@ -8,4 +8,6 @@ class SUM(OPERATIONS):
         pass
 
     def call(self):
+        # 여기서 cuda 코드를 실행해야 함
+        
         pass

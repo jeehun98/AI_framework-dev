@@ -1,5 +1,4 @@
 from dev import regularizers
-import collections
 
 class Layer():
     
