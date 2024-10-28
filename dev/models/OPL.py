@@ -17,4 +17,8 @@ class OPL():
         # 비용 함수의 계산 그래프
         self.loss_node_list = []
 
+    def __call__(self):
+        # 객체가 함수처럼 호출될 수 있게 하는 __call__ 메서드 구현
+        self.call()
+
     
