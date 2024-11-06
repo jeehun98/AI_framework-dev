@@ -1,7 +1,4 @@
 # 모델에서 값이 입력되는 첫 번째 레이어
-
-import warnings
-
 from dev.layers.layer import Layer
 
 # 첫 번째 레이어, InputLayer class
