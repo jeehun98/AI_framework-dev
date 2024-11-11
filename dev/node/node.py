@@ -1,9 +1,52 @@
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
-from dev.backend.operaters import operations_matrix
 from dev.backend.node import node
 
+# c++ 로 구현한 Node Class 의 사용
+class NodeWrapper:
+    def __init__(self, operation, input_value, output_value, weight_value=None, bias_value=0.0):
+        """
+        C++ Node 객체를 생성하는 Python 래퍼 클래스.
+        
+        Parameters:
+        - operation: 노드의 연산 종류 (예: 'add', 'multiply')
+        - input_value: 입력 값
+        - output_value: 출력 값
+        - weight_value: 가중치 (선택적 매개변수)
+        - bias_value: 바이어스 값
+        """
+        if weight_value is not None:
+            # weight_value가 제공된 경우, 첫 번째 C++ 생성자를 호출
+            self.node = node.Node(operation, input_value, weight_value, output_value, bias_value)
+        else:
+            # weight_value가 없으면 두 번째 C++ 생성자를 호출
+            self.node = node.Node(operation, input_value, output_value, bias_value)
+
+    def add_child(self, child):
+        self.node.add_child(child.node)
+
+    def add_parent(self, parent):
+        self.node.add_parent(parent.node)
+
+    def update(self, input_value=None, weight_value=None, output=None, bias=None):
+        self.node.update(
+            input_value if input_value is not None else self.node.input_value,
+            weight_value if weight_value is not None else self.node.weight_value,
+            output if output is not None else self.node.output,
+            bias if bias is not None else self.node.bias,
+        )
+        print(f"Updated Node: input={self.node.input_value}, weight={self.node.weight_value}, output={self.node.output}, bias={self.node.bias}")
+
+    def print_summary(self, visited=None, indent=0):
+        self.print_tree(self.node)
+
+    def backpropagate(self, upstream_gradient=1.0):
+        self.node.backpropagate(upstream_gradient)
+
+    def update_weights(self, learning_rate=0.01, batch_count=1):
+        adjusted_lr = learning_rate / batch_count
+        self.node.update_weights(adjusted_lr)
 
 # 노드 클래스 정의
 class Node:
@@ -165,10 +208,11 @@ class Node:
         visited.add(node)
 
         children = node.get_children()
-        
+    
         if not children:  # 자식 노드가 없으면 리프 노드
             leaf_nodes.append(node)
         else:
+            
             for child in children:
                 self.find_child_node(child, leaf_nodes, visited)
         
@@ -191,33 +235,34 @@ class Node:
         return current_node
 
     # dense 층과의 연결, 일대일 대응
-    def link_dense_node(self, parent_nodes, child_nodes):
+    def link_dense_node(self, current_layer_node_list, previous_layer_node_list):
         """
         노드 리스트를 받음
         parent_nodes : 해당 노드의 리프 노드와
         child_nodes : 해당 노드의 루트 노드와 연결해야 함
         """
         
-        if not child_nodes:
-            return parent_nodes
+        # 이전 레이어가 없는, 맨 처음 레이어의 경우
+        if not previous_layer_node_list:
+            return current_layer_node_list
 
         # 각 부모 노드의 리프 노드 탐색을 하는데...
         # 이렇게 나오게 된 이유가 dense 층끼리의 연결을 위한 방법이었네
         # layer 의 종류별 연결 방법을 다르게
-        for parent_node in parent_nodes:
-            leaf_nodes = self.find_child_node(parent_node)
+        for current_layer_node in current_layer_node_list:
+            leaf_nodes = self.find_child_node(current_layer_node)
 
-            if len(leaf_nodes) != len(child_nodes):
+            if len(leaf_nodes) != len(previous_layer_node_list):
                 raise ValueError("Mismatch in number of leaf nodes and child nodes.")
 
             for i in range(len(leaf_nodes)):
                 # 순환 참조 방지
-                if child_nodes[i] not in leaf_nodes[i].get_children():
-                    leaf_nodes[i].add_child(child_nodes[i])
-                    child_nodes[i].add_parent(leaf_nodes[i])
+                if previous_layer_node_list[i] not in leaf_nodes[i].get_children():
+                    leaf_nodes[i].add_child(previous_layer_node_list[i])
+                    previous_layer_node_list[i].add_parent(leaf_nodes[i])
 
         
-        return parent_nodes
+        return current_layer_node_list
 
 
     def link_node(self, current_layer, previous_layer):

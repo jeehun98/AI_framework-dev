@@ -775,6 +775,10 @@
 
         - node 객체를 반환할 것, c++, python 두 환경에서 모두 구현할 계획
 
+        - c++ 상에서 구현한 node 클래스를 python 에선 nodeWrapper로,
+
+            - 
+
         
 
 # CUDA 구현
@@ -786,3 +790,16 @@
         - Native tools 를 사용하면 문제가 없음, 컴파일 file_path 나 컴파일러 자체의 문제일 것 (cl.exe 를 왜왜왜왜오 못 불러오니...)
 
         - 일단 외부 도구를 사용해서 빌드 및 실행을 확인하자
+
+
+# notion 작성중
+
+    - cal_dense.py 확인 중, build 부분의 input_shape 수정 필요 - 11/08 - 완료 build 시 self.input_shape 지정 문제
+
+        - 노드 리스트 연결 문제 - 11/08
+
+        - dense.py 에서 call 연산에서 자식, 부모 연결이 잘못되었음, 연결없이 노드 리스트 업데이트 수행했네
+
+        - Dense Layer 의 bias, act 연산 부분 수행 완료
+
+        - layer 입력 데이터 형태 문제, dense call 출력형태 바꿔줬음 - 11/11
