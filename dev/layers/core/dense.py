@@ -60,9 +60,6 @@ class Dense(Layer):
         """
         Dense 층의 연산을 수행합니다.
         """
-        # 입력 데이터 차원 검사
-        print(input_data, "확인", input_data.ndim, input_data.shape, self.input_shape)
-
         if input_data.ndim != 2 or input_data.shape[1] != self.input_shape[1]:
             raise ValueError(f"Invalid input shape. Expected shape (batch_size, {self.input_shape[1]}), "
                              f"but got {input_data.shape}.")
