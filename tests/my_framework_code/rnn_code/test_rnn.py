@@ -7,6 +7,7 @@ import numpy as np
 from dev.models.sequential import Sequential
 from dev.layers.core.Rnn import RNN
 from dev.layers.core.dense import Dense
+from dev.backend.node import node
 
 np.random.seed(42)
 
@@ -28,4 +29,7 @@ model.add(Dense(1))
 model.compile(optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001)
 
 model.fit(x_train, y_train, epochs=1)
-print("완료")
+
+print(model.node_list[0])
+
+model.node_list[0].print_tree()
