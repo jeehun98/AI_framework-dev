@@ -1,6 +1,7 @@
 # 경로 지정...
 import sys
 sys.path.insert(0, 'C:/Users/owner/Desktop/AI_framework-dev')
+sys.path.insert(1, 'C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev')
 
 from dev.models.sequential import Sequential
 from dev.layers.core.dense import Dense
