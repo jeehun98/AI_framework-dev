@@ -22,9 +22,7 @@ def load_diabetes_data():
 # 함수 호출 예시
 X, y = load_diabetes_data()
 
-X = X[:5]
-
-print(X.shape, "입력 확인하기")
+X = X[:1]
 
 # 랜덤 시드값 고정
 np.random.seed(42)
@@ -41,5 +39,5 @@ model.compile(optimizer='sgd',
               p_metrics='mse',
               learning_rate=0.001)
 
-model.fit(X, y, epochs=15)
+model.fit(X, y, epochs=1)
 print("완료")

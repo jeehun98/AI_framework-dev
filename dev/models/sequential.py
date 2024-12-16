@@ -252,6 +252,8 @@ class Sequential(Node):
                     batch_loss = batch_loss_sum / batch_datas
                     self.node_list[0].update(self.node_list[0].input_value, self.node_list[0].weight_value, batch_loss, self.node_list[0].bias)
 
+                print(batch_loss)
+
                 # 바뀐 root_node 에 대한 backpropagate 연산 수행
                 for root_node in self.node_list:                    
                     self.backpropagate(root_node)
@@ -266,6 +268,7 @@ class Sequential(Node):
         for data_idx in range(x.shape[0]):
             input_data = x[data_idx]
             target = y[data_idx]
+            # 여기서 반복이 한 번 더
             predict = self.predict(input_data)
             predict = np.array(predict).reshape(1, -1)
             data_loss = self.compute_loss_and_metrics(predict, target.reshape(1, -1))

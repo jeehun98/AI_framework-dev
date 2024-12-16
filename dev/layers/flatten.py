@@ -71,7 +71,7 @@ class Flatten(Layer):
         result = self.multiply_tuple_elements(input_shape)
 
         self.output_shape = (1, result)
-
+        
         super().build()
 
 
