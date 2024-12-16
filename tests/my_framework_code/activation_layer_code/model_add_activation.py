@@ -30,6 +30,6 @@ model.compile(optimizer='sgd',
               p_metrics='mse',
               learning_rate=0.001)
 
-model.fit(x, y, epochs=15, batch_size = 32)
+model.fit(x, y, epochs=1, batch_size = 32)
 
 print("끝")

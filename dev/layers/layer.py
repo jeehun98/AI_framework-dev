@@ -1,53 +1,82 @@
 from dev import regularizers
 
-class Layer():
-    
-    def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls)
-        
-        # 추가적인 동작 수행
-
-        return obj
-    
-    
-    def __init__(self, name=None, regularizer=None,**kwargs):
-        self.name = name
+class Layer:
+    def __init__(self, name=None, regularizer=None, **kwargs):
+        self.name = name or self.__class__.__name__
         self.input_shape = None
         self.output_shape = None
+        self.built = False
+        
+        # Regularizer 설정
         if regularizer is not None:
             self.regularizer = regularizers.get(regularizer)
         else:
             self.regularizer = None
-        input_dim_arg = kwargs.pop("input_dim", None)
-        if input_dim_arg is not None:
-            input_dim_arg = (input_dim_arg,)
 
-    # layer build 는 뭘 추가해야 할지
-    # layer 가 build 되었는지에 대해..
-    def build(self, **kwargs):
-       self.built = True
+        # input_dim 인자 처리
+        self.input_dim_arg = kwargs.pop("input_dim", None)
+        if self.input_dim_arg is not None:
+            self.input_dim_arg = (self.input_dim_arg,)
 
-    
-    # 연산이 실행되는 부분, layer 를 상속받는 클래스에서 이를 구현해야 한다. 
+    def build(self, input_shape=None):
+        """
+        레이어의 초기화 작업을 수행합니다.
+        input_shape 인자가 제공되지 않으면, self.input_dim_arg를 사용합니다.
+        """
+        if input_shape is not None:
+            self.input_shape = input_shape
+        elif self.input_dim_arg is not None:
+            self.input_shape = self.input_dim_arg
+        elif self.input_shape is not None:
+            pass
+        else:
+            raise ValueError("Input shape must be provided during build.")
+
+        self.built = True
+
     def call(self, *args, **kwargs):
+        """
+        Forward 연산을 수행합니다.
+        이 메서드는 상속받는 클래스에서 구현되어야 합니다.
+        """
+        if not self.built:
+            raise RuntimeError(
+                f"Layer '{self.name}' is not built yet. "
+                "Please call `build()` before using this layer."
+            )
+
         raise NotImplementedError(
             f"Layer {self.__class__.__name__} does not have a `call()` "
-            "method implemented."
+            "method implemented. Received args: {args}, kwargs: {kwargs}"
         )
 
+    def apply_regularizer(self, weights):
+        """
+        가중치에 대해 regularizer를 적용합니다.
+        """
+        if self.regularizer is not None:
+            return self.regularizer(weights)
+        return 0
+
     def get_config(self):
-        # 레이어의 구성 정보 반환
-        
+        """
+        레이어의 구성 정보를 반환합니다.
+        """
         config = {
-            # 나중에 바꿔보자 이건
+            'name': self.name,
+            'input_shape': self.input_shape,
+            'output_shape': self.output_shape,
+            'regularizer': self.regularizer.__class__.__name__ if self.regularizer else None,
             'module': "dev.layers",
         }
-
-        return {**config}
+        return config
 
     @classmethod
     def from_config(cls, config):
-        instance = cls(name=config['name'])
-        instance.input_shape = config['input_shape']
-        instance.output_shape = config['output_shape']
+        """
+        구성 정보를 사용해 인스턴스를 복원합니다.
+        """
+        instance = cls(name=config['name'], regularizer=config.get('regularizer'))
+        instance.input_shape = config.get('input_shape')
+        instance.output_shape = config.get('output_shape')
         return instance
