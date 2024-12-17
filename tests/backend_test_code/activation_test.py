@@ -3,7 +3,7 @@ import sys
 
 # DLL 경로 추가
 os.add_dll_directory("C:/msys64/mingw64/bin")
-os.add_dll_directory("C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev/dev/backend/activations/")
+#os.add_dll_directory("C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev/dev/backend/activations/")
 
 # 경로 설정
 sys.path.insert(0, 'C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev')
