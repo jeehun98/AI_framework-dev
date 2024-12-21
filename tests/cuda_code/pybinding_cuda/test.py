@@ -1,6 +1,10 @@
 import os
 import sys
 import numpy as np
+# 빌드된 `cuda_add` 모듈 경로 추가
+sys.path.append("build/lib.win-amd64-cpython-312")
+
+
 
 # CUDA DLL 경로 명시적 추가 (Python 3.8 이상)
 cuda_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
@@ -9,7 +13,7 @@ if hasattr(os, "add_dll_directory"):
 else:
     os.environ["PATH"] = cuda_path + os.pathsep + os.environ["PATH"]
 
-sys.path.append("build/lib.win-amd64-cpython-312")
+
 
 # CUDA 확장 모듈 불러오기
 try:
