@@ -793,6 +793,8 @@
 
     - pybind, cuda 코드 연동 확인 - 12/19
 
+    - python 과 cuda 의 역할 분리 수행 시작 - 12/23
+
 
 # notion 작성중
 
