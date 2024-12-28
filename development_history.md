@@ -795,6 +795,8 @@
 
     - python 과 cuda 의 역할 분리 수행 시작 - 12/23
 
+        - Node Class 의 분리 수행
+
 
 # notion 작성중
 
