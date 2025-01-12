@@ -833,4 +833,12 @@
 
 # node 클래스의 python 내 분리 구현
 
-    - 
+    - node 클래스 구현 
+
+        - 클래스 파라미터로 bias 의 필요 유무에 대해서 생각 - 01/08
+
+# sequential 구조 수정
+
+    - add()
+
+        - input_shape 지정 부분 수정 필요 - 01/08
