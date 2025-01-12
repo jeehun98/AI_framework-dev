@@ -23,7 +23,7 @@ class Node:
     def _validate_operation(self):
         """연산 종류가 유효한지 검증."""
         if self.operation not in self._operations():
-            raise ValueError(f"잘못된 연산: {self.operation}. "
+            raise ValueError-(f"잘못된 연산: {self.operation}. "
                              f"가능한 연산: {', '.join(self._operations().keys())}")
 
     def add_parent(self, parent):
