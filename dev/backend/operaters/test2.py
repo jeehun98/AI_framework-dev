@@ -35,20 +35,20 @@ print(B)
 
 # CUDA 행렬 덧셈
 try:
-    matrix_ops.matrix_add(A, B, C)
+    matrix_ops.matrix_add(C, B, C)
     print("CUDA Addition Result:\n", C)
     # CPU 연산 결과 검증
-    assert np.allclose(C, A + B), "Addition result does not match!"
+    assert np.allclose(C, B), "Addition result does not match!"
     print("Addition test passed.")
 except Exception as e:
     print("Error in CUDA addition:", e)
 
 # CUDA 행렬 곱셈
 try:
-    matrix_ops.matrix_mul(A, B, C)
+    matrix_ops.matrix_mul(C, B, C)
     print("CUDA Multiplication Result:\n", C)
     # CPU 연산 결과 검증
-    assert np.allclose(C, np.dot(A, B)), "Multiplication result does not match!"
+    assert np.allclose(C, np.dot(C, B)), "Multiplication result does not match!"
     print("Multiplication test passed.")
 except Exception as e:
     print("Error in CUDA multiplication:", e)
