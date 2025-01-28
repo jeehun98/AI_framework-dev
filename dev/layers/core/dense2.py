@@ -99,43 +99,23 @@ class Dense(Layer):
         # 행렬 곱셈 연산, 결과를 저장할 result 행렬을 미리 생성한다.
 
         result = np.zeros(input_data.shape[0], self.weights[1])
-
-        try:
-            matrix_ops.matrix_mul(input_data, self.weights, result)
-        except Exception as e:
-            print("Error Cuda")
-
- 
-        # 계산 그래프를 생성해야 함
-
-        """
-        x, self.node_list = operations_matrix.matrix_multiply(input_data, self.weights)
-        """
+        
+        matrix_ops.matrix_mul(input_data, self.weights, result)
 
         # 편향 추가
         if self.bias is not None:
+            
+            # 편향 값을 행렬로 변환
             bias_reshaped = np.tile(self.bias, (input_data.shape[0], 1))
             
-
             matrix_ops.matrix_add(result, bias_reshaped, result)
-            """
-            x, add_node_list = operations_matrix.matrix_add(x, bias_reshaped)
-            """
-
-            # add_node_list 의 각 원소의 리프 노드 탐색 후 연결수행
 
 
-
-        # 활성화 함수 적용
+        """
+        활성화 함수 적용 부분 수정 필요
+        """
         if self.activation is not None:
             x, act_node_list = self.activation(x)
-            
-            for i in range(len(self.node_list)):
-                leaf_node = act_node_list[i].find_leaf_nodes()[0]
-                root_node = self.node_list[i]
-
-                root_node.add_parent(leaf_node)
-                leaf_node.add_child(root_node)
             
         return x.reshape(1,-1)
 
