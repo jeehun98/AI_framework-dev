@@ -11,13 +11,19 @@ def test_calculation_graph():
     A = [[1, 2], [3, 4]]
     B = [[5, 6], [7, 8]]
     nodes1 = cal_graph.matrix_multiply(A, B)
+
+    # 노드 리스트 업데이트 (사용자가 직접 연결 가능)
     cal_graph.print_graph()
 
-    print("\n[Step 2] 행렬 덧셈 수행 (기존 그래프 확장)")
+    cal_graph2 = Cal_graph()
+
+    print("\n[Step 2] 행렬 덧셈 수행")
     C = [[10, 10], [10, 10]]
     D = [[20, 20], [20, 20]]
-    nodes2 = cal_graph.matrix_add(C, D, node_list=nodes1)
-    cal_graph.print_graph()
+    nodes2 = cal_graph2.matrix_add(C, D)
+
+    cal_graph2.print_graph()
 
 if __name__ == "__main__":
     test_calculation_graph()
+
