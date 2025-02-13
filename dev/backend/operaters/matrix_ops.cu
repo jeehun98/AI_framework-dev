@@ -24,8 +24,12 @@ __global__ void matrix_mul_kernel(float* A, float* B, float* C, int rows, int co
             value += A[row * K + k] * B[k * cols + col];
         }
         C[row * cols + col] = value;
+
+        // ✅ 디버깅용 출력 추가
+        printf("C[%d][%d] = %f (row=%d, col=%d, K=%d)\n", row, col, C[row * cols + col], row, col, K);
     }
 }
+
 
 void matrix_add(py::array_t<float> a, py::array_t<float> b, py::array_t<float> c) {
     auto buf_a = a.request();
@@ -85,11 +89,15 @@ void matrix_mul(py::array_t<float> a, py::array_t<float> b, py::array_t<float> c
 
     cudaMemcpy(d_A, A, size_A, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, B, size_B, cudaMemcpyHostToDevice);
+    cudaMemset(d_C, 0, size_C);  // ✅ C 초기화
 
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     matrix_mul_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rows, cols, K);
+
+    // ✅ 커널 실행 완료 후 동기화
+    cudaDeviceSynchronize();
 
     cudaMemcpy(C, d_C, size_C, cudaMemcpyDeviceToHost);
 
@@ -97,6 +105,7 @@ void matrix_mul(py::array_t<float> a, py::array_t<float> b, py::array_t<float> c
     cudaFree(d_B);
     cudaFree(d_C);
 }
+
 
 PYBIND11_MODULE(matrix_ops, m) {
     m.def("matrix_add", &matrix_add, "Matrix addition");
