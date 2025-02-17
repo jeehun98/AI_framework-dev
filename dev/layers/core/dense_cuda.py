@@ -113,7 +113,10 @@ class Dense(Layer):
         matrix_ops.matrix_mul(input_data, self.weights, result)
 
         # 계산 그래프 구성 : 행렬 곱셈
-        mul_nodes = self.cal_graph.matrix_multiply(input_data.tolist(), self.weights.tolist())
+        mul_nodes = self.cal_graph.matrix_multiply(input_data.tolist(), self.weights.tolist(), result.tolist())
+        
+        print("계산 그래프 확인")
+        self.cal_graph.print_graph()
 
         # 편향 추가
         if self.bias is not None:
