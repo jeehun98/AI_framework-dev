@@ -152,7 +152,7 @@ class Cal_graph:
         # ✅ 두 번째 계산 그래프의 루트 노드 찾기 (node_list2 자체가 루트)
         root_nodes = node_list2
 
-        leaf_nodes.reverse()
+        #leaf_nodes.reverse()
 
         if not leaf_nodes:
             raise ValueError("첫 번째 node_list에서 리프 노드를 찾을 수 없습니다.")
@@ -176,13 +176,13 @@ class Cal_graph:
         - node_list: 계산 그래프의 노드 리스트
 
         Returns:
-        - leaf_nodes: 리프 노드 리스트
+        - leaf_nodes: 리프 노드 리스트 (순서 보장)
         """
         if not node_list:
             raise ValueError("node_list가 비어 있습니다.")
 
         visited = set()
-        leaf_nodes = set()
+        leaf_nodes = []  # ✅ `set()` 대신 `list()` 사용하여 순서 유지
 
         def dfs(node):
             """
@@ -192,15 +192,15 @@ class Cal_graph:
                 return
             visited.add(node)
 
-            # 노드에 자식이 없으면 리프 노드로 간주
+            # ✅ 노드에 자식이 없으면 리프 노드로 간주
             if not node.children:
-                leaf_nodes.add(node)
+                leaf_nodes.append(node)  # ✅ `set()`이 아니라 `list()`에 추가하여 순서 유지
             else:
                 for child in node.children:
                     dfs(child)
 
-        # 모든 노드에 대해 DFS 수행
+        # ✅ 모든 노드에 대해 DFS 수행
         for node in node_list:
             dfs(node)
 
-        return list(leaf_nodes)  # 중복 제거된 리스트 반환
+        return leaf_nodes  # ✅ `set()`을 사용하지 않으므로 `reverse()` 없이도 순서 유지됨
