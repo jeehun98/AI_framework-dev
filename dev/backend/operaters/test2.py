@@ -44,4 +44,4 @@ try:
     assert np.allclose(C, np.dot(A, B)), "Multiplication result does not match!"
     print("Multiplication test passed.")
 except Exception as e:
-    print("Error in CUDA multiplication:", e)
+    print("Error in CUDAㅇㅇ multiplication:", e)
