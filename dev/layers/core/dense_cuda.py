@@ -125,7 +125,7 @@ class Dense(Layer):
             matrix_ops.matrix_add(result, bias_reshaped, result)
 
             # 계산 그래프 구성 : 편향 추가
-            add_nodes = self.cal_graph.matrix_add(result.tolist(), bias_reshaped.tolist())
+            add_nodes = self.cal_graph.matrix_add(result.tolist(), bias_reshaped.tolist(), result.tolist())
 
             self.cal_graph.connect_graphs(add_nodes, mul_nodes)
 
@@ -135,6 +135,8 @@ class Dense(Layer):
 
         return result
 
+
+    
 
     def get_config(self):
         base_config = super().get_config()

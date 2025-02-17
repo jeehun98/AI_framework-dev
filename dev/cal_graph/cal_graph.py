@@ -127,3 +127,77 @@ class Cal_graph:
         visited_nodes = set()
         for root in root_nodes:
             print_node(root, depth=0, visited=visited_nodes)
+
+    def connect_graphs(self, node_list1, node_list2):
+        """
+        두 개의 계산 그래프를 연결.
+
+        첫 번째 노드 리스트의 리프 노드를 찾아, 두 번째 노드 리스트의 루트 노드와 연결.
+
+        Parameters:
+        - node_list1: 첫 번째 계산 그래프의 노드 리스트
+        - node_list2: 두 번째 계산 그래프의 노드 리스트 (루트 노드 리스트)
+
+        Returns:
+        - 연결된 계산 그래프의 node_list
+        """
+        if not node_list1:
+            raise ValueError("첫 번째 node_list가 비어 있습니다.")
+        if not node_list2:
+            raise ValueError("두 번째 node_list가 비어 있습니다.")
+
+        # ✅ 첫 번째 계산 그래프에서 리프 노드 찾기
+        leaf_nodes = self.get_leaf_nodes(node_list1)
+
+        # ✅ 두 번째 계산 그래프의 루트 노드 찾기 (node_list2 자체가 루트)
+        root_nodes = node_list2  
+
+        if not leaf_nodes:
+            raise ValueError("첫 번째 node_list에서 리프 노드를 찾을 수 없습니다.")
+
+        # ✅ 리프 노드 리스트와 루트 노드 리스트 연결
+        for i in range(len(leaf_nodes)):
+            leaf_nodes[i].add_child(root_nodes[i])
+            root_nodes[i].add_parent(leaf_nodes[i])
+
+        # ✅ 기존 node_list 확장 (새로운 그래프 반영)
+        self.node_list = node_list1
+
+        return self.node_list
+
+    def get_leaf_nodes(self, node_list):
+        """
+        주어진 node_list에서 리프 노드(자식이 없는 노드)를 재귀적으로 탐색하여 반환.
+
+        Parameters:
+        - node_list: 계산 그래프의 노드 리스트
+
+        Returns:
+        - leaf_nodes: 리프 노드 리스트
+        """
+        if not node_list:
+            raise ValueError("node_list가 비어 있습니다.")
+
+        visited = set()
+        leaf_nodes = set()
+
+        def dfs(node):
+            """
+            깊이 우선 탐색(DFS)을 활용하여 리프 노드를 찾음.
+            """
+            if node in visited:
+                return
+            visited.add(node)
+
+            # 노드에 자식이 없으면 리프 노드로 간주
+            if not node.children:
+                leaf_nodes.add(node)
+            else:
+                for child in node.children:
+                    dfs(child)
+
+        # 모든 노드에 대해 DFS 수행
+        for node in node_list:
+            dfs(node)
+
+        return list(leaf_nodes)  # 중복 제거된 리스트 반환
