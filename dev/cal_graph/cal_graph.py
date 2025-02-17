@@ -150,13 +150,16 @@ class Cal_graph:
         leaf_nodes = self.get_leaf_nodes(node_list1)
 
         # ✅ 두 번째 계산 그래프의 루트 노드 찾기 (node_list2 자체가 루트)
-        root_nodes = node_list2  
+        root_nodes = node_list2
+
+        leaf_nodes.reverse()
 
         if not leaf_nodes:
             raise ValueError("첫 번째 node_list에서 리프 노드를 찾을 수 없습니다.")
 
         # ✅ 리프 노드 리스트와 루트 노드 리스트 연결
         for i in range(len(leaf_nodes)):
+            print(leaf_nodes[i].output, root_nodes[i].output, "노드 값 확인")
             leaf_nodes[i].add_child(root_nodes[i])
             root_nodes[i].add_parent(leaf_nodes[i])
 
