@@ -104,12 +104,13 @@ class Dense(Layer):
         output_dim = self.weights.shape[1]
 
         # 행렬 곱셈 연산, 결과를 저장할 result 행렬을 미리 생성한다.
-        result = np.zeros((batch_size, output_dim))
+        result = np.zeros((batch_size, output_dim), dtype=np.float32)
+
+        input_data = input_data.astype(np.float32)
+        self.weights = self.weights.astype(np.float32)  
 
         # ✅ 백엔드 연산: 행렬 곱셈 (반환값 사용 X, result에 직접 저장됨)
         matrix_ops.matrix_mul(input_data, self.weights, result)
-
-        print(result, "결과값 확인")
 
         # 계산 그래프 구성 : 행렬 곱셈
         mul_nodes = self.cal_graph.matrix_multiply(input_data.tolist(), self.weights.tolist())
