@@ -25,8 +25,6 @@ __global__ void matrix_mul_kernel(float* A, float* B, float* C, int rows, int co
         }
         C[row * cols + col] = value;
 
-        // ✅ 디버깅용 출력 추가
-        printf("C[%d][%d] = %f (row=%d, col=%d, K=%d)\n", row, col, C[row * cols + col], row, col, K);
     }
 }
 
