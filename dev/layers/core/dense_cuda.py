@@ -4,6 +4,7 @@
 
 import sys
 import os
+import copy
 
 # 빌드된 모듈 경로 추가
 build_path = os.path.abspath("dev/backend/operaters/build/lib.win-amd64-cpython-312")
@@ -106,26 +107,23 @@ class Dense(Layer):
         # 행렬 곱셈 연산, 결과를 저장할 result 행렬을 미리 생성한다.
         result = np.zeros((batch_size, output_dim), dtype=np.float32)
 
-        input_data = input_data.astype(np.float32)
-        self.weights = self.weights.astype(np.float32)  
-
         # ✅ 백엔드 연산: 행렬 곱셈 (반환값 사용 X, result에 직접 저장됨)
         matrix_ops.matrix_mul(input_data, self.weights, result)
 
+        mul_result = copy.deepcopy(result)
+
         # 계산 그래프 구성 : 행렬 곱셈
         mul_nodes = self.cal_graph.matrix_multiply(input_data.tolist(), self.weights.tolist(), result.tolist())
-        
-        print("계산 그래프 확인")
-        self.cal_graph.print_graph()
-
+    
         # 편향 추가
         if self.bias is not None:
             # 편향 값을 행렬로 변환
             bias_reshaped = np.tile(self.bias, (batch_size, 1))
+
             matrix_ops.matrix_add(result, bias_reshaped, result)
 
             # 계산 그래프 구성 : 편향 추가
-            add_nodes = self.cal_graph.matrix_add(result.tolist(), bias_reshaped.tolist(), result.tolist())
+            add_nodes = self.cal_graph.matrix_add(mul_result.tolist(), bias_reshaped.tolist(), result.tolist())
 
             self.cal_graph.connect_graphs(add_nodes, mul_nodes)
 
