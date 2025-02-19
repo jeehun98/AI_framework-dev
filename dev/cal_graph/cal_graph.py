@@ -20,8 +20,6 @@ class Cal_graph:
         """
         rows, cols = len(A), len(A[0])
 
-        print(A, "입력값 확인")
-
         if len(B) != rows or len(B[0]) != cols:
             raise ValueError("A와 B의 크기가 일치하지 않습니다.")
 
@@ -162,7 +160,6 @@ class Cal_graph:
 
         # ✅ 리프 노드 리스트와 루트 노드 리스트 연결
         for i in range(len(leaf_nodes)):
-            print(leaf_nodes[i].output, root_nodes[i].output, "노드 값 확인")
             leaf_nodes[i].add_child(root_nodes[i])
             root_nodes[i].add_parent(leaf_nodes[i])
 

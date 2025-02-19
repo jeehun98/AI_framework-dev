@@ -95,7 +95,6 @@ class Dense(Layer):
 
         연산 수행 과정을 수정하자.
         """
-        print("call 실행 확인")
 
         if input_data.ndim != 2 or input_data.shape[1] != self.input_shape[1]:
             raise ValueError(f"Invalid input shape. Expected shape (batch_size, {self.input_shape[1]}), "
@@ -131,10 +130,7 @@ class Dense(Layer):
         if self.activation is not None:
             result, act_node_list = self.activation(result)
 
-        return result
-
-
-    
+        return result    
 
     def get_config(self):
         base_config = super().get_config()
