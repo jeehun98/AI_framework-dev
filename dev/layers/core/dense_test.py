@@ -40,7 +40,7 @@ def test_dense_layer():
 
     # ✅ 입력 데이터 및 Dense 레이어 설정
     input_data = np.array([[1.0, 2.0], [3.0, 4.0]])  # (batch_size=2, input_dim=2)
-    units = 2  # 출력 차원
+    units = 3  # 출력 차원
 
     dense_layer = Dense(units=units, activation=None, initializer="ones")
     dense_layer.build(input_shape=(2, 2))  # input_shape = (batch_size, input_dim)

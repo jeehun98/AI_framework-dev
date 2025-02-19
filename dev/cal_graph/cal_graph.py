@@ -20,6 +20,8 @@ class Cal_graph:
         """
         rows, cols = len(A), len(A[0])
 
+        print(A, "입력값 확인")
+
         if len(B) != rows or len(B[0]) != cols:
             raise ValueError("A와 B의 크기가 일치하지 않습니다.")
 
@@ -28,6 +30,7 @@ class Cal_graph:
             for j in range(cols):
                 valueA = A[i][j]
                 valueB = B[i][j]
+
                 output_value = result[i][j]  # ✅ CUDA 연산 결과값 적용
 
                 # 덧셈 노드 생성
