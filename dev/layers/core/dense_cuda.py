@@ -4,6 +4,7 @@
 
 import sys
 import os
+import copy
 
 # 빌드된 모듈 경로 추가
 build_path = os.path.abspath("dev/backend/operaters/build/lib.win-amd64-cpython-312")
@@ -33,6 +34,7 @@ from dev.layers.layer import Layer
 from dev import activations
 from dev.node.node import Node
 from dev.backend.operaters import operations_matrix
+from dev.cal_graph.cal_graph import Cal_graph
 
 class Dense(Layer):
     def __init__(self, units, activation=None, name=None, initializer='he', **kwargs):
@@ -40,11 +42,11 @@ class Dense(Layer):
         self.units = units
         self.output_shape = (1, units)
         self.trainable = True
-        self.node_list = []
-        self.mul_mat_node_list = []
-        self.add_bias_node_list = []
-        self.act_node_list = []
         self.layer_name = "dense"
+
+        # 계산 그래프 인스턴스 생성
+        # 상위 클래스에서 정의되어야 하는 것으로 수정 필요??!!
+        self.cal_graph = Cal_graph()
 
         # 활성화 함수 설정
         self.activation = activations.get(activation) if activation else None
@@ -75,6 +77,7 @@ class Dense(Layer):
         self.bias = np.zeros((1, self.units))
 
     def build(self, input_shape):
+        """ 입력 크기에 맞게 가중치 초기화 """
         if not isinstance(input_shape, (tuple, list)) or len(input_shape) < 2:
             raise ValueError("Invalid input shape. Expected a tuple with at least two dimensions.")
 
@@ -90,34 +93,44 @@ class Dense(Layer):
         """
         Dense 층의 연산을 수행합니다.
 
-        연산 수행 과정을 수정하자
+        연산 수행 과정을 수정하자.
         """
+
         if input_data.ndim != 2 or input_data.shape[1] != self.input_shape[1]:
             raise ValueError(f"Invalid input shape. Expected shape (batch_size, {self.input_shape[1]}), "
-                             f"but got {input_data.shape}.")
+                            f"but got {input_data.shape}.")
+
+        batch_size, input_dim = input_data.shape
+        output_dim = self.weights.shape[1]
 
         # 행렬 곱셈 연산, 결과를 저장할 result 행렬을 미리 생성한다.
+        result = np.zeros((batch_size, output_dim), dtype=np.float32)
 
-        result = np.zeros(input_data.shape[0], self.weights[1])
-        
+        # ✅ 백엔드 연산: 행렬 곱셈 (반환값 사용 X, result에 직접 저장됨)
         matrix_ops.matrix_mul(input_data, self.weights, result)
 
+        mul_result = copy.deepcopy(result)
+
+        # 계산 그래프 구성 : 행렬 곱셈
+        mul_nodes = self.cal_graph.matrix_multiply(input_data.tolist(), self.weights.tolist(), result.tolist())
+    
         # 편향 추가
         if self.bias is not None:
-            
             # 편향 값을 행렬로 변환
-            bias_reshaped = np.tile(self.bias, (input_data.shape[0], 1))
-            
+            bias_reshaped = np.tile(self.bias, (batch_size, 1))
+
             matrix_ops.matrix_add(result, bias_reshaped, result)
 
+            # 계산 그래프 구성 : 편향 추가
+            add_nodes = self.cal_graph.matrix_add(mul_result.tolist(), bias_reshaped.tolist(), result.tolist())
 
-        """
-        활성화 함수 적용 부분 수정 필요
-        """
+            self.cal_graph.connect_graphs(add_nodes, mul_nodes)
+
+        # 활성화 함수 적용
         if self.activation is not None:
-            x, act_node_list = self.activation(x)
-            
-        return x.reshape(1,-1)
+            result, act_node_list = self.activation(result)
+
+        return result    
 
     def get_config(self):
         base_config = super().get_config()
