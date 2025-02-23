@@ -22,54 +22,44 @@ class Cal_graph:
         if len(B) != rows or len(B[0]) != cols:
             raise ValueError("A와 B의 크기가 일치하지 않습니다.")
 
-        # 기존 node_list가 주어진 경우, 이전 연산의 결과와 새로운 연산을 연결
-        if node_list:
-            if len(node_list) != rows * cols:
-                raise ValueError("node_list 크기가 행렬 크기와 일치해야 합니다.")
+        new_parent_nodes = []
 
-            new_parent_nodes = []
-            for i in range(rows):
-                for j in range(cols):
-                    index = i * cols + j
-                    prev_node = node_list[index]  # 기존 계산 그래프의 노드
+        for i in range(rows):
+            for j in range(cols):
+                index = i * cols + j
+                valueB = B[i][j]
 
-                    valueB = B[i][j]
+                # 기존 노드가 있으면 가져와서 연결
+                if node_list and index < len(node_list):
+                    prev_node = node_list[index]
 
-                    # 새로운 add 노드 생성 (기존 노드 + 새로운 값)
+                    # 기존 노드의 output을 새로운 add 노드의 input으로 설정
                     add_node = Node(
                         operation="add",
-                        input_value=prev_node.output,  # 이전 노드의 출력이 새로운 입력이 됨
+                        input_value=prev_node.output,  # 기존 노드의 output을 새로운 노드의 input으로
                         weight_value=valueB,
                         output=0.0,
                         bias=0.0
                     )
 
-                    # 기존 노드와 새로운 노드를 연결
+                    # 기존 노드와 새로운 노드 연결
                     add_node.add_parent(prev_node)
                     prev_node.add_child(add_node)
 
-                    new_parent_nodes.append(add_node)
-
-            self.node_list = new_parent_nodes
-        else:
-            # 처음 생성하는 경우, 기존 방식으로 수행
-            new_parent_nodes = []
-            for i in range(rows):
-                for j in range(cols):
-                    valueA = A[i][j]
-                    valueB = B[i][j]
-
-                    # 덧셈 노드 생성
+                else:
+                    # 기존 노드가 없으면 새로운 add 노드 생성
                     add_node = Node(
                         operation="add",
-                        input_value=valueA,
+                        input_value=0.0,  # 초기값
                         weight_value=valueB,
                         output=0.0,
                         bias=0.0
                     )
-                    new_parent_nodes.append(add_node)
 
-            self.node_list = new_parent_nodes
+                new_parent_nodes.append(add_node)
+
+        # ✅ 기존 node_list를 유지하면서 새로운 부모 노드 추가
+        self.node_list = new_parent_nodes
 
         return self.node_list
 
@@ -94,59 +84,43 @@ class Cal_graph:
         rows_result, cols_result = rows_A, cols_B
         new_parent_nodes = []
 
-        if node_list:
-            if len(node_list) != rows_result * cols_result:
-                raise ValueError("node_list 크기가 결과 행렬 크기와 일치해야 합니다.")
+        for i in range(rows_result):
+            for j in range(cols_result):
+                index = i * cols_result + j
+                prev_node = node_list[index] if node_list and index < len(node_list) else None
 
-            for i in range(rows_result):
-                for j in range(cols_result):
-                    index = i * cols_result + j
-                    prev_node = node_list[index]  # 기존 계산 그래프의 노드
+                sum_node = Node("add", 0.0, 0.0, 0.0, 0.0)
 
-                    sum_node = Node("add", 0.0, 0.0, 0.0, 0.0)
+                for k in range(cols_A):
+                    valueA = A[i][k]
+                    valueB = B[k][j]
 
-                    for k in range(cols_A):
-                        valueA = A[i][k]
-                        valueB = B[k][j]
+                    mul_node = Node("multiply", valueA, valueB, 0.0, 0.0)
 
-                        mul_node = Node("multiply", valueA, valueB, 0.0, 0.0)
+                    sum_node.add_child(mul_node)
+                    mul_node.add_parent(sum_node)
 
-                        sum_node.add_child(mul_node)
-                        mul_node.add_parent(sum_node)
-
+                if prev_node:
                     prev_node.add_child(sum_node)
                     sum_node.add_parent(prev_node)
 
-                    new_parent_nodes.append(sum_node)
+                new_parent_nodes.append(sum_node)
 
-            self.node_list = new_parent_nodes
-        else:
-            for i in range(rows_result):
-                for j in range(cols_result):
-                    sum_node = Node("add", 0.0, 0.0, 0.0, 0.0)
-
-                    for k in range(cols_A):
-                        valueA = A[i][k]
-                        valueB = B[k][j]
-
-                        mul_node = Node("multiply", valueA, valueB, 0.0, 0.0)
-
-                        sum_node.add_child(mul_node)
-                        mul_node.add_parent(sum_node)
-
-                    new_parent_nodes.append(sum_node)
-
-            self.node_list = new_parent_nodes
+        # ✅ 기존 node_list를 유지하면서 새로운 부모 노드 추가
+        self.node_list = new_parent_nodes
 
         return self.node_list
 
     def print_graph(self):
         """
-        들여쓰기를 적용하여 계산 그래프를 계층적으로 출력.
+        계산 그래프를 계층적으로 출력 (들여쓰기 적용).
         """
-        def print_node(node, depth=0, visited=set()):
+
+        def print_node(node, depth=0, visited=None):
+            if visited is None:
+                visited = set()
             if node in visited:
-                return  # 무한 루프 방지 (순환 그래프 대비)
+                return  # 무한 루프 방지
             visited.add(node)
 
             indent = "  " * depth  # 들여쓰기 적용
@@ -155,8 +129,18 @@ class Cal_graph:
             for child in node.children:
                 print_node(child, depth + 1, visited)
 
-        root_nodes = [node for node in self.node_list if not node.parents]
-        visited_nodes = set()
+        # ✅ `node_list`가 올바르게 최상위 부모 노드를 포함하는지 검사
+        if not self.node_list:
+            print("🚨 [ERROR] 계산 그래프가 비어 있습니다.")
+            return
 
+        root_nodes = [node for node in self.node_list if not node.parents]
+
+        if not root_nodes:
+            print("🚨 [WARNING] 루트 노드를 찾을 수 없습니다. `node_list` 확인 필요.")
+            return
+
+        visited_nodes = set()
         for root in root_nodes:
             print_node(root, depth=0, visited=visited_nodes)
+
