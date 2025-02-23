@@ -26,5 +26,3 @@ def test_calculation_graph():
 
 if __name__ == "__main__":
     test_calculation_graph()
-
-#commit 용용
