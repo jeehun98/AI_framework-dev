@@ -74,7 +74,6 @@ class Cal_graph:
                 for k in range(cols_A):
                     valueA = A[i][k]
                     valueB = B[k][j]
-                    
 
                     mul_node = Node("multiply", valueA, valueB, 0.0, 0.0)
 
