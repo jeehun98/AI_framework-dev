@@ -35,6 +35,8 @@ C = np.zeros((4, 4), dtype=np.float32)
 try:
     matrix_ops.matrix_add(A, B, C)
     print("CUDA Addition Result:\n", C)
+    assert np.allclose(C, A + B), "addation result does not matxh!"
+    print("addtion test passed")
 except Exception as e:
     print("Error in CUDA addition:", e)
 
@@ -47,4 +49,4 @@ try:
     assert np.allclose(C, np.dot(A, B)), "Multiplication result does not match!"
     print("Multiplication test passed.")
 except Exception as e:
-    print("Error in CUDAㅇㅇ multiplication:", e)
+    print("Error in CUDA multiplication:", e)
