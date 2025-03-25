@@ -1,6 +1,9 @@
 import numpy as np
 import sys
 import os
+print("Python import path:", sys.path)
+
+sys.path.insert(0, "C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev/dev/backend/operaters/build/lib.win-amd64-cpython-312")
 
 # 빌드된 모듈 경로 추가
 build_path = os.path.abspath("dev/backend/operaters/build/lib.win-amd64-cpython-312")
