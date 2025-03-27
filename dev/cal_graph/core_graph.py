@@ -1,4 +1,5 @@
-from dev.node.node import Node
+from dev.cal_graph.node import Node
+from .activations import build_relu_node, build_sigmoid_node, build_tanh_node
 import numpy as np
 
 class Cal_graph:
