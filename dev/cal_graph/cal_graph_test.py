@@ -26,7 +26,7 @@ else:
 try:
     import matrix_ops
 except ImportError as e:
-    raise ImportError("Failed to import `matrix_ops` module. Ensure it is built and the path is correctly set.") from e
+    raise ImportError("Failed to import `operations_matrix_cuda` module. Ensure it is built and the path is correctly set.") from e
 
 
 from dev.cal_graph.cal_graph import Cal_graph
