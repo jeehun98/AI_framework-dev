@@ -63,7 +63,7 @@ py::array_t<float> apply_activation(py::array_t<float> input, std::string activa
 }
 
 // Pybind11 모듈 등록
-PYBIND11_MODULE(activation_cuda, m) {
+PYBIND11_MODULE(activations_cuda, m) {
     m.def("apply_activation", &apply_activation, "CUDA 기반 활성화 함수 적용",
           py::arg("input"), py::arg("activation"));
 }

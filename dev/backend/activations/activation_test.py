@@ -1,30 +1,25 @@
-# backend 를 통한 activation function 연동 테스트트
-
-import sys
-import os
+import os, sys
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+build_path = r"C:\Users\owner\Desktop\AI_framework-dev\dev\backend\activations\build\lib.win-amd64-cpython-312"
+sys.path.append(build_path)
 
-# 빌드된 모듈 경로 추가
-build_path = os.path.abspath("dev/backend/operaters/build/lib.win-amd64-cpython-312")
-if os.path.exists(build_path):
-    sys.path.append(build_path)
-else:
-    raise FileNotFoundError(f"Build path does not exist: {build_path}")
+os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin")
 
-# CUDA DLL 경로 추가
-cuda_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
-if os.path.exists(cuda_path):
-    if hasattr(os, "add_dll_directory"):
-        os.add_dll_directory(cuda_path)
-    else:
-        os.environ["PATH"] = cuda_path + os.pathsep + os.environ["PATH"]
-else:
-    raise FileNotFoundError(f"CUDA path does not exist: {cuda_path}")
+print("sys.path에 다음이 포함되어야 함:")
+print(build_path)
+print("파일 존재 여부:", os.path.exists(os.path.join(build_path, "activations_cuda.cp312-win_amd64.pyd")))
 
-try:
-    import activation_cuda
-except ImportError as e:
-    raise ImportError("Failed to import `matrix_ops` module. Ensure it is built and the path is correctly set.") from e
+import activations_cuda
 
+x = np.array([-1.0, 2.5, -3.0, 0.0, 4.2, -0.5, 1.3, -2.1, 3.6, -4.5], dtype=np.float32)
+print("입력:", x)
+
+relu_result = activations_cuda.apply_activation(x, "relu")
+print("ReLU 결과:", relu_result)
+
+sigmoid_result = activations_cuda.apply_activation(x, "sigmoid")
+print("Sigmoid 결과:", sigmoid_result)
+
+tanh_result = activations_cuda.apply_activation(x, "tanh")
+print("Tanh 결과:", tanh_result)
