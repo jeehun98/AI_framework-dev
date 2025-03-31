@@ -1,5 +1,3 @@
-# backend 를 통한 행렬 연산과 계산 그래프 연결 확인
-
 import sys
 import os
 import numpy as np
@@ -28,8 +26,9 @@ try:
 except ImportError as e:
     raise ImportError("Failed to import `operations_matrix_cuda` module. Ensure it is built and the path is correctly set.") from e
 
+# ✅ 경로 수정
+from dev.cal_graph.core_graph import Cal_graph
 
-from dev.cal_graph.cal_graph import Cal_graph
 
 def test_calculation_graph():
     cal_graph = Cal_graph()
@@ -40,25 +39,38 @@ def test_calculation_graph():
     B = [[10, 20], [30, 40]]
     C = np.zeros((2, 2), dtype=np.float32)
 
-    # ✅ CUDA 또는 연산 결과값 (예제: NumPy로 행렬 곱 계산)
+    # ✅ CUDA backend로 행렬 곱 수행
     matrix_ops.matrix_mul(A, B, C)
 
-    node_list1 = cal_graph.matrix_multiply(A, B, C)  # ✅ result 추가
+    # ✅ 계산 그래프에 곱셈 그래프 추가
+    node_list1 = cal_graph.add_matrix_multiply_graph(A, B, C.tolist())
 
-    # 노드 리스트 업데이트 (사용자가 직접 연결 가능)
+    # --------------------
+
+    print("\n[Step 2] 행렬 덧셈 연산 수행")
+
     D = [[1, 2], [3, 4]]
-
     E = np.zeros((2, 2), dtype=np.float32)
-    # ✅ CUDA 또는 연산 결과값 (예제: NumPy로 행렬 덧셈 계산)
-    result2 = matrix_ops.matrix_add(C, D, E)
 
-    node_list2 = cal_graph.matrix_add(C, D, E)  # ✅ result 추가
+    # ✅ CUDA backend로 행렬 덧셈 수행
+    matrix_ops.matrix_add(C, D, E)
 
+    # ✅ 계산 그래프에 덧셈 그래프 추가
+    node_list2 = cal_graph.add_matrix_add_graph(C.tolist(), D, E.tolist())
+
+    # --------------------
+
+    print("\n[Step 3] 그래프 연결")
+
+    # ✅ 덧셈 그래프의 리프 노드
     leaf_node_list = cal_graph.get_leaf_nodes(node_list2)
 
+    # ✅ 덧셈 -> 곱셈 그래프 연결
     cal_graph.connect_graphs(node_list2, node_list1)
 
+    # ✅ 최종 계산 그래프 출력
     cal_graph.print_graph()
+
 
 if __name__ == "__main__":
     test_calculation_graph()
