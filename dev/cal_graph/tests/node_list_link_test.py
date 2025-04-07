@@ -2,7 +2,7 @@ import sys
 import os
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 from dev.cal_graph.core_graph import Cal_graph
 
 def test_connect_graphs():

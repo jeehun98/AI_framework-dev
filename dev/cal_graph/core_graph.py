@@ -1,5 +1,9 @@
-from dev.cal_graph import core_ops, graph_utils
+# dev/cal_graph/core_graph.py
+
+from . import core_ops, graph_utils
 from .activations import build_relu_node, build_sigmoid_node, build_tanh_node
+
+# 나머지 Cal_graph 클래스 정의 ...
 
 class Cal_graph:
     def __init__(self):
