@@ -1,25 +1,45 @@
+# 🧪 tests/backend_test_code/activation_test
 import os, sys
+
 import numpy as np
 
-build_path = r"C:\Users\owner\Desktop\AI_framework-dev\dev\backend\activations\build\lib.win-amd64-cpython-312"
-sys.path.append(build_path)
+# ✅ 프로젝트 루트 (AI_framework-dev)를 sys.path에 삽입
+cur = os.path.abspath(__file__)
+while True:
+    cur = os.path.dirname(cur)
+    if os.path.basename(cur) == "AI_framework-dev":
+        if cur not in sys.path:
+            sys.path.insert(0, cur)
+        break
+    if cur == os.path.dirname(cur):
+        raise RuntimeError("프로젝트 루트(AI_framework-dev)를 찾을 수 없습니다.")
 
-os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin")
+# 이제 dev.tests.test_setup import가 가능해짐
+from dev.tests.test_setup import setup_paths
+setup_paths()
 
-print("sys.path에 다음이 포함되어야 함:")
-print(build_path)
-print("파일 존재 여부:", os.path.exists(os.path.join(build_path, "activations_cuda.cp312-win_amd64.pyd")))
 
-import activations_cuda
 
+# ✅ activations_cuda 모듈 import
+try:
+    import activations_cuda
+    print("✅ activations_cuda 모듈 로드 성공")
+except ImportError as e:
+    print("❌ activations_cuda import 실패:", e)
+    sys.exit(1)
+
+# ✅ 테스트 입력
 x = np.array([-1.0, 2.5, -3.0, 0.0, 4.2, -0.5, 1.3, -2.1, 3.6, -4.5], dtype=np.float32)
-print("입력:", x)
+print("\n🧪 입력:", x)
 
+# ✅ ReLU
 relu_result = activations_cuda.apply_activation(x, "relu")
-print("ReLU 결과:", relu_result)
+print("🔹 ReLU 결과:", relu_result)
 
+# ✅ Sigmoid
 sigmoid_result = activations_cuda.apply_activation(x, "sigmoid")
-print("Sigmoid 결과:", sigmoid_result)
+print("🔹 Sigmoid 결과:", sigmoid_result)
 
+# ✅ Tanh
 tanh_result = activations_cuda.apply_activation(x, "tanh")
-print("Tanh 결과:", tanh_result)
+print("🔹 Tanh 결과:", tanh_result)

@@ -1,13 +1,18 @@
-# dev/runtests.py
 import os
+import sys
 import subprocess
 
-# PYTHONPATH 설정
-os.environ["PYTHONPATH"] = "."
+# 프로젝트 루트 설정 및 PYTHONPATH 적용
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+os.environ["PYTHONPATH"] = project_root
+sys.path.insert(0, project_root)
 
-# 명시적으로 제외 옵션 추가
+# pytest 실행
 subprocess.run([
-    "pytest",
-    "-v",
-    "--ignore-glob=other_frameworks/**/*"
+    sys.executable, "-m", "pytest",
+    "tests", "dev",                             # 주요 테스트 디렉토리
+    "--rootdir", project_root,
+    "--ignore-glob=other_frameworks/**/*",
+    "--ignore-glob=dev/other_frameworks/**/*",
+    "-v"
 ])
