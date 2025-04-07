@@ -1,4 +1,4 @@
-from dev.cal_graph.node import Node
+from .node import Node
 
 def matrix_add_nodes(A, B, result):
     """행렬 덧셈에 해당하는 계산 노드 생성"""

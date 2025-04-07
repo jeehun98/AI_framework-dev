@@ -1,6 +1,6 @@
 # dev/cal_graph/activations.py
 
-from dev.cal_graph.node import Node
+from .node import Node
 
 def build_sigmoid_node(input_node):
     # Sigmoid(x) = 1 / (1 + exp(-x))

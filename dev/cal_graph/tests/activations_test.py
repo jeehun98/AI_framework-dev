@@ -2,7 +2,8 @@ import sys
 import os
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
+
 from dev.node.node import Node
 from dev.cal_graph.activations import build_sigmoid_node, build_tanh_node, build_relu_node
 from dev.cal_graph.core_graph import Cal_graph
