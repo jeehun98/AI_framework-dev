@@ -4,7 +4,7 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 import numpy as np
 from dev.layers.layer import Layer
 from dev import activations
-from dev.backend.recurrent import recurrent
+from dev.backend.backend_ops.recurrent import recurrent
 
 
 class RNN(Layer):

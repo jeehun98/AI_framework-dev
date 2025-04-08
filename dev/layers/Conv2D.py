@@ -2,7 +2,7 @@ import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
 from dev.layers.layer import Layer
-from dev.backend.convolution import convolution
+from dev.backend.backend_ops.convolution import convolution
 
 
 import numpy as np
