@@ -2,7 +2,7 @@
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
-from dev.backend.activations import activations
+from dev.backend.backend_ops.activations import activations
 
 def relu(x, node_list = []):
     return activations.relu(x, node_list)

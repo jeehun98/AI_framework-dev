@@ -1,74 +1,39 @@
-# dev/backend/activations/tests/activation_test.py 또는 tests/backend_test_code/activation_test.py 등에서 사용 가능
+# ✅ tests/backend_test_code/activation_test.py
 
 import os
 import sys
 import numpy as np
 
-# ✅ 프로젝트 루트 경로 수동 등록 (dev 상위 루트가 sys.path 에 들어가야 함)
-current_path = os.path.abspath(__file__)
-while True:
-    current_path = os.path.dirname(current_path)
-    if os.path.basename(current_path) == "AI_framework-dev":
-        if current_path not in sys.path:
-            sys.path.insert(0, current_path)
-        break
-    if current_path == os.path.dirname(current_path):
-        raise RuntimeError("AI_framework-dev 루트를 찾을 수 없습니다.")
+# ✅ 프로젝트 루트(AI_framework-dev)를 sys.path에 명시적으로 추가
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-# ✅ 설정 적용
+# ✅ test_setup 경로 활성화 (dev/tests/test_setup.py)
 from dev.tests.test_setup import setup_paths
 setup_paths()
 
 # ✅ 활성화 함수 모듈 임포트
-from dev.backend.activations import activations
+from dev.backend.backend_ops.activations import activations
 print("✅ activations 모듈 로드 성공")
 
 
+# ✅ 입력 데이터
+inputs = np.array([[-1.0, 0.5, 2.0], [1.0, -0.5, 0.0]], dtype=np.float32)
 
-# === 테스트 입력 ===
-inputs = np.array([[-1.0, 0.5, 2.0], [1.0, -0.5, 0.0]])
+# ✅ 활성화 함수 테스트 루틴
+def run_activation_test(name, func):
+    print(f"\n🔹 {name}")
+    result, nodes = func(inputs)
+    print("Result:", result)
+    for node in nodes:
+        print(f"🧱 {node.operation} → {node.output}")
+        for child in node.children:
+            print(f"   └─ {child.operation} → {child.output}")
 
-# ReLU
-print("\n🔹 ReLU")
-result, nodes = activations.relu(inputs)
-print("Result:", result)
-for node in nodes:
-    print(node.operation, node.output)
-    for child in node.children:
-        print(" └─", child.operation, child.output)
-
-# Sigmoid
-print("\n🔹 Sigmoid")
-result, nodes = activations.sigmoid(inputs)
-print("Result:", result)
-for node in nodes:
-    print(node.operation, node.output)
-    for child in node.children:
-        print(" └─", child.operation, child.output)
-
-# Tanh
-print("\n🔹 Tanh")
-result, nodes = activations.tanh(inputs)
-print("Result:", result)
-for node in nodes:
-    print(node.operation, node.output)
-    for child in node.children:
-        print(" └─", child.operation, child.output)
-
-# Leaky ReLU
-print("\n🔹 Leaky ReLU")
-result, nodes = activations.leaky_relu(inputs, alpha=0.01)
-print("Result:", result)
-for node in nodes:
-    print(node.operation, node.output)
-    for child in node.children:
-        print(" └─", child.operation, child.output)
-
-# Softmax
-print("\n🔹 Softmax")
-result, nodes = activations.softmax(inputs)
-print("Result:", result)
-for node in nodes:
-    print(node.operation, node.output)
-    for child in node.children:
-        print(" └─", child.operation, child.output)
+# ✅ 개별 테스트 실행
+run_activation_test("ReLU", activations.relu)
+run_activation_test("Sigmoid", activations.sigmoid)
+run_activation_test("Tanh", activations.tanh)
+run_activation_test("Leaky ReLU", lambda x: activations.leaky_relu(x, alpha=0.01))
+run_activation_test("Softmax", activations.softmax)
