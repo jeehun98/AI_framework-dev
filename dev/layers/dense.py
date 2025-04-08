@@ -93,7 +93,7 @@ class Dense(Layer):
                 root_node.add_parent(leaf_node)
                 leaf_node.add_child(root_node)
             
-        return x.reshape(1,-1)
+        return x
 
     def get_config(self):
         base_config = super().get_config()
