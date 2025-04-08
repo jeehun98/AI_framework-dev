@@ -3,7 +3,7 @@ os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
 import inspect
 
-from dev.backend.optimizers.optimizers import SGD
+from dev.backend.backend_ops.optimizers.optimizers import SGD
 
 ALL_OPTIMIZERS = {
     SGD,

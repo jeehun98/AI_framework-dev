@@ -2,7 +2,7 @@
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
-from dev.backend.losses import losses
+from dev.backend.backend_ops.losses import losses
 
 class MSE():
     def __init__(self, name="mse"):

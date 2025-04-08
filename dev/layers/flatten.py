@@ -2,7 +2,7 @@ import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
 from dev.layers.layer import Layer
-from dev.backend.flatten import flatten
+from dev.backend.backend_ops.flatten import flatten
 
 import numpy as np
 

@@ -2,7 +2,7 @@ import numpy as np
 from dev.layers.layer import Layer
 from dev import activations
 from dev.node.node import Node
-from dev.backend.operaters import operations_matrix
+from dev.backend.backend_ops.operaters import operations_matrix
 
 class Dense(Layer):
     def __init__(self, units, activation=None, name=None, initializer='he', **kwargs):
