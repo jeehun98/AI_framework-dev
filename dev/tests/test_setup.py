@@ -71,9 +71,23 @@ def setup_paths():
     add_all_pyd_build_paths()
 
 def import_cuda_module():
+    import sys, os
+
+    # ✅ CUDA DLL 경로 명시적으로 등록
+    cuda_dll_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
+    os.add_dll_directory(cuda_dll_path)
+    print(f"✅ CUDA DLL 경로 등록됨: {cuda_dll_path}")
+
+    # ✅ .pyd가 있는 빌드 디렉토리 등록
+    build_path = os.path.abspath("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/backend_ops/operaters/build/lib.win-amd64-cpython-312")
+    if build_path not in sys.path:
+        sys.path.insert(0, build_path)
+    print(f"✅ CUDA .pyd 경로 등록됨: {build_path}")
+
     try:
         import operations_matrix_cuda
+        print("✅ CUDA 연산 모듈 import 성공!")
         return operations_matrix_cuda
-    except ImportError:
-        import pytest
-        pytest.skip("operations_matrix_cuda 모듈을 찾을 수 없습니다.")
+    except Exception as e:
+        print("❌ CUDA 연산 모듈 import 실패:", e)
+        raise ImportError("CUDA 연산 모듈을 찾을 수 없습니다.")
