@@ -70,24 +70,29 @@ def setup_paths():
     add_cuda_dll_directory()
     add_all_pyd_build_paths()
 
-def import_cuda_module():
-    import sys, os
+def import_cuda_module(module_name, build_dir):
+    """
+    지정된 CUDA 모듈을 import합니다.
+    
+    Args:
+        module_name (str): import할 모듈 이름 (예: 'losses_cuda')
+        build_dir (str): .pyd가 들어있는 디렉토리 경로
+    Returns:
+        module: import된 모듈 객체
+    """
+    if hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin")
 
-    # ✅ CUDA DLL 경로 명시적으로 등록
-    cuda_dll_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
-    os.add_dll_directory(cuda_dll_path)
-    print(f"✅ CUDA DLL 경로 등록됨: {cuda_dll_path}")
-
-    # ✅ .pyd가 있는 빌드 디렉토리 등록
-    build_path = os.path.abspath("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/backend_ops/operaters/build/lib.win-amd64-cpython-312")
-    if build_path not in sys.path:
-        sys.path.insert(0, build_path)
-    print(f"✅ CUDA .pyd 경로 등록됨: {build_path}")
+    if build_dir not in sys.path:
+        sys.path.insert(0, build_dir)
+        print(f"✅ .pyd 경로 등록됨: {build_dir}")
 
     try:
-        import operations_matrix_cuda
-        print("✅ CUDA 연산 모듈 import 성공!")
-        return operations_matrix_cuda
-    except Exception as e:
-        print("❌ CUDA 연산 모듈 import 실패:", e)
-        raise ImportError("CUDA 연산 모듈을 찾을 수 없습니다.")
+        mod = __import__(module_name)
+        print(f"✅ CUDA 모듈 '{module_name}' import 성공!")
+        return mod
+    except ImportError as e:
+        print(f"❌ CUDA 모듈 '{module_name}' import 실패:", e)
+        raise
+
+

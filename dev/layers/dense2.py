@@ -10,8 +10,11 @@ import os
 import sys
 
 from ..tests.test_setup import import_cuda_module
-matrix_ops = import_cuda_module()
 
+matrix_ops = import_cuda_module(
+    module_name="operations_matrix_cuda",  # ✅ .pyd 파일의 이름과 일치해야 함
+    build_dir=r"C:\Users\owner\Desktop\AI_framework-dev\dev\backend\backend_ops\operaters\build\lib.win-amd64-cpython-312"
+)
 
 class Dense(Layer):
     def __init__(self, units, activation=None, name=None, initializer='he', **kwargs):
