@@ -101,9 +101,11 @@ class Sequential(Node):
         return output
 
     def compute_loss_and_metrics(self, y_pred, y_true):
-        self.loss_value, self.loss_node_list = self.loss(y_pred, y_true)
+        self.loss_value = self.loss(y_true, y_pred)  # ✅ 호출 순서 주의
+        self.loss_node_list = []                     # ✅ CUDA 손실은 node_list 없음
         self.metric_value = self.metric(y_pred, y_true)
         return self.loss_value
+        
 
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:

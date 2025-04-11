@@ -16,9 +16,8 @@ while True:
 
 # 이제 dev.tests.test_setup import가 가능해짐
 from dev.tests.test_setup import setup_paths
+
 setup_paths()
-
-
 
 # ✅ activations_cuda 모듈 import
 try:

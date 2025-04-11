@@ -1,39 +1,49 @@
-# backend 변환
+# dev/losses/losses.py
+
 import os
-os.add_dll_directory("C:\\msys64\\mingw64\\bin")
+import sys
+import numpy as np
 
-from dev.backend.backend_ops.losses import losses
+# ✅ test_setup.py 경로 추가
+sys.path.insert(0, os.path.abspath("C:/Users/owner/Desktop/AI_framework-dev/dev/tests"))
 
-class MSE():
+from test_setup import import_cuda_module
+
+# ✅ losses_cuda 모듈 import
+losses_cuda = import_cuda_module(
+    module_name="losses_cuda",
+    build_dir="C:/Users/owner/Desktop/AI_framework-dev/dev/backend/backend_ops/losses/build/lib.win-amd64-cpython-312"
+)
+
+
+class MSE:
     def __init__(self, name="mse"):
         self.name = name
 
     def get_config(self):
-        return {
-            "name": self.name,
-        }
+        return {"name": self.name}
 
-    def __call__(self, y_true, y_pred, loss_node_list = []):
-        """
-        MSE 클래스를 호출할 때 C++의 mean_squared_error 함수를 호출하도록 구성합니다.
-        """
-        
-        return losses.mean_squared_error(y_true, y_pred, loss_node_list)
+    def __call__(self, y_true, y_pred):
+        return losses_cuda.compute_loss(y_true.astype(np.float32), y_pred.astype(np.float32), "mse")
 
-class BinaryCrossentropy():
+
+class BinaryCrossentropy:
     def __init__(self, name="binarycrossentropy"):
         self.name = name
 
     def get_config(self):
-        return {
-            "name": self.name,
-        }
+        return {"name": self.name}
 
-class CategoricalCrossentropy():
+    def __call__(self, y_true, y_pred):
+        return losses_cuda.compute_loss(y_true.astype(np.float32), y_pred.astype(np.float32), "bce")
+
+
+class CategoricalCrossentropy:
     def __init__(self, name="categoricalcrossentropy"):
         self.name = name
 
     def get_config(self):
-        return {
-            "name": self.name,
-        }
+        return {"name": self.name}
+
+    def __call__(self, y_true, y_pred):
+        return losses_cuda.compute_loss(y_true.astype(np.float32), y_pred.astype(np.float32), "cce")
