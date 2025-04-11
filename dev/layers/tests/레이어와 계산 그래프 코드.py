@@ -17,8 +17,8 @@ from dev.layers.activations import Activation
 np.random.seed(42)
 
 # ✅ 입력/출력 데이터 생성
-x = np.random.rand(10, 4)
-y = np.random.rand(10, 2)
+x = np.random.rand(1, 4)
+y = np.random.rand(1, 2)
 
 # ✅ 모델 생성 및 레이어 추가
 model = Sequential()
