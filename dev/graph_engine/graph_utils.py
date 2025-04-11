@@ -29,16 +29,23 @@ def connect_graphs(node_list1, node_list2):
         raise ValueError("두 번째 node_list가 비어 있습니다.")
 
     leaf_nodes = get_leaf_nodes(node_list1)
-    root_nodes = node_list2
+    root_nodes = get_root_nodes(node_list2)  # 자식이 없는 노드들
 
     if not leaf_nodes:
         raise ValueError("첫 번째 node_list에서 리프 노드를 찾을 수 없습니다.")
 
-    for i in range(len(leaf_nodes)):
-        leaf_nodes[i].add_child(root_nodes[i])
-        root_nodes[i].add_parent(leaf_nodes[i])
+    for leaf in leaf_nodes:
+        for root in root_nodes:
+            # 루프 방지: 자기 자신과의 연결 금지 + 중복 연결 방지
+            if root is not leaf and root not in leaf.children:
+                leaf.add_child(root)
+                root.add_parent(leaf)
 
-    return node_list1
+    return node_list2  # 업데이트된 최신 루트 노드 리스트
+
+def get_root_nodes(node_list):
+    """자식이 없는 루트 노드를 반환"""
+    return [node for node in node_list if not node.children]
 
 
 def print_graph(node_list):

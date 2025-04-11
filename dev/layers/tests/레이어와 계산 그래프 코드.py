@@ -26,7 +26,7 @@ model.add(Flatten(input_shape=(4,)))
 model.add(Dense(10))
 model.add(Activation('sigmoid'))
 model.add(Dense(2))
-model.add(Activation('softmax'))
+model.add(Activation('sigmoid'))
 
 print("✅ 모델 레이어 추가 완료")
 
@@ -39,6 +39,9 @@ model.compile(
 )
 
 print("✅ 컴파일 완료")
+
+print(model.cal_graph.node_list, "계산 그래프 확인")
+model.cal_graph.print_graph()
 
 # ✅ 학습 실행
 model.fit(x, y, epochs=1, batch_size=32)

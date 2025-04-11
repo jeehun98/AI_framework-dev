@@ -1,47 +1,71 @@
-from dev.activations.activations import sigmoid, relu, leaky_relu, softmax, tanh
+# dev/activations/__init__.py
 
-# 활성화 함수 객체 집합
-ALL_ACTIVATIONS = {
-    sigmoid,
-    relu,
-    leaky_relu,
-    softmax,
-    tanh,
+import numpy as np
+
+import sys
+import os
+# ✅ 프로젝트 루트 (AI_framework-dev)를 sys.path에 삽입
+cur = os.path.abspath(__file__)
+while True:
+    cur = os.path.dirname(cur)
+    if os.path.basename(cur) == "AI_framework-dev":
+        if cur not in sys.path:
+            sys.path.insert(0, cur)
+        break
+    if cur == os.path.dirname(cur):
+        raise RuntimeError("프로젝트 루트(AI_framework-dev)를 찾을 수 없습니다.")
+
+# 이제 dev.tests.test_setup import가 가능해짐
+from dev.tests.test_setup import setup_paths
+setup_paths()
+
+# ✅ activations_cuda 모듈 import
+try:
+    import activations_cuda
+    print("✅ activations_cuda 모듈 로드 성공")
+except ImportError as e:
+    print("❌ activations_cuda import 실패:", e)
+    sys.exit(1)
+
+# ✅ CUDA 기반 래퍼 함수들
+def relu(x):
+    return activations_cuda.apply_activation(x.astype(np.float32), "relu")
+
+def leaky_relu(x):
+    return activations_cuda.apply_activation(x.astype(np.float32), "leaky_relu")
+
+def sigmoid(x):
+    return activations_cuda.apply_activation(x.astype(np.float32), "sigmoid")
+
+def tanh(x):
+    return activations_cuda.apply_activation(x.astype(np.float32), "tanh")
+
+def softmax(x):
+    return activations_cuda.apply_activation(x.astype(np.float32), "softmax")
+
+# ✅ 이름 → 함수 딕셔너리
+ALL_ACTIVATIONS_DICT = {
+    "relu": relu,
+    "leaky_relu": leaky_relu,
+    "sigmoid": sigmoid,
+    "tanh": tanh,
+    "softmax": softmax,
 }
-
-# 활성화 함수 이름과 객체를 매핑한 딕셔너리
-ALL_ACTIVATIONS_DICT = {activation.__name__: activation for activation in ALL_ACTIVATIONS}
 
 def get(identifier):
     """
-    활성화 함수의 이름(identifier)을 문자열로 입력받아, 
-    해당 이름에 맞는 활성화 함수 객체를 반환합니다.
-    
-    Parameters:
-        identifier (str or callable): 활성화 함수의 이름(str) 또는 함수 객체.
-    
-    Returns:
-        function: 호출 가능한 활성화 함수 객체.
-    
-    Raises:
-        ValueError: 유효하지 않은 이름이 입력된 경우 예외를 발생시킵니다.
+    활성화 함수 이름 또는 함수 객체를 받아 함수 반환
     """
-
-    # 입력이 문자열인 경우, 딕셔너리에서 활성화 함수 가져오기
     if isinstance(identifier, str):
+        identifier = identifier.lower()
         activation_fn = ALL_ACTIVATIONS_DICT.get(identifier)
-
-        # 함수 객체가 유효한 경우 반환
         if callable(activation_fn):
             return activation_fn
 
-    # 입력이 이미 함수 객체인 경우, 그대로 반환
     if callable(identifier):
         return identifier
 
-    # 유효하지 않은 입력일 경우 예외 발생
-    available_activations = ", ".join(ALL_ACTIVATIONS_DICT.keys())
     raise ValueError(
         f"Invalid activation function identifier: '{identifier}'. "
-        f"Available options are: {available_activations}."
+        f"Available options: {', '.join(ALL_ACTIVATIONS_DICT.keys())}."
     )
