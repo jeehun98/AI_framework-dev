@@ -32,11 +32,9 @@ class Flatten(Layer):
             batch_size = inputs.shape[0]
             flattened_dim = int(np.prod(inputs.shape[1:]))
             inputs = inputs.reshape(batch_size, flattened_dim)
-        
-        self.output_shape = inputs.shape
-        self.node_list = []
-        return inputs
 
+        self.output_shape = inputs.shape
+        return inputs
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0], np.prod(input_shape[1:]))
@@ -45,6 +43,7 @@ class Flatten(Layer):
         return reduce(mul, t, 1)
 
     def build(self, input_shape):
+        print("flatten 호출 확인")
         result = self.multiply_tuple_elements(input_shape)
         self.output_shape = (1, result)
         super().build()

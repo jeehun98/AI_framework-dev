@@ -1,4 +1,5 @@
-# dev/activations/activations.py
+# dev/activations/activations_mapping.py
+# 활성화 함수의 종류 별 호출을 담당
 
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")  # DLL 경로 등록
