@@ -1,5 +1,3 @@
-# dev/graph_engine/tests/cal_graph_test.py
-
 import numpy as np
 import os
 import sys
@@ -10,7 +8,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 # ✅ 공통 경로 및 환경 설정
 from tests.test_setup import setup_paths, import_cuda_module
 setup_paths()
-matrix_ops = import_cuda_module()
+
+# ✅ 모듈 이름 및 빌드 디렉토리 설정
+module_name = "operations_matrix_cuda"  # 실제 .pyd 파일 이름에서 .pyd 제외한 부분
+build_dir = os.path.abspath("dev/backend/backend_ops/operaters/build/lib.win-amd64-cpython-312")
+matrix_ops = import_cuda_module(module_name, build_dir)
 
 # ✅ 계산 그래프 모듈 import
 from dev.graph_engine.core_graph import Cal_graph

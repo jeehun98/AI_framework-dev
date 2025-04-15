@@ -9,7 +9,7 @@ import numpy as np
 
 # ✅ 모델 및 레이어 임포트
 from dev.models.sequential import Sequential
-from dev.layers.dense2 import Dense
+from dev.layers.dense import Dense
 from dev.layers.flatten import Flatten
 from dev.layers.activations import Activation
 
@@ -28,8 +28,6 @@ model.add(Activation('sigmoid'))
 model.add(Dense(2))
 model.add(Activation('sigmoid'))
 
-print("✅ 모델 레이어 추가 완료")
-
 # ✅ 모델 컴파일
 model.compile(
     optimizer='sgd',
@@ -37,11 +35,6 @@ model.compile(
     p_metrics='mse',
     learning_rate=0.001
 )
-
-print("✅ 컴파일 완료")
-
-print(model.cal_graph.node_list, "계산 그래프 확인")
-model.cal_graph.print_graph()
 
 # ✅ 학습 실행
 model.fit(x, y, epochs=1, batch_size=32)
