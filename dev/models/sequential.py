@@ -17,7 +17,7 @@ class Sequential(Node):
     def __init__(self, layers=None, trainable=True, name=None):
         self.built = False
         self._layers = []
-        self.cal_graph = Cal_graph()           # ✅ 전체 계산 그래프 인스턴스
+        self.cal_graph = Cal_graph()
         self.loss_node_list = []
 
     def get_config(self):
@@ -32,8 +32,6 @@ class Sequential(Node):
         if self._layers:
             previous_layer = self._layers[-1]
             input_shape = previous_layer.output_shape
-
-            # ✅ 이전 레이어 output_shape가 없을 수도 있으므로 fallback 필요
             if input_shape is not None:
                 layer.build(input_shape)
             elif hasattr(layer, "input_shape") and layer.input_shape is not None:
@@ -41,14 +39,14 @@ class Sequential(Node):
             else:
                 raise RuntimeError(f"레이어 {layer.layer_name}의 입력 shape을 추론할 수 없습니다.")
         else:
-            # ✅ 첫 번째 레이어는 반드시 input_shape가 있어야 함
             if hasattr(layer, "input_shape") and layer.input_shape is not None:
                 layer.build(layer.input_shape)
             else:
                 raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
 
-        self._layers.append(layer)
+        print(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
 
+        self._layers.append(layer)
 
     def build(self):
         self.input_shape = self._layers[0].input_shape
@@ -93,19 +91,31 @@ class Sequential(Node):
 
         return json.dumps(model_data)
 
-
     def predict(self, data):
         output = data
-        for layer in self._layers:
+        for i, layer in enumerate(self._layers):
             output = layer.call(output)
         return output
 
+    def forward_pass(self, input_data):
+        output = input_data
+        print(f"[SHAPE TRACE] Input: {output.shape}")
+        for i, layer in enumerate(self._layers):
+            output = layer.call(output)
+            print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
+        return output
+
+    def connect_loss_graph(self):
+        if self.loss_node_list:
+            self.cal_graph.node_list = self.cal_graph.connect_graphs(
+                self.cal_graph.node_list, self.loss_node_list
+            )
+
     def compute_loss_and_metrics(self, y_pred, y_true):
-        self.loss_value = self.loss(y_true, y_pred)  # ✅ 호출 순서 주의
-        self.loss_node_list = []                     # ✅ CUDA 손실은 node_list 없음
+        self.loss_value = self.loss(y_true, y_pred)
+        self.loss_node_list = []
         self.metric_value = self.metric(y_pred, y_true)
         return self.loss_value
-        
 
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
@@ -127,93 +137,57 @@ class Sequential(Node):
                 batch_x = x[start:end]
                 batch_y = y[start:end]
                 batch_datas = batch_x.shape[0]
-                batch_loss_sum = None
+                batch_loss_sum = 0
 
-                for batch_data_idx in range(batch_datas):
-                    print(f" [Sample {batch_data_idx + 1}] 전방 계산 시작")
+                for data_idx in range(batch_datas):
+                    input_data = batch_x[data_idx]
+                    target = batch_y[data_idx]
 
-                    input_data = batch_x[batch_data_idx]
-                    target = batch_y[batch_data_idx]
+                    print(f"\n[SHAPE TRACE] === Sample {data_idx + 1} ===")
+                    print(f"[SHAPE TRACE] Input: {input_data.shape}")
+
                     output = input_data
-
-                    for idx, layer in enumerate(self._layers):
-                        print(f"   - Layer {idx}: {layer.__class__.__name__} 호출 전")
+                    prev_node_list = None
+                    for i, layer in enumerate(self._layers):
+                        print(f"[DEBUG] Layer {i}: {layer.__class__.__name__} call() 실행")
                         output = layer.call(output)
-                        print(f"   - Layer {idx}: call 완료")
+                        print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
 
-                        # 그래프 연결
-                        if idx == 0:
-                            self.cal_graph.node_list = layer.node_list[:]
-                        else:
-                            print(f"   - [DEBUG] 이전 노드 수: {len(self.cal_graph.node_list)}, 현재 레이어 노드 수: {len(layer.node_list)}")
+                        if hasattr(layer, "build_graph"):
+                            layer.build_graph(output, prev_node_list)
+                        if hasattr(layer, "node_list"):
+                            prev_node_list = layer.node_list
 
-                            if self.cal_graph.node_list and layer.node_list:
-                                print(f"   - 그래프 연결 시작: {self.cal_graph.node_list[-1]} → {layer.node_list[-1]}")
-                                self.cal_graph.node_list = self.cal_graph.connect_graphs(
-                                    self.cal_graph.node_list, layer.node_list
-                                )
-                                print(f"   - 그래프 연결 완료")
-                            else:
-                                print(f"⚠️ 그래프 연결 생략 - 연결할 노드가 없습니다.")
+                    self.cal_graph.node_list = prev_node_list if prev_node_list else []
 
                     output = np.array(output).reshape(1, -1)
                     target = np.array(target).reshape(1, -1)
 
-                    print(f" [Sample {batch_data_idx + 1}] 손실 계산 시작")
+                    print("[DEBUG] 손실 및 메트릭 계산 시작")
                     loss_value = self.compute_loss_and_metrics(output, target)
-                    print(f" [Sample {batch_data_idx + 1}] 손실 계산 완료")
+                    print("[DEBUG] 손실 및 메트릭 계산 완료")
 
-                    if self.loss_node_list:
-                        self.cal_graph.node_list = self.cal_graph.connect_graphs(
-                            self.cal_graph.node_list, self.loss_node_list
-                        )
-                        print(f" [Sample {batch_data_idx + 1}] 손실 그래프 연결 완료")
-                    else:
-                        print(f"⚠️ 손실 노드가 없습니다. 연결 생략")
+                    self.connect_loss_graph()
+                    batch_loss_sum += loss_value
 
-                    if isinstance(loss_value, list):
-                        if batch_loss_sum is None:
-                            batch_loss_sum = [0] * len(loss_value)
-                        for i in range(len(loss_value)):
-                            batch_loss_sum[i] += loss_value[i]
-                    else:
-                        if batch_loss_sum is None:
-                            batch_loss_sum = 0
-                        batch_loss_sum += loss_value
+                batch_loss = batch_loss_sum / batch_datas
+                print(f"[Batch {batch_idx + 1}] 평균 손실: {batch_loss}")
 
-                print(f"[Batch {batch_idx + 1}] 역전파 및 가중치 업데이트 시작")
-
-                if isinstance(batch_loss_sum, list):
-                    batch_loss = [loss / batch_datas for loss in batch_loss_sum]
-                    for i, node in enumerate(self.cal_graph.node_list):
-                        node.update(node.input_value, node.weight_value, batch_loss[i], node.bias)
-                else:
-                    batch_loss = batch_loss_sum / batch_datas
-                    self.cal_graph.node_list[0].update(
-                        self.cal_graph.node_list[0].input_value,
-                        self.cal_graph.node_list[0].weight_value,
-                        batch_loss,
-                        self.cal_graph.node_list[0].bias,
-                    )
-
-                print(f"[Batch {batch_idx + 1}] 손실: {batch_loss}")
-
+                print("[DEBUG] 역전파 시작")
                 for root_node in self.cal_graph.node_list:
-                    print("[Backpropagation] 시작")
                     self.backpropagate(root_node)
-                    print("[Backpropagation] 완료")
+                print("[DEBUG] 역전파 완료")
 
+                print("[DEBUG] 가중치 업데이트 시작")
                 for root_node in self.cal_graph.node_list:
                     self.weight_update(root_node, batch_datas, self.optimizer)
+                print("[DEBUG] 가중치 업데이트 완료")
 
-            # Epoch 마무리 평가
-            loss_sum = 0
-            for data_idx in range(x.shape[0]):
-                input_data = x[data_idx]
-                target = y[data_idx]
-                predict = self.predict(input_data)
-                predict = np.array(predict).reshape(1, -1)
-                data_loss = self.compute_loss_and_metrics(predict, target.reshape(1, -1))
-                loss_sum += data_loss
+            total_loss = 0
+            for i in range(x.shape[0]):
+                pred = self.predict(x[i])
+                pred = np.array(pred).reshape(1, -1)
+                loss = self.compute_loss_and_metrics(pred, y[i].reshape(1, -1))
+                total_loss += loss
 
-            print(f"\n📊 [Epoch {epoch + 1}] 평균 손실: {loss_sum / x.shape[0]}")
+            print(f"\n📊 [Epoch {epoch + 1}] 전체 평균 손실: {total_loss / x.shape[0]}")

@@ -8,7 +8,7 @@ import numpy as np
 from dev.models.sequential import Sequential
 from dev.layers.dense import Dense
 from dev.layers.flatten import Flatten
-from dev.layers.activations import Activation
+from dev.layers.activation_layer import Activation
 
 # 랜덤 시드값 고정
 np.random.seed(42)
