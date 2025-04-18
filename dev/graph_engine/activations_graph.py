@@ -1,3 +1,4 @@
+# 수정 필요, 루트 노드가 아니라 리프 노드 반환하도록 해야할 듯..?
 from .node import Node
 
 def build_sigmoid_node():
