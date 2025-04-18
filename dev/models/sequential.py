@@ -147,18 +147,24 @@ class Sequential(Node):
                     print(f"[SHAPE TRACE] Input: {input_data.shape}")
 
                     output = input_data
-                    prev_node_list = None
                     for i, layer in enumerate(self._layers):
                         print(f"[DEBUG] Layer {i}: {layer.__class__.__name__} call() 실행")
                         output = layer.call(output)
                         print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
 
-                        if hasattr(layer, "build_graph"):
-                            layer.build_graph(output, prev_node_list)
-                        if hasattr(layer, "node_list"):
-                            prev_node_list = layer.node_list
+                        if hasattr(layer, "node_list") and layer.node_list:
+                            if not self.cal_graph.node_list:
+                                self.cal_graph.node_list = layer.node_list[:]
+                            else:
+                                print(len(layer.node_list), len(self.cal_graph.node_list), "확인용")
+                                
+                                self.cal_graph.node_list = self.cal_graph.connect_graphs(
+                                    layer.node_list, self.cal_graph.node_list 
+                                )
 
-                    self.cal_graph.node_list = prev_node_list if prev_node_list else []
+                            # ✅ 계산 그래프 디버그 출력
+                            print("[DEBUG] 계산 그래프 연결 후 현재 상태:", len(self.cal_graph.node_list))
+                            self.cal_graph.print_graph()
 
                     output = np.array(output).reshape(1, -1)
                     target = np.array(target).reshape(1, -1)
@@ -182,6 +188,9 @@ class Sequential(Node):
                 for root_node in self.cal_graph.node_list:
                     self.weight_update(root_node, batch_datas, self.optimizer)
                 print("[DEBUG] 가중치 업데이트 완료")
+
+                print("[DEBUG] 계산 그래프 출력:")
+                self.cal_graph.print_graph()
 
             total_loss = 0
             for i in range(x.shape[0]):

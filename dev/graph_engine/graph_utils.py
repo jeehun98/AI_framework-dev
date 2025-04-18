@@ -5,6 +5,9 @@ def get_leaf_nodes(node_list):
     """
     자식이 없는 노드들을 리프 노드로 간주하고 반환합니다.
     """
+
+    node_list[0].print_tree()
+
     if not node_list:
         raise ValueError("node_list가 비어 있습니다.")
 
@@ -42,7 +45,9 @@ def connect_graphs(node_list1, node_list2):
         raise ValueError("두 node_list 중 하나 이상이 비어 있습니다.")
 
     leaf_nodes = get_leaf_nodes(node_list1)
-    root_nodes = get_root_nodes(node_list2)
+    root_nodes = node_list2
+
+    print(len(leaf_nodes), len(root_nodes), "확인용 2222")
 
     if len(leaf_nodes) != len(root_nodes):
         raise ValueError(f"리프 노드({len(leaf_nodes)})와 루트 노드({len(root_nodes)})의 개수가 일치하지 않습니다.")
@@ -67,7 +72,7 @@ def print_graph(node_list):
         visited[node] = True
 
         connector = "└── " if is_last else "├── "
-        print(prefix + connector + f"[{node.operation}] out={node.output}")
+        print(prefix + connector + f"[{node.operation}] out={node.output} weight={node.weight_value}")
 
         child_count = len(node.children)
         for idx, child in enumerate(node.children):

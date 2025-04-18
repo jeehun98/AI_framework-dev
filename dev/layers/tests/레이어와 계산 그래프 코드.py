@@ -40,3 +40,5 @@ model.compile(
 model.fit(x, y, epochs=1, batch_size=32)
 
 print("✅ 끝")
+
+model.cal_graph.print_graph()
