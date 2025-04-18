@@ -48,9 +48,9 @@ class Dense(Layer):
         from dev.graph_engine.activations_graph import build_sigmoid_node, build_relu_node, build_tanh_node
 
         matmul_nodes = matrix_multiply_nodes(input_data.tolist(), self.weights.tolist(), matmul_result.tolist())
-        self.node_list = matmul_nodes
 
         result = matmul_result
+        last_nodes = matmul_nodes
 
         if self.bias is not None:
             bias_reshaped = np.tile(self.bias, (input_data.shape[0], 1))
@@ -62,7 +62,7 @@ class Dense(Layer):
                 result = matmul_result + bias_reshaped
 
             bias_add_nodes = matrix_add_nodes(matmul_result.tolist(), bias_reshaped.tolist(), result.tolist())
-            self.node_list = graph_utils.connect_graphs(bias_add_nodes, matmul_nodes)
+            last_nodes = bias_add_nodes
 
         if self.activation is not None:
             result = self.activation(result)
@@ -74,13 +74,13 @@ class Dense(Layer):
             act_name = self.activation.__name__
             act_builder = builder_map[act_name]
             act_nodes = [act_builder() for _ in range(result.size)]
-            for node, parent in zip(act_nodes, self.node_list):
-                node.add_parent(parent)
-            self.node_list = act_nodes
+
+            # ✅ Dense 내부에서만 연결 (bias_add_nodes → act_nodes)
+            self.node_list = graph_utils.connect_graphs(last_nodes, act_nodes)
+        else:
+            self.node_list = last_nodes
 
         self.output_shape = result.shape
-
-        
         return result
 
     def build(self, input_shape):

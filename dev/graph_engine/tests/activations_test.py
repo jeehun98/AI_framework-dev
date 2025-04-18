@@ -1,38 +1,25 @@
 import sys
 import os
-import numpy as np
 
+# ✅ 경로 설정
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
-from dev.node.node import Node
-from dev.graph_engine.activations import build_sigmoid_node, build_tanh_node, build_relu_node
-from dev.graph_engine.core_graph import Cal_graph
+from dev.graph_engine.activations_graph import build_sigmoid_node, build_tanh_node, build_relu_node
+from dev.graph_engine.node import Node
 
-# ---------- 1. 그래프 준비 ----------
+def test_activation_graph_structures():
+     sigmoid_root = build_sigmoid_node()
+     sigmoid_root.print_tree()
 
-graph = Cal_graph()
+     sigmoid_root = build_sigmoid_node()
+     print("children of reciprocal:", [c.operation for c in sigmoid_root.children])
+     print("parents of reciprocal:", [p.operation for p in sigmoid_root.parents])
 
-# (1) matrix_add 를 통해 node_list 준비 (여기선 임의의 입력)
-A = [[1.0, 2.0],
-     [3.0, 4.0]]
+     # 부모도 자식도 트리 탐색용으로 확인
+     for parent in sigmoid_root.parents:
+          print(f"→ parent {parent.operation} has children: {[c.operation for c in parent.children]}")
 
-B = [[5.0, 6.0],
-     [7.0, 8.0]]
 
-result = [[a + b for a, b in zip(row_a, row_b)] for row_a, row_b in zip(A, B)]
+if __name__ == "__main__":
+    test_activation_graph_structures()
 
-graph.add_matrix_add_graph(A, B, result)
-print("=== [Step 1] matrix_add 로 구성된 계산 그래프 ===")
-graph.print_graph()
-
-# ---------- 2. sigmoid 계산 그래프 연결 ----------
-
-new_node_list = []
-for node in graph.node_list:
-    sigmoid_node = build_sigmoid_node(node)
-    new_node_list.append(sigmoid_node)
-
-graph.node_list = new_node_list  # node_list 교체
-
-print("\n=== [Step 2] Sigmoid 계산 그래프 연결 후 ===")
-graph.print_graph()
