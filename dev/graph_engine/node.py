@@ -91,6 +91,8 @@ class Node:
 
     def __eq__(self, other):
         return id(self) == id(other)
+    
+    
 
     @staticmethod
     def _operation_func(op):

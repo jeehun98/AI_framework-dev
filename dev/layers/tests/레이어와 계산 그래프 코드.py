@@ -36,7 +36,7 @@ model.compile(
     learning_rate=0.001
 )
 
-# ✅ 학습 실행
+# ✅ 학습 실행  
 model.fit(x, y, epochs=1, batch_size=32)
 
 print("✅ 끝")

@@ -25,6 +25,8 @@ def test_connect_graphs():
     # ✅ 그래프 출력
     cal_graph.print_graph()
 
+    print(len(node_list1), len(node_list2))
+
 
 if __name__ == "__main__":
     test_connect_graphs()

@@ -156,12 +156,15 @@ class Sequential(Node):
                             if not self.cal_graph.node_list:
                                 self.cal_graph.node_list = layer.node_list[:]
                             else:
+                                print("sequential 연결")
                                 self.cal_graph.node_list = self.cal_graph.connect_graphs(
                                     layer.node_list, self.cal_graph.node_list 
                                 )
+                                
 
                             # ✅ 계산 그래프 디버그 출력
                             print("[DEBUG] 계산 그래프 연결 후 현재 루트 노드 ( 유닛 ) 개수:", len(self.cal_graph.node_list))
+
 
                     output = np.array(output).reshape(1, -1)
                     target = np.array(target).reshape(1, -1)

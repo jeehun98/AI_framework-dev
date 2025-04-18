@@ -8,6 +8,12 @@ def get_leaf_nodes(node_list):
     if not node_list:
         raise ValueError("node_list가 비어 있습니다.")
 
+    # ✅ 단일 노드 또는 모든 노드가 자식 없는 경우 그대로 반환
+    if len(node_list) == 1:
+        return node_list
+    if all(len(node.children) == 0 for node in node_list):
+        return node_list
+
     visited = OrderedDict()
     leaf_nodes = []
 
@@ -30,18 +36,27 @@ def get_leaf_nodes(node_list):
 def get_leaf_nodes_consistent_or_all(node_list):
     """
     node_list에 있는 모든 노드가 동일한 리프 노드 집합을 공유하면 해당 집합을 반환하고,
-    그렇지 않으면 전체 노드 리스트를 반환합니다.
+    그렇지 않으면 모든 리프 노드를 반환합니다.
+    이는 동일한 부모 유닛이 여러 자식 유닛에 의해 공유될 경우 중복 연결을 방지하기 위함입니다.
     """
     if not node_list:
         raise ValueError("node_list가 비어 있습니다.")
 
-    all_leaf_sets = [set(get_leaf_nodes([node])) for node in node_list]
-    first_set = all_leaf_sets[0]
+    all_leaf_lists = [get_leaf_nodes([node]) for node in node_list]
+    first_set = set(all_leaf_lists[0])
 
-    if all(leaf_set == first_set for leaf_set in all_leaf_sets[1:]):
-        return list(first_set)  # ✅ 공유되는 리프 노드만 반환
+    if all(set(leaf_list) == first_set for leaf_list in all_leaf_lists[1:]):
+        return all_leaf_lists[0]  # ✅ 순서 유지하며 공유된 노드만 반환
 
-    return node_list  # ❌ 공유되지 않으면 전체 반환
+    # ❌ 공유되지 않으면 전체 리프 노드 반환 (중복 제거 + 순서 유지)
+    merged = []
+    seen = set()
+    for leaf_list in all_leaf_lists:
+        for node in leaf_list:
+            if node not in seen:
+                merged.append(node)
+                seen.add(node)
+    return merged
 
 
 def get_root_nodes(node_list):
@@ -69,9 +84,8 @@ def connect_graphs(parents, children):
 
     for leaf, root in zip(leaf_nodes, root_nodes):
         leaf.add_child(root)
-        root.add_parent(leaf)
-
-    return children
+        
+    return parents
 
 
 def print_graph(node_list):
