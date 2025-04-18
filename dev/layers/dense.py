@@ -66,10 +66,6 @@ class Dense(Layer):
 
             last_nodes = graph_utils.connect_graphs(bias_add_nodes, last_nodes)
             self.node_list = last_nodes
-            print("???")
-            print("dense 내 연결임", len(self.node_list))
-            print("!!! bias 값이 연결된 트리 형태가 나와야 해 ")
-            self.node_list[0].print_tree()
             
         if self.activation is not None:
             result = self.activation(result)
