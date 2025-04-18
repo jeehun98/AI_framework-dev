@@ -2,13 +2,14 @@ import math
 
 class Node:
     valid_operations = {
-        "add", "subtract", "multiply", "divide", "square", "exp", "neg", "reciprocal", "const"
+        "add", "subtract", "multiply", "divide", "square",
+        "exp", "neg", "reciprocal", "const"
     }
 
     def __init__(self, operation, input_value=0.0, weight_value=0.0, output=0.0, bias=0.0):
         if operation not in self.valid_operations:
             raise ValueError(f"Invalid operation: {operation}. Allowed: {self.valid_operations}")
-        
+
         self.operation = operation
         self.input_value = input_value
         self.weight_value = weight_value
@@ -20,14 +21,14 @@ class Node:
         self.children = []
 
     def add_parent(self, parent):
-        if parent not in self.parents:
-            self.parents.append(parent)
-            parent.add_child(self)
+        self.parents.append(parent)
+        parent.children.append(self)
 
     def add_child(self, child):
-        if child not in self.children:
-            self.children.append(child)
-            child.add_parent(self) if self not in child.parents else None
+        self.children.append(child)
+        child.parents.append(self)
+
+
 
     def remove_parent(self, parent):
         if parent in self.parents:
@@ -102,6 +103,7 @@ class Node:
             "exp": lambda inputs, w, b: math.exp(inputs[0]) + b,
             "neg": lambda inputs, w, b: -inputs[0] + b,
             "reciprocal": lambda inputs, w, b: 1.0 / (inputs[0] if inputs[0] != 0 else 1e-6) + b,
+            "const": lambda inputs, w, b: inputs[0] if inputs else 0.0,
         }[op]
 
     @staticmethod
@@ -118,4 +120,5 @@ class Node:
             "exp": lambda x, w, out, grad: (out * grad, 0.0),
             "neg": lambda x, w, out, grad: (-grad, 0.0),
             "reciprocal": lambda x, w, out, grad: (-1.0 / (x ** 2 if x != 0 else 1e-6) * grad, 0.0),
+            "const": lambda x, w, out, grad: (0.0, 0.0),
         }[op]

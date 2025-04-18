@@ -37,8 +37,6 @@ class Activation(Layer):
         # 현재는 연결된 입력 노드가 없는 상태로 노드만 생성됨
 
         self.output_shape = output.shape
-
-        print(self.node_list, "확인")
         
         return output
 
