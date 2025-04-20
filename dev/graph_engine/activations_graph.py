@@ -1,4 +1,3 @@
-# 수정 필요, 루트 노드가 아니라 리프 노드 반환하도록 해야할 듯..?
 from .node import Node
 
 def build_sigmoid_node():
@@ -25,7 +24,7 @@ def build_sigmoid_node():
     reciprocal_node = Node("reciprocal")
     reciprocal_node.add_child(add_node)
 
-    return reciprocal_node
+    return reciprocal_node, [neg_node]
 
 
 def build_tanh_node():
@@ -40,30 +39,25 @@ def build_tanh_node():
                 ├── exp(x)
                 └── exp(-x)
     """
-    # exp(x)
     exp_pos = Node("exp")
 
-    # exp(-x)
     neg_node = Node("neg")
     exp_neg = Node("exp")
     exp_neg.add_child(neg_node)
 
-    # 분자 = exp(x) - exp(-x)
     numerator = Node("subtract")
     numerator.add_child(exp_pos)
     numerator.add_child(exp_neg)
 
-    # 분모 = exp(x) + exp(-x)
     denominator = Node("add")
     denominator.add_child(exp_pos)
     denominator.add_child(exp_neg)
 
-    # tanh = 분자 / 분모
     divide_node = Node("divide")
     divide_node.add_child(numerator)
     divide_node.add_child(denominator)
 
-    return divide_node
+    return divide_node, [exp_pos, neg_node]
 
 
 def build_relu_node():
@@ -82,7 +76,7 @@ def build_relu_node():
           │                         └── x
           └── x
     """
-    x_node = Node("const", input_value=0.0)  # 입력 x 역할
+    x_node = Node("const", input_value=0.0)
 
     scale_node = Node("const", input_value=10.0)
 
@@ -90,7 +84,6 @@ def build_relu_node():
     scale_mul_node.add_child(x_node)
     scale_mul_node.weight_value = scale_node.input_value
 
-    # sigmoid(10x)
     neg_node = Node("neg")
     neg_node.add_child(scale_mul_node)
 
@@ -106,9 +99,8 @@ def build_relu_node():
     reciprocal_node = Node("reciprocal")
     reciprocal_node.add_child(add_node)
 
-    # final relu = sigmoid(10x) * x
     relu_node = Node("multiply")
     relu_node.add_child(reciprocal_node)
     relu_node.add_child(x_node)
 
-    return relu_node
+    return relu_node, [x_node]

@@ -74,17 +74,30 @@ class Node:
         dfs(self)
         return leaf_nodes
 
-    def print_tree(self, depth=0, visited=None):
+    def print_tree(self, depth=0, visited=None, allow_repeat=False):
+        """
+        계산 그래프 트리 구조를 출력합니다.
+        
+        - depth: 현재 트리 깊이 (재귀적으로 증가)
+        - visited: 재방문 방지를 위한 노드 집합
+        - allow_repeat: True일 경우, 같은 노드를 여러 경로에서 반복 출력함
+        """
         if visited is None:
             visited = set()
-        if self in visited:
-            print(" " * depth + f"↳ Node({self.operation}) (already visited)")
-            return
-        visited.add(self)
 
-        print(" " * depth + f"Node({self.operation}) → output={self.output}, weight={self.weight_value}, grad_total={self.grad_weight_total}")
+        indent = " " * depth
+
+        if not allow_repeat and self in visited:
+            print(indent + f"↳ Node({self.operation}) (already visited)")
+            return
+
+        print(indent + f"Node({self.operation}) → output={self.output}, weight={self.weight_value}, grad_total={self.grad_weight_total}")
+
+        if not allow_repeat:
+            visited.add(self)
+
         for child in self.children:
-            child.print_tree(depth + 2, visited)
+            child.print_tree(depth + 2, visited, allow_repeat=allow_repeat)
 
     def __hash__(self):
         return id(self)
