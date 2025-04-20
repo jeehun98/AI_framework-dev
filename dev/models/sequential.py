@@ -45,7 +45,6 @@ class Sequential(Node):
                 raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
 
         print(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
-
         self._layers.append(layer)
 
     def build(self):
@@ -107,8 +106,8 @@ class Sequential(Node):
 
     def connect_loss_graph(self):
         if self.loss_node_list:
-            self.cal_graph.node_list = self.cal_graph.connect_graphs(
-                self.cal_graph.node_list, self.loss_node_list
+            self.cal_graph.root_node_list = self.cal_graph.connect_graphs(
+                self.cal_graph.root_node_list, self.loss_node_list
             )
 
     def compute_loss_and_metrics(self, y_pred, y_true):
@@ -147,24 +146,31 @@ class Sequential(Node):
                     print(f"[SHAPE TRACE] Input: {input_data.shape}")
 
                     output = input_data
+                    prev_root_nodes = None
+
                     for i, layer in enumerate(self._layers):
                         print(f"[DEBUG] Layer {i}: {layer.__class__.__name__} call() 실행")
                         output = layer.call(output)
                         print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
 
-                        if hasattr(layer, "node_list") and layer.node_list:
-                            if not self.cal_graph.node_list:
-                                self.cal_graph.node_list = layer.node_list[:]
+                        if hasattr(layer, "root_node_list") and layer.root_node_list:
+                            if prev_root_nodes is None:
+                                # 첫 레이어: 단순히 root 설정
+                                self.cal_graph.root_node_list = layer.root_node_list[:]
                             else:
+                                # ✅ 연결만 수행
+                                self.cal_graph.connect_graphs(prev_root_nodes, layer.leaf_node_list)
+    
+                                # ✅ 루트는 항상 "현재 레이어의 root"로 갱신
+                                self.cal_graph.root_node_list = layer.root_node_list[:]
 
-                                print("sequential 연결")
-                                self.cal_graph.node_list = self.cal_graph.connect_graphs(
-                                    layer.node_list, self.cal_graph.node_list 
-                                )
+                                
 
-                            # ✅ 계산 그래프 디버그 출력
-                            print("[DEBUG] 계산 그래프 연결 후 현재 루트 노드 ( 유닛 ) 개수:", len(self.cal_graph.node_list))
-                        
+                            prev_root_nodes = layer.root_node_list[:]
+
+                        print("[DEBUG] 계산 그래프 연결 후 현재 루트 노드 개수:", len(self.cal_graph.root_node_list))
+
+                    self.cal_graph.print_graph()
 
 
                     output = np.array(output).reshape(1, -1)
@@ -181,12 +187,12 @@ class Sequential(Node):
                 print(f"[Batch {batch_idx + 1}] 평균 손실: {batch_loss}")
 
                 print("[DEBUG] 역전파 시작")
-                for root_node in self.cal_graph.node_list:
+                for root_node in self.cal_graph.root_node_list:
                     self.backpropagate(root_node)
                 print("[DEBUG] 역전파 완료")
 
                 print("[DEBUG] 가중치 업데이트 시작")
-                for root_node in self.cal_graph.node_list:
+                for root_node in self.cal_graph.root_node_list:
                     self.weight_update(root_node, batch_datas, self.optimizer)
                 print("[DEBUG] 가중치 업데이트 완료")
 
