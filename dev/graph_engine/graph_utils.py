@@ -1,54 +1,59 @@
 from collections import OrderedDict
 
-def connect_graphs(parents, children):
-    """
-    두 계산 그래프의 노드를 연결합니다.
-    - parents: 이전 레이어의 root_node_list
-    - children: 현재 레이어의 leaf_node_list
-
-    각 children[i] 노드에 대해 parents[i]를 자식으로 연결합니다.
-    """
-    if not parents or not children:
-        raise ValueError("두 node_list 중 하나 이상이 비어 있습니다.")
-
-    if len(parents) != len(children):
-        raise ValueError(f"노드 개수 불일치: parents={len(parents)}, children={len(children)}")
-
-    for prev_root, curr_leaf in zip(parents, children):
-        curr_leaf.add_child(prev_root)
-
-    return parents
-
 def print_graph(node_list):
     """
-    루트 노드부터 시작해 자식 노드를 재귀적으로 트리 형태로 출력합니다.
-    - 동일한 노드가 여러 경로로 공유되어도 출력 시 대칭 구조 보존
-    - 무한 루프는 방지하며, 재방문 노드는 (↺ visited) 로 표시
+    계산 그래프를 트리 형태로 출력 (고유 ID 및 자식 개수 포함)
     """
     def print_node(node, prefix="", is_last=True, visited=None):
         if visited is None:
-            visited = set()
-
-        connector = "└── " if is_last else "├── "
+            visited = OrderedDict()
 
         if node in visited:
-            print(prefix + connector + f"[{node.operation}] out={node.output} (↺ visited)")
+            print(prefix + ("└── " if is_last else "├── ") +
+                  f"[{node.operation}] out={node.output} weight={node.weight_value} id={id(node)} (↺ visited)")
             return
 
-        print(prefix + connector + f"[{node.operation}] out={node.output} weight={node.weight_value}")
-        visited.add(node)
+        connector = "└── " if is_last else "├── "
+        print(prefix + connector +
+              f"[{node.operation}] out={node.output} weight={node.weight_value} "
+              f"id={id(node)} | children={len(node.children)}")
+
+        visited[node] = True
 
         child_count = len(node.children)
         for idx, child in enumerate(node.children):
             is_last_child = (idx == child_count - 1)
             next_prefix = prefix + ("    " if is_last else "│   ")
-            print_node(child, next_prefix, is_last_child, visited.copy())  # ✅ copy로 분기마다 독립적으로 방문 체크
+            print_node(child, next_prefix, is_last_child, visited)
 
     if not node_list:
         print("그래프 비어있음")
         return
 
     print("\n[ 계산 그래프 구조 ]")
+    visited = OrderedDict()
     for idx, node in enumerate(node_list):
-        is_last = (idx == len(node_list) - 1)
-        print_node(node, "", is_last, set())
+        print(f"\n🌱 Root Node {idx} ({node.operation}) id={id(node)}")
+        print_node(node, is_last=(idx == len(node_list) - 1), visited=visited)
+
+def connect_graphs(parents, children):
+    """
+    계산 그래프 노드 연결 (n:m 대응)
+    
+    - 각 parent 노드를 동일한 간격으로 여러 children에 연결
+    - 예: parent가 10개, child가 30개면 → 각 parent는 연속된 3개의 child에 연결됨
+    """
+    if not parents or not children:
+        raise ValueError("두 node_list 중 하나 이상이 비어 있습니다.")
+
+    if len(children) % len(parents) != 0:
+        raise ValueError(f"children 수가 parents 수의 배수가 아닙니다. parents={len(parents)}, children={len(children)}")
+
+    ratio = len(children) // len(parents)
+
+    for i, parent in enumerate(parents):
+        for j in range(ratio):
+            child = children[i * ratio + j]
+            child.add_child(parent)
+
+    return children

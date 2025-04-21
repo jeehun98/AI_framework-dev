@@ -23,12 +23,11 @@ def matrix_add_nodes(A, B, result):
 
     return root_node_list, leaf_node_list
 
-from .node import Node
-
 def matrix_multiply_nodes(A, B, result):
-    """행렬 곱셈에 해당하는 계산 노드 생성
+    """
+    행렬 곱셈에 해당하는 계산 노드 생성
     - root_node_list: 출력 노드 (sum/add)
-    - leaf_node_list: 입력 A에 해당하는 mul 노드만 수집
+    - leaf_node_list: 입력 A에 해당하는 mul 노드 전체 수집
     """
     rows_A, cols_A = len(A), len(A[0])
     rows_B, cols_B = len(B), len(B[0])
@@ -38,9 +37,6 @@ def matrix_multiply_nodes(A, B, result):
 
     root_node_list = []
     leaf_node_list = []
-
-    # ✅ 입력 A에 해당하는 mul 노드 추적용
-    input_nodes = []
 
     for i in range(rows_A):         # 예: batch size (보통 1)
         for j in range(cols_B):     # 예: 출력 유닛 수
@@ -58,8 +54,7 @@ def matrix_multiply_nodes(A, B, result):
                 sum_node.add_child(mul_node)
                 mul_node.add_parent(sum_node)
 
-                # ✅ 최초 유닛에서만 입력 A 노드를 leaf로 수집
-                if j == 0:  # 각 입력값에 대해 한 번만 leaf에 포함
-                    leaf_node_list.append(mul_node)
+                # ✅ 수정: 모든 mul_node를 leaf에 포함
+                leaf_node_list.append(mul_node)
 
     return root_node_list, leaf_node_list
