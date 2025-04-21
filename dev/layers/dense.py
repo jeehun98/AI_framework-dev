@@ -53,8 +53,6 @@ class Dense(Layer):
         current_root = mm_root
         current_leaf = mm_leaf
 
-        print("call 수행", input_data.shape, self.weights.shape, len(mm_root), len(mm_leaf))
-
         # ✅ bias 더하기
         if self.bias is not None:
             bias_reshaped = np.tile(self.bias, (input_data.shape[0], 1))
@@ -100,8 +98,6 @@ class Dense(Layer):
         self.root_node_list = current_root
         self.leaf_node_list = current_leaf
         self.output_shape = result.shape
-
-        print("call 수행2", input_data.shape, self.weights.shape, len(self.leaf_node_list), len(self.root_node_list))
 
 
         return result

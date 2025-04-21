@@ -137,3 +137,5 @@ class Node:
             "reciprocal": lambda x, w, out, grad: (-1.0 / (x ** 2 if x != 0 else 1e-6) * grad, 0.0),
             "const": lambda x, w, out, grad: (0.0, 0.0),
         }[op]
+
+    
