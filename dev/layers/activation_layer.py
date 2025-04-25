@@ -1,45 +1,50 @@
-import numpy as np
-
 from dev.layers.layer import Layer
-from dev import activations
-from dev.graph_engine.activations_graph import build_relu_node, build_sigmoid_node, build_tanh_node
+from dev.backend.backend_ops.activations import activations as cuda_activations
+from dev.activations import activations_mapping as graph_activations
 
 class Activation(Layer):
-    def __init__(self, activation, **kwargs):
+    def __init__(self, activation, use_graph=False, **kwargs):
         super().__init__(**kwargs)
         self.activation_name = activation
-        self.activation = activations.get(activation)
+        self.use_graph = use_graph
+
         self.root_node_list = []
-        self.leaf_node_list = []  # ✅ 리프 노드 따로 저장
+        self.leaf_node_list = []
         self.trainable = False
         self.layer_name = "activation"
 
-        self.graph_builders = {
-            "relu": build_relu_node,
-            "sigmoid": build_sigmoid_node,
-            "tanh": build_tanh_node,
+        # ✅ 매핑 정의
+        self.cuda_functions = {
+            "relu": cuda_activations.relu,
+            "sigmoid": cuda_activations.sigmoid,
+            "tanh": cuda_activations.tanh,
         }
 
-    def call(self, inputs):
-        inputs = inputs.astype(np.float32)
-        output = self.activation(inputs)
+        self.graph_functions = {
+            "relu": graph_activations.relu_graph,
+            "sigmoid": graph_activations.sigmoid_graph,
+            "tanh": graph_activations.tanh_graph,
+        }
 
-        builder = self.graph_builders.get(self.activation_name)
-        if builder is None:
-            raise NotImplementedError(...)
+    def call(self, x, input_node=None):
+        if self.use_graph:
+            try:
+                builder = self.graph_functions[self.activation_name]
+            except KeyError:
+                raise NotImplementedError(f"{self.activation_name} 그래프 미지원")
 
-        flat_inputs = inputs.reshape(-1)
-        self.root_node_list = []
-        self.leaf_node_list = []
+            root_node = builder(input_node)
+            self.root_node_list = [root_node]
+            self.leaf_node_list = [input_node]
+            return root_node
 
-        for idx in range(flat_inputs.shape[0]):
-            root, leaves = builder()
-            self.root_node_list.append(root)
-            self.leaf_node_list.extend(leaves)  # ✅ 꼭 extend 해야 함
+        else:
+            try:
+                func = self.cuda_functions[self.activation_name]
+            except KeyError:
+                raise NotImplementedError(f"{self.activation_name} CUDA 미지원")
 
-        self.output_shape = output.shape
-        return output
-
+            return func(x)
 
     def compute_output_shape(self, input_shape):
         return input_shape

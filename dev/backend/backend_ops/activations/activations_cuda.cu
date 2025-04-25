@@ -43,8 +43,8 @@ void applyActivation(float* h_x, int n, void (*kernel)(float*, int)) {
     cudaFree(d_x);
 }
 
-// Pybind를 이용한 Python에서 호출 가능한 래퍼 함수
-py::array_t<float> apply_activation(py::array_t<float> input, std::string activation) {
+// ✅ 반환값 없이 In-Place 연산
+void apply_activation(py::array_t<float> input, std::string activation) {
     py::buffer_info buf = input.request();
     int n = buf.size;
     float* h_x = static_cast<float*>(buf.ptr);
@@ -58,11 +58,9 @@ py::array_t<float> apply_activation(py::array_t<float> input, std::string activa
     } else {
         throw std::invalid_argument("지원하지 않는 활성화 함수입니다. 'relu', 'sigmoid', 'tanh' 중 선택하세요.");
     }
-
-    return py::array_t<float>(n, h_x);
 }
 
-// Pybind11 모듈 등록
+// 모듈 등록
 PYBIND11_MODULE(activations_cuda, m) {
     m.def("apply_activation", &apply_activation, "CUDA 기반 활성화 함수 적용",
           py::arg("input"), py::arg("activation"));

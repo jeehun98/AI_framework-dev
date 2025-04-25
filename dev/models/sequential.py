@@ -3,8 +3,9 @@ import json
 import numpy as np
 
 from dev.layers.layer import Layer
+from dev.losses import losses_mapping
 from dev import optimizers
-from dev import losses
+from dev.backend.backend_ops.losses import losses as cuda_losses
 from dev import metrics
 from dev.node.node import Node
 from dev.graph_engine.core_graph import Cal_graph
@@ -55,7 +56,7 @@ class Sequential(Node):
 
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
-        self.loss = losses.get(loss)
+        self.loss = cuda_losses.get(loss)
         self.metric = metrics.get(p_metrics)
         self.build()
         self.get_weight()
@@ -107,14 +108,30 @@ class Sequential(Node):
     def connect_loss_graph(self):
         if self.loss_node_list:
             self.cal_graph.root_node_list = self.cal_graph.connect_graphs(
-                self.cal_graph.root_node_list, self.loss_node_list
+                self.cal_graph.root_node_list, self.loss_leaf_nodes
             )
 
-    def compute_loss_and_metrics(self, y_pred, y_true):
-        self.loss_value = self.loss(y_true, y_pred)
-        self.loss_node_list = []
-        self.metric_value = self.metric(y_pred, y_true)
+    def compute_loss_and_metrics(self, y_pred_array, y_true_array):
+        # 1️⃣ CUDA 연산
+        self.loss_value = self.loss(y_true_array, y_pred_array)
+
+        # 2️⃣ 계산 그래프 생성 (값과 무관)
+        if self.loss.__name__ == "mse":
+            loss_root, leaf_nodes = losses_mapping.mse_graph()
+        elif self.loss.__name__ == "binary_crossentropy":
+            loss_root, leaf_nodes = losses_mapping.binary_crossentropy_graph()
+        else:
+            raise NotImplementedError(f"{self.loss.__name__} 계산 그래프 미지원")
+
+        self.loss_node_list = [loss_root]
+        self.loss_leaf_nodes = leaf_nodes
+
+        # 3️⃣ 메트릭 계산
+        self.metric_value = self.metric(y_pred_array, y_true_array)
+
         return self.loss_value
+
+
 
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
@@ -174,8 +191,6 @@ class Sequential(Node):
                             prev_root_nodes = layer.root_node_list[:]
 
                         print("[DEBUG] 계산 그래프 연결 후 현재 루트 노드 개수:", len(self.cal_graph.root_node_list))
-                    self.cal_graph.print_graph()
-
                     output = np.array(output).reshape(1, -1)
                     target = np.array(target).reshape(1, -1)
 
@@ -184,6 +199,9 @@ class Sequential(Node):
                     print("[DEBUG] 손실 및 메트릭 계산 완료")
 
                     self.connect_loss_graph()
+
+                    self.cal_graph.print_graph()
+
                     batch_loss_sum += loss_value
 
                 batch_loss = batch_loss_sum / batch_datas

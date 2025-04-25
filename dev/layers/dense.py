@@ -2,7 +2,6 @@ import numpy as np
 
 from dev.layers.layer import Layer
 from dev import activations
-from dev.backend.backend_ops.operaters import operations_matrix
 from dev.graph_engine import graph_utils
 from dev.graph_engine.core_ops import matrix_multiply_nodes, matrix_add_nodes
 from dev.graph_engine.activations_graph import build_sigmoid_node, build_relu_node, build_tanh_node

@@ -5,7 +5,6 @@
 
 namespace py = pybind11;
 
-// MSE 손실 계산 커널
 __global__ void mseLossKernel(const float* y_true, const float* y_pred, float* loss, int n) {
     __shared__ float partial_sum[256];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -21,7 +20,6 @@ __global__ void mseLossKernel(const float* y_true, const float* y_pred, float* l
 
     __syncthreads();
 
-    // 병렬 reduction (block 내부 합산)
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
             partial_sum[tid] += partial_sum[tid + stride];
@@ -29,13 +27,11 @@ __global__ void mseLossKernel(const float* y_true, const float* y_pred, float* l
         __syncthreads();
     }
 
-    // 블록마다 하나의 partial sum 저장
     if (tid == 0) {
         atomicAdd(loss, partial_sum[0]);
     }
 }
 
-// Binary Cross Entropy 손실 계산 커널
 __global__ void bceLossKernel(const float* y_true, const float* y_pred, float* loss, int n) {
     __shared__ float partial_sum[256];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -44,7 +40,7 @@ __global__ void bceLossKernel(const float* y_true, const float* y_pred, float* l
     float val = 0.0f;
     if (idx < n) {
         float y = y_true[idx];
-        float p = fminf(fmaxf(y_pred[idx], 1e-7f), 1.0f - 1e-7f);  // 수치 안정성
+        float p = fminf(fmaxf(y_pred[idx], 1e-7f), 1.0f - 1e-7f);
         val = - (y * logf(p) + (1.0f - y) * logf(1.0f - p));
         partial_sum[tid] = val;
     } else {
@@ -53,7 +49,6 @@ __global__ void bceLossKernel(const float* y_true, const float* y_pred, float* l
 
     __syncthreads();
 
-    // 병렬 reduction
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
             partial_sum[tid] += partial_sum[tid + stride];
@@ -66,16 +61,16 @@ __global__ void bceLossKernel(const float* y_true, const float* y_pred, float* l
     }
 }
 
-// 손실 함수 계산 실행 함수
-float computeLoss(const float* h_y_true, const float* h_y_pred, int n, const std::string& loss_type) {
+// 공통 CUDA 실행 함수
+float launchLossKernel(const float* h_y_true, const float* h_y_pred, int n, void(*kernel)(const float*, const float*, float*, int)) {
     float* d_y_true;
     float* d_y_pred;
     float* d_loss;
     float h_loss = 0.0f;
 
-    cudaMalloc((void**)&d_y_true, n * sizeof(float));
-    cudaMalloc((void**)&d_y_pred, n * sizeof(float));
-    cudaMalloc((void**)&d_loss, sizeof(float));
+    cudaMalloc(&d_y_true, n * sizeof(float));
+    cudaMalloc(&d_y_pred, n * sizeof(float));
+    cudaMalloc(&d_loss, sizeof(float));
     cudaMemcpy(d_y_true, h_y_true, n * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_y_pred, h_y_pred, n * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_loss, &h_loss, sizeof(float), cudaMemcpyHostToDevice);
@@ -83,13 +78,7 @@ float computeLoss(const float* h_y_true, const float* h_y_pred, int n, const std
     int blockSize = 256;
     int gridSize = (n + blockSize - 1) / blockSize;
 
-    if (loss_type == "mse") {
-        mseLossKernel<<<gridSize, blockSize>>>(d_y_true, d_y_pred, d_loss, n);
-    } else if (loss_type == "bce") {
-        bceLossKernel<<<gridSize, blockSize>>>(d_y_true, d_y_pred, d_loss, n);
-    } else {
-        throw std::invalid_argument("지원하지 않는 손실 함수입니다. 'mse', 'bce' 중 선택하세요.");
-    }
+    kernel<<<gridSize, blockSize>>>(d_y_true, d_y_pred, d_loss, n);
 
     cudaMemcpy(&h_loss, d_loss, sizeof(float), cudaMemcpyDeviceToHost);
 
@@ -100,24 +89,52 @@ float computeLoss(const float* h_y_true, const float* h_y_pred, int n, const std
     return h_loss / n;
 }
 
-// Pybind 래퍼
-float compute_loss(py::array_t<float> y_true, py::array_t<float> y_pred, std::string loss_type) {
-    py::buffer_info y_true_buf = y_true.request();
-    py::buffer_info y_pred_buf = y_pred.request();
+// ==========================
+//      Pybind 함수 정의
+// ==========================
+
+float mse_loss(py::array_t<float> y_true, py::array_t<float> y_pred) {
+    auto y_true_buf = y_true.request();
+    auto y_pred_buf = y_pred.request();
 
     if (y_true_buf.size != y_pred_buf.size) {
         throw std::invalid_argument("y_true와 y_pred의 크기가 일치하지 않습니다.");
     }
 
-    float* h_y_true = static_cast<float*>(y_true_buf.ptr);
-    float* h_y_pred = static_cast<float*>(y_pred_buf.ptr);
-    int n = y_true_buf.size;
-
-    return computeLoss(h_y_true, h_y_pred, n, loss_type);
+    return launchLossKernel(
+        static_cast<float*>(y_true_buf.ptr),
+        static_cast<float*>(y_pred_buf.ptr),
+        y_true_buf.size,
+        mseLossKernel
+    );
 }
 
-// Pybind 모듈 정의
+float binary_crossentropy(py::array_t<float> y_true, py::array_t<float> y_pred) {
+    auto y_true_buf = y_true.request();
+    auto y_pred_buf = y_pred.request();
+
+    if (y_true_buf.size != y_pred_buf.size) {
+        throw std::invalid_argument("y_true와 y_pred의 크기가 일치하지 않습니다.");
+    }
+
+    return launchLossKernel(
+        static_cast<float*>(y_true_buf.ptr),
+        static_cast<float*>(y_pred_buf.ptr),
+        y_true_buf.size,
+        bceLossKernel
+    );
+}
+
+// Placeholder for Categorical Crossentropy (추후 구현 예정)
+float categorical_crossentropy(py::array_t<float> y_true, py::array_t<float> y_pred) {
+    throw std::runtime_error("Categorical Crossentropy는 아직 구현되지 않았습니다.");
+}
+
+// ==========================
+//        모듈 등록
+// ==========================
 PYBIND11_MODULE(losses_cuda, m) {
-    m.def("compute_loss", &compute_loss, "CUDA 기반 손실 함수 계산",
-          py::arg("y_true"), py::arg("y_pred"), py::arg("loss_type"));
+    m.def("mse_loss", &mse_loss, "MSE 손실 계산");
+    m.def("binary_crossentropy", &binary_crossentropy, "Binary Crossentropy 계산");
+    m.def("categorical_crossentropy", &categorical_crossentropy, "Categorical Crossentropy 계산");
 }
