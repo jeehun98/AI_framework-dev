@@ -1,50 +1,68 @@
+import numpy as np
+
 from dev.layers.layer import Layer
 from dev.backend.backend_ops.activations import activations as cuda_activations
 from dev.activations import activations_mapping as graph_activations
 
 class Activation(Layer):
-    def __init__(self, activation, use_graph=False, **kwargs):
+    
+    def __init__(self, activation, **kwargs):
         super().__init__(**kwargs)
         self.activation_name = activation
-        self.use_graph = use_graph
 
         self.root_node_list = []
         self.leaf_node_list = []
         self.trainable = False
         self.layer_name = "activation"
 
-        # ✅ 매핑 정의
+        # ✅ CUDA 함수 매핑
         self.cuda_functions = {
             "relu": cuda_activations.relu,
             "sigmoid": cuda_activations.sigmoid,
             "tanh": cuda_activations.tanh,
         }
 
-        self.graph_functions = {
+        # ✅ 계산 그래프 빌더 매핑 (이게 누락됨!)
+        self.graph_builders = {
             "relu": graph_activations.relu_graph,
             "sigmoid": graph_activations.sigmoid_graph,
             "tanh": graph_activations.tanh_graph,
         }
 
-    def call(self, x, input_node=None):
-        if self.use_graph:
-            try:
-                builder = self.graph_functions[self.activation_name]
-            except KeyError:
-                raise NotImplementedError(f"{self.activation_name} 그래프 미지원")
 
-            root_node = builder(input_node)
-            self.root_node_list = [root_node]
-            self.leaf_node_list = [input_node]
-            return root_node
+    def call(self, inputs, input_node_list=None):
+        # 1️⃣ CUDA 연산 수행
+        try:
+            activation_func = self.cuda_functions[self.activation_name]
+        except KeyError:
+            raise NotImplementedError(f"{self.activation_name} CUDA 미지원")
 
-        else:
-            try:
-                func = self.cuda_functions[self.activation_name]
-            except KeyError:
-                raise NotImplementedError(f"{self.activation_name} CUDA 미지원")
+        inputs = inputs.astype(np.float32)
+        output = activation_func(inputs)
 
-            return func(x)
+        # 2️⃣ 계산 그래프 빌더 호출
+        builder = self.graph_builders.get(self.activation_name)
+        if builder is None:
+            raise NotImplementedError(f"[ERROR] '{self.activation_name}' 그래프 미지원")
+
+        flat_inputs = inputs.reshape(-1)
+
+        self.root_node_list = []
+        self.leaf_node_list = []
+
+        for idx in range(flat_inputs.shape[0]):
+            root, leaves = builder()
+            self.root_node_list.append(root)
+            self.leaf_node_list.extend(leaves)  # ✅ 여러 입력일 경우 확장
+
+            # 3️⃣ 이전 계산 그래프와 연결
+            if input_node_list:
+                target_input_node = input_node_list[idx] if idx < len(input_node_list) else input_node_list[-1]
+                for leaf in leaves:
+                    leaf.add_child(target_input_node)
+
+        self.output_shape = output.shape
+        return output
 
     def compute_output_shape(self, input_shape):
         return input_shape
