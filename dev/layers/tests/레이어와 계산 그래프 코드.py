@@ -18,14 +18,14 @@ np.random.seed(42)
 
 # ✅ 입력/출력 데이터 생성
 x = np.random.rand(1, 4)
-y = np.random.rand(1, 2)
+y = np.random.rand(1, 1)
 
 # ✅ 모델 생성 및 레이어 추가
 model = Sequential()
 model.add(Flatten(input_shape=(4,)))
 model.add(Dense(10))
 model.add(Activation('sigmoid'))
-model.add(Dense(2))
+model.add(Dense(1))
 model.add(Activation('sigmoid'))
 
 # ✅ 모델 컴파일
