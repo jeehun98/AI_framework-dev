@@ -26,7 +26,7 @@ def build_mse_node():
     mean_node = Node("mean")
     mean_node.add_child(square_node)
 
-    return mean_node, [y_true_node, y_pred_node]
+    return mean_node, [y_pred_node]
 
 # ------------------------------------------------
 
@@ -80,7 +80,7 @@ def build_binary_crossentropy_node():
     neg_node = Node("neg")
     neg_node.add_child(add_node)
 
-    return neg_node, [y_true, y_pred]
+    return neg_node, [y_pred]
 
 # ------------------------------------------------
 
@@ -128,6 +128,7 @@ def build_categorical_crossentropy_node(num_classes=3):
     # 리프 노드는 모든 y_true, y_pred
     leaf_nodes = []
     for mul in mul_nodes:
-        leaf_nodes.extend(mul.children)
+        # ✅ y_pred만 추출
+        leaf_nodes.append(mul.children[1])  # mul.children = [y_true, log_p]
 
     return neg_node, leaf_nodes

@@ -110,6 +110,7 @@ class Sequential(Node):
             self.cal_graph.root_node_list = self.cal_graph.connect_graphs(
                 self.cal_graph.root_node_list, self.loss_leaf_nodes
             )
+            self.cal_graph.root_node_list = self.loss_node_list
 
     def compute_loss_and_metrics(self, y_pred_array, y_true_array):
         # 1️⃣ CUDA 연산
