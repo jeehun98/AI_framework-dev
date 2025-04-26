@@ -16,7 +16,7 @@ from dev.layers.activation_layer import Activation
 # ✅ 랜덤 시드 고정
 np.random.seed(42)
 
-output_unit_count = 2
+output_unit_count = 3
 
 
 # ✅ 입력/출력 데이터 생성

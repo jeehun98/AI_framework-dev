@@ -92,12 +92,12 @@ class Dense(Layer):
             connect_graphs(current_root, act_leaf)
             current_root = act_root
 
-
         # ✅ root/leaf 저장
         self.root_node_list = current_root
         self.leaf_node_list = current_leaf
         self.output_shape = result.shape
 
+        # print(input_data.shape, len(self.leaf_node_list), "행렬 곱 연산 확인용")
 
         return result
 

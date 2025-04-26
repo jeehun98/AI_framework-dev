@@ -145,9 +145,6 @@ class Sequential(Node):
 
         return self.loss_value
 
-
-
-
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
             batch_size = x.shape[0]
@@ -190,20 +187,19 @@ class Sequential(Node):
                                 # 첫 레이어: 단순히 root 설정
                                 self.cal_graph.root_node_list = layer.root_node_list[:]
                             else:
-                                # ✅ 연결만 수행
+                                # ✅ 연결만 수행, (parents - 이전 레이어의 루트 노드, children - 현재 레이어의 리프노드)
                                 self.cal_graph.connect_graphs(prev_root_nodes, layer.leaf_node_list)
     
                                 # ✅ 루트는 항상 "현재 레이어의 root"로 갱신
                                 self.cal_graph.root_node_list = layer.root_node_list[:]
-
+        
                                 """
                                 for i in range(len(self.cal_graph.root_node_list)):
                                     self.cal_graph.root_node_list[i].print_tree()
                                     print("각 계산 그래프 확인용")
-                                """
-                                
-                                
 
+                                """
+                        
                             prev_root_nodes = layer.root_node_list[:]
 
                     
@@ -216,7 +212,7 @@ class Sequential(Node):
 
                     self.connect_loss_graph()
 
-                    self.cal_graph.print_graph()
+                    #self.cal_graph.print_graph()
 
                     batch_loss_sum += loss_value
 
