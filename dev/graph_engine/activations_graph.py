@@ -1,14 +1,20 @@
 from .node import Node
 
+# ✅ Sigmoid 계산 그래프
 def build_sigmoid_node():
     """
     Sigmoid(x) = 1 / (1 + exp(-x))
-    구조:
-        reciprocal
-          └── add
-              ├── const(1.0)
-              └── exp
-                   └── neg
+
+    🔹 계산 그래프 구조
+        [reciprocal]
+             │
+           [add]
+          /     \
+    [const(1.0)] [exp]
+                      │
+                   [neg]
+                      │
+                      x
     """
     neg_node = Node("neg")
 
@@ -26,18 +32,23 @@ def build_sigmoid_node():
 
     return reciprocal_node, [neg_node]
 
+# ------------------------------------------------
 
+# ✅ Tanh 계산 그래프
 def build_tanh_node():
     """
     tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
-    구조:
-        divide
-          ├── subtract
-          │     ├── exp(x)
-          │     └── exp(-x)
-          └── add
-                ├── exp(x)
-                └── exp(-x)
+
+    🔹 계산 그래프 구조
+            [divide]
+             /     \
+       [subtract] [add]
+        /     \    /   \
+    [exp(x)] [exp(-x)] [exp(x)] [exp(-x)]
+                    │
+                 [neg]
+                    │
+                    x
     """
     exp_pos = Node("exp")
 
@@ -59,25 +70,29 @@ def build_tanh_node():
 
     return divide_node, [exp_pos, neg_node]
 
+# ------------------------------------------------
 
+# ✅ ReLU 계산 그래프
 def build_relu_node():
     """
     ReLU(x) ≈ x * sigmoid(10 * x)
-    구조:
-        multiply (ReLU)
-          ├── sigmoid
-          │     └── reciprocal
-          │         └── add
-          │             ├── const(1.0)
-          │             └── exp
-          │                 └── neg
-          │                     └── multiply
-          │                         ├── const(10.0)
-          │                         └── x
-          └── x
+
+    🔹 계산 그래프 구조
+           [multiply]   ← ReLU 근사
+             /     \
+     [reciprocal]     x
+          │
+        [add]
+       /     \
+ [const(1.0)] [exp]
+                   │
+                [neg]
+                   │
+              [multiply]
+               /      \
+        [const(10.0)]  x
     """
     x_node = Node("const", input_value=0.0)
-
     scale_node = Node("const", input_value=10.0)
 
     scale_mul_node = Node("multiply")
