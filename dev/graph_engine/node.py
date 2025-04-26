@@ -3,7 +3,7 @@ import math
 class Node:
     valid_operations = {
         "add", "subtract", "multiply", "divide", "square",
-        "exp", "neg", "reciprocal", "const", "mean"
+        "exp", "neg", "reciprocal", "const", "mean", "sum"
     }
 
     def __init__(self, operation, input_value=0.0, weight_value=0.0, output=0.0, bias=0.0):

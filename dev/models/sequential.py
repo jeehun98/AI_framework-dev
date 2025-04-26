@@ -57,9 +57,11 @@ class Sequential(Node):
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
         self.loss = cuda_losses.get(loss)
+        self.loss_name = loss  # 손실 함수 이름 저장
         self.metric = metrics.get(p_metrics)
         self.build()
         self.get_weight()
+
 
     def get_compile_config(self):
         return {
@@ -107,22 +109,33 @@ class Sequential(Node):
 
     def connect_loss_graph(self):
         if self.loss_node_list:
+            print(f"[DEBUG] Loss Graph 연결: 출력 유닛 {len(self.loss_leaf_nodes)}개")
+
+            # 출력층과 손실 함수 그래프 연결
             self.cal_graph.root_node_list = self.cal_graph.connect_graphs(
                 self.cal_graph.root_node_list, self.loss_leaf_nodes
             )
-            self.cal_graph.root_node_list = self.loss_node_list
+
+            # 최종 루트는 손실 함수 루트로 덮어쓰기
+            self.cal_graph.root_node_list = self.loss_node_list[:]
 
     def compute_loss_and_metrics(self, y_pred_array, y_true_array):
         # 1️⃣ CUDA 연산
         self.loss_value = self.loss(y_true_array, y_pred_array)
 
-        # 2️⃣ 계산 그래프 생성 (값과 무관)
-        if self.loss.__name__ == "mse":
-            loss_root, leaf_nodes = losses_mapping.mse_graph()
-        elif self.loss.__name__ == "binary_crossentropy":
-            loss_root, leaf_nodes = losses_mapping.binary_crossentropy_graph()
+        print(y_pred_array, "뭐야 이게")
+
+        # 2️⃣ 계산 그래프 생성 (출력 유닛 수 기반)
+        num_outputs = y_pred_array.shape[1]  # (1, N) 형태 기준
+        try:
+            builder = getattr(losses_mapping, f"{self.loss_name}_graph")
+        except AttributeError:
+            raise NotImplementedError(f"{self.loss_name} 계산 그래프 미지원")
+
+        if self.loss_name == "categorical_crossentropy":
+            loss_root, leaf_nodes = builder(num_classes=num_outputs)
         else:
-            raise NotImplementedError(f"{self.loss.__name__} 계산 그래프 미지원")
+            loss_root, leaf_nodes = builder(num_outputs=num_outputs)
 
         self.loss_node_list = [loss_root]
         self.loss_leaf_nodes = leaf_nodes
@@ -131,6 +144,7 @@ class Sequential(Node):
         self.metric_value = self.metric(y_pred_array, y_true_array)
 
         return self.loss_value
+
 
 
 
@@ -182,16 +196,17 @@ class Sequential(Node):
                                 # ✅ 루트는 항상 "현재 레이어의 root"로 갱신
                                 self.cal_graph.root_node_list = layer.root_node_list[:]
 
-                                
+                                """
                                 for i in range(len(self.cal_graph.root_node_list)):
                                     self.cal_graph.root_node_list[i].print_tree()
                                     print("각 계산 그래프 확인용")
+                                """
                                 
                                 
 
                             prev_root_nodes = layer.root_node_list[:]
 
-                        print("[DEBUG] 계산 그래프 연결 후 현재 루트 노드 개수:", len(self.cal_graph.root_node_list))
+                    
                     output = np.array(output).reshape(1, -1)
                     target = np.array(target).reshape(1, -1)
 
