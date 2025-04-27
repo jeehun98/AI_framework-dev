@@ -30,7 +30,7 @@ class Activation(Layer):
         }
 
 
-    def call(self, inputs, input_node_list=None):
+    def call(self, inputs):
         # 1️⃣ CUDA 연산 수행
         try:
             activation_func = self.cuda_functions[self.activation_name]
@@ -54,12 +54,6 @@ class Activation(Layer):
             root, leaves = builder()
             self.root_node_list.append(root)
             self.leaf_node_list.extend(leaves)  # ✅ 여러 입력일 경우 확장
-
-            # 3️⃣ 이전 계산 그래프와 연결
-            if input_node_list:
-                target_input_node = input_node_list[idx] if idx < len(input_node_list) else input_node_list[-1]
-                for leaf in leaves:
-                    leaf.add_child(target_input_node)
 
         self.output_shape = output.shape
         return output

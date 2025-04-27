@@ -70,7 +70,6 @@ def matrix_multiply_nodes(A, B, result):
                 )
 
                 sum_node.add_child(mul_node)
-                mul_node.add_parent(sum_node)
 
                 # ✅ 입력값(A)에 해당하는 노드만 leaf_node_list에 추가
                 leaf_node_list.append(mul_node)
