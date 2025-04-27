@@ -193,12 +193,12 @@ class Sequential(Node):
                                 # ✅ 루트는 항상 "현재 레이어의 root"로 갱신
                                 self.cal_graph.root_node_list = layer.root_node_list[:]
         
-                                """
+                                
                                 for i in range(len(self.cal_graph.root_node_list)):
-                                    self.cal_graph.root_node_list[i].print_tree()
+                                    self.cal_graph.root_node_list[i].print_tree(self.cal_graph.root_node_list[i])
                                     print("각 계산 그래프 확인용")
 
-                                """
+                                
                         
                             prev_root_nodes = layer.root_node_list[:]
 
@@ -212,7 +212,7 @@ class Sequential(Node):
 
                     self.connect_loss_graph()
 
-                    #self.cal_graph.print_graph()
+                    self.cal_graph.print_graph()
 
                     batch_loss_sum += loss_value
 

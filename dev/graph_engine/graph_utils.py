@@ -16,12 +16,12 @@ def print_graph(node_list):
         connector = "└── " if is_last else "├── "
         print(prefix + connector +
               f"[{node.operation}] out={node.output} weight={node.weight_value} "
-              f"id={id(node)} | children_root_nodes={len(node.children_root_nodes)}")
+              f"id={id(node)} | children_root_nodes={len(node.children)}")
 
         visited[node] = True
 
-        child_count = len(node.children_root_nodes)
-        for idx, child in enumerate(node.children_root_nodes):
+        child_count = len(node.children)
+        for idx, child in enumerate(node.children):
             is_last_child = (idx == child_count - 1)
             next_prefix = prefix + ("    " if is_last else "│   ")
             print_node(child, next_prefix, is_last_child, visited)
@@ -43,6 +43,7 @@ def connect_graphs(parent_leaf_nodes, children_root_nodes):
     - 각 parent 노드를 동일한 간격으로 여러 children_root_nodes에 연결
     - 예: parent가 10개, child가 30개면 → 각 parent는 연속된 3개의 child에 연결됨
     """
+    print("[DEBUG] Layer connect 실행")
     print(len(parent_leaf_nodes), len(children_root_nodes), "개수 확인")
 
     if not parent_leaf_nodes or not children_root_nodes:
