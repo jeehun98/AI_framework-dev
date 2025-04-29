@@ -1,7 +1,7 @@
 from .node import Node
 
 # ✅ Sigmoid 계산 그래프
-def build_sigmoid_node():
+def build_sigmoid_node(result):
     """
     Sigmoid(x) = 1 / (1 + exp(-x))
 
@@ -30,12 +30,14 @@ def build_sigmoid_node():
     reciprocal_node = Node("reciprocal")
     reciprocal_node.add_child(add_node)
 
+    reciprocal_node.output = result
+
     return reciprocal_node, [neg_node]
 
 # ------------------------------------------------
 
 # ✅ Tanh 계산 그래프
-def build_tanh_node():
+def build_tanh_node(result):
     """
     tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 
@@ -68,12 +70,14 @@ def build_tanh_node():
     divide_node.add_child(numerator)
     divide_node.add_child(denominator)
 
+    divide_node.output = result
+
     return divide_node, [exp_pos, neg_node]
 
 # ------------------------------------------------
 
 # ✅ ReLU 계산 그래프
-def build_relu_node():
+def build_relu_node(result):
     """
     ReLU(x) ≈ x * sigmoid(10 * x)
 
@@ -117,5 +121,7 @@ def build_relu_node():
     relu_node = Node("multiply")
     relu_node.add_child(reciprocal_node)
     relu_node.add_child(x_node)
+
+    relu_node.output = result
 
     return relu_node, [x_node]

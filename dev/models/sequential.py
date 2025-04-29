@@ -123,8 +123,6 @@ class Sequential(Node):
         # 1️⃣ CUDA 연산
         self.loss_value = self.loss(y_true_array, y_pred_array)
 
-        print(y_pred_array, "뭐야 이게")
-
         # 2️⃣ 계산 그래프 생성 (출력 유닛 수 기반)
         num_outputs = y_pred_array.shape[1]  # (1, N) 형태 기준
         try:
@@ -133,9 +131,9 @@ class Sequential(Node):
             raise NotImplementedError(f"{self.loss_name} 계산 그래프 미지원")
 
         if self.loss_name == "categorical_crossentropy":
-            loss_root, leaf_nodes = builder(num_classes=num_outputs)
+            loss_root, leaf_nodes = builder(num_classes=num_outputs, result=self.loss_value)
         else:
-            loss_root, leaf_nodes = builder(num_outputs=num_outputs)
+            loss_root, leaf_nodes = builder(num_outputs=num_outputs, result=self.loss_value)
 
         self.loss_node_list = [loss_root]
         self.loss_leaf_nodes = leaf_nodes
@@ -191,14 +189,7 @@ class Sequential(Node):
                                 self.cal_graph.connect_graphs(prev_root_nodes, layer.leaf_node_list)
     
                                 # ✅ 루트는 항상 "현재 레이어의 root"로 갱신
-                                self.cal_graph.root_node_list = layer.root_node_list[:]
-        
-                                
-                                for i in range(len(self.cal_graph.root_node_list)):
-                                    self.cal_graph.root_node_list[i].print_tree(self.cal_graph.root_node_list[i])
-                                    print("각 계산 그래프 확인용")
-
-                                
+                                self.cal_graph.root_node_list = layer.root_node_list[:]   
                         
                             prev_root_nodes = layer.root_node_list[:]
 
@@ -212,8 +203,6 @@ class Sequential(Node):
 
                     self.connect_loss_graph()
 
-                    self.cal_graph.print_graph()
-
                     batch_loss_sum += loss_value
 
                 batch_loss = batch_loss_sum / batch_datas
@@ -221,8 +210,10 @@ class Sequential(Node):
 
                 print("[DEBUG] 역전파 시작")
                 for root_node in self.cal_graph.root_node_list:
-                    self.backpropagate(root_node)
+                    root_node.backpropagate()
                 print("[DEBUG] 역전파 완료")
+
+                self.cal_graph.print_graph()
 
                 print("[DEBUG] 가중치 업데이트 시작")
                 for root_node in self.cal_graph.root_node_list:
