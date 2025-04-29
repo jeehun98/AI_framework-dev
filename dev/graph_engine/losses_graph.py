@@ -1,7 +1,7 @@
 from .node import Node
 
 # ✅ MSE 계산 그래프
-def build_mse_node(num_outputs):
+def build_mse_node(num_outputs, result=None):
     """
     MSE = mean( sum( (y_true_i - y_pred_i)^2 ) )
 
@@ -39,14 +39,18 @@ def build_mse_node(num_outputs):
     mean_node = Node("mean")
     mean_node.add_child(sum_node)
 
-    leaf_nodes = [sq.children[0].children[1] for sq in square_nodes]
+    # ✅ CUDA 결과값 저장
+    if result is not None:
+        mean_node.output = result
+
+    leaf_nodes = [sq.children[0].children[1] for sq in square_nodes]  # 각 y_pred 노드
 
     return mean_node, leaf_nodes
 
 # ------------------------------------------------
 
 # ✅ Binary Crossentropy 계산 그래프
-def build_binary_crossentropy_node(num_outputs=1):
+def build_binary_crossentropy_node(num_outputs=1, result=None):
     """
     BCE = mean( - [ y * log(p) + (1 - y) * log(1 - p) ] )
 
@@ -113,6 +117,10 @@ def build_binary_crossentropy_node(num_outputs=1):
         final_node = Node("mean")
         final_node.add_child(sum_node)
 
+    # ✅ CUDA 결과값 저장
+    if result is not None:
+        final_node.output = result
+
     leaf_nodes = []
     for n in nodes:
         leaf_nodes.append(n.children[0].children[1])  # neg → add → mul1 → y_pred
@@ -122,7 +130,7 @@ def build_binary_crossentropy_node(num_outputs=1):
 # ------------------------------------------------
 
 # ✅ Categorical Crossentropy 계산 그래프
-def build_categorical_crossentropy_node(num_classes=3):
+def build_categorical_crossentropy_node(num_classes=3, result=None):
     """
     CCE = - sum( y_i * log(p_i) )
 
@@ -159,7 +167,11 @@ def build_categorical_crossentropy_node(num_classes=3):
     neg_node = Node("neg")
     neg_node.add_child(sum_node)
 
-    leaf_nodes = [mul.children[1].children[0] for mul in mul_nodes]
+    # ✅ CUDA 결과값 저장
+    if result is not None:
+        neg_node.output = result
+
+    leaf_nodes = [mul.children[1].children[0] for mul in mul_nodes]  # log → y_pred
 
     return neg_node, leaf_nodes
 

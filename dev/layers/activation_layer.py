@@ -51,11 +51,13 @@ class Activation(Layer):
         self.leaf_node_list = []
 
         for idx in range(flat_inputs.shape[0]):
-            root, leaves = builder()
+            single_output = output[0, idx]
+            root, leaves = builder(single_output)
             self.root_node_list.append(root)
             self.leaf_node_list.extend(leaves)  # ✅ 여러 입력일 경우 확장
 
         self.output_shape = output.shape
+        
         return output
 
     def compute_output_shape(self, input_shape):

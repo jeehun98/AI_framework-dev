@@ -97,8 +97,6 @@ class Dense(Layer):
         self.leaf_node_list = current_leaf
         self.output_shape = result.shape
 
-        print(input_data.shape, len(self.leaf_node_list), "행렬 곱 연산 확인용", len(self.root_node_list))
-
         return result
 
     def build(self, input_shape):
