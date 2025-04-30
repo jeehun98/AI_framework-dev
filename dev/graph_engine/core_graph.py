@@ -65,3 +65,8 @@ class Cal_graph:
 
     def get_leaf_nodes(self, node_list):
         return graph_utils.get_leaf_nodes(node_list)
+
+    """
+    시각적, 사고적 표현에 적합하게 생성된 계산 그래프를 일련의 행렬로 변환하여 연산을 수행하여 
+    연산 최적화 구현 계획획
+    """
