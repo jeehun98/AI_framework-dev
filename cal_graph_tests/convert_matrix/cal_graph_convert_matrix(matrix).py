@@ -70,5 +70,5 @@ grad_weights = np.dot(A_np.T, grad_output)
 grad_A_df = pd.DataFrame(grad_input, columns=[f"dL/dA_{i}" for i in range(3)])
 grad_B_df = pd.DataFrame(grad_weights, columns=[f"dL/dB_{j}" for j in range(4)])
 
-print(grad_A_df.to_string(index=False))
-print(grad_B_df.to_string(index=False))
+print("\n입력값의 변화에 대한 비용 함수 변화량\n", grad_A_df.to_string(index=False))
+print("\n가중치 변화량에 대한 비용 함수 변화량\n", grad_B_df.to_string(index=False))
