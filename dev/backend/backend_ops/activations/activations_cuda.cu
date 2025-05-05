@@ -43,8 +43,8 @@ void applyActivation(float* h_x, int n, void (*kernel)(float*, int)) {
     cudaFree(d_x);
 }
 
-// ✅ 반환값 없이 In-Place 연산
-void apply_activation(py::array_t<float> input, std::string activation) {
+// ✅ 반환값을 명시하는 버전
+py::array_t<float> apply_activation(py::array_t<float> input, std::string activation) {
     py::buffer_info buf = input.request();
     int n = buf.size;
     float* h_x = static_cast<float*>(buf.ptr);
@@ -58,6 +58,8 @@ void apply_activation(py::array_t<float> input, std::string activation) {
     } else {
         throw std::invalid_argument("지원하지 않는 활성화 함수입니다. 'relu', 'sigmoid', 'tanh' 중 선택하세요.");
     }
+
+    return input;  // ✅ 반환 필수
 }
 
 // 모듈 등록
