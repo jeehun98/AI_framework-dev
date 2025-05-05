@@ -8,15 +8,19 @@ matrix_ops = import_cuda_module(
     build_dir=r"C:\Users\owner\Desktop\AI_framework-dev\dev\backend\backend_ops\operaters\build\lib.win-amd64-cpython-312"
 )
 
-
 class DenseMat:
-    def __init__(self, input_dim, output_dim, activation=None, initializer='he'):
-        self.input_dim = input_dim
-        self.output_dim = output_dim
+    def __init__(self, units, activation=None, initializer='he', input_dim=None):
+        self.input_dim = input_dim  # 나중에 build 단계에서 설정 가능
+        self.output_dim = units
         self.activation = activation  # 문자열로 저장: 'relu', 'sigmoid', etc.
         self.initializer = initializer
-        self.weights = self._initialize_weights(input_dim, output_dim)
-        self.bias = np.zeros((1, output_dim), dtype=np.float32)
+        self.weights = None
+        self.bias = None
+
+    def build(self, input_dim):
+        self.input_dim = input_dim
+        self.weights = self._initialize_weights(input_dim, self.output_dim)
+        self.bias = np.zeros((1, self.output_dim), dtype=np.float32)
 
     def _initialize_weights(self, input_dim, output_dim):
         if self.initializer == 'ones':
@@ -34,6 +38,9 @@ class DenseMat:
 
     def call(self, input_data):
         input_data = np.atleast_2d(input_data).astype(np.float32)
+
+        if self.input_dim is None:
+            raise ValueError("input_dim is not set. Please call build(input_dim) first.")
 
         if input_data.shape[1] != self.input_dim:
             raise ValueError(f"Input shape mismatch: expected {self.input_dim}, got {input_data.shape[1]}")
@@ -61,8 +68,8 @@ class DenseMat:
         # ✅ CUDA 기반 활성화 함수 적용
         if self.activation:
             try:
-                z_out = activations_cuda.apply_activation(z, self.activation)
-                print("[DEBUG] activation 호출 결과:", z_out)
+                activations_cuda.apply_activation(z, self.activation)  # in-place 적용
+                print("[DEBUG] activation 호출 결과:", z)
             except Exception as e:
                 print("[ERROR] activation 함수 호출 실패:", e)
                 raise

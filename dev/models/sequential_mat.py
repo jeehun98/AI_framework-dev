@@ -21,12 +21,13 @@ class SequentialMat:
 
     def add(self, layer):
         if self._layers:
-            prev_layer = self._layers[-1]
-            layer.input_dim = prev_layer.output_dim
-        if hasattr(layer, "build"):
-            layer.build((1, layer.input_dim))
+            prev_output_dim = self._layers[-1].output_dim
+            layer.build(prev_output_dim)
+        elif hasattr(layer, 'input_dim') and layer.input_dim is not None:
+            layer.build(layer.input_dim)
+        else:
+            raise ValueError("첫 번째 레이어는 input_dim이 필요합니다.")
         self._layers.append(layer)
-        print(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_dim={layer.input_dim}, output_dim={layer.output_dim})")
 
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
