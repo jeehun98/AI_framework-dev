@@ -15,7 +15,7 @@ setup_paths()
 import_cuda_module()
 
 # ✅ 핵심 모듈 임포트
-from dev.layers.dense_cuda import Dense
+from dev.layers.dense import Dense
 from dev.graph_engine.core_graph import Cal_graph
 
 
