@@ -1,69 +1,40 @@
 import numpy as np
-from dev.layers.layer import Layer
-from dev.backend.backend_ops.activations import activations as cuda_activations
 
 OP_TYPES = {
-    "activation_sigmoid": 3,
-    "activation_relu": 4,
-    "activation_tanh": 5,
+    "sigmoid": 3,
+    "relu": 4,
+    "tanh": 5,
 }
 
-class ActivationMat(Layer):
-    def __init__(self, activation, **kwargs):
-        super().__init__(**kwargs)
-        self.activation_name = activation  # 통일된 명칭 사용
-        self.layer_name = "activation"
-        self.trainable = False
-        self.input_dim = None
-        self.output_dim = None
+class ActivationMat:
+    def __init__(self, activation_name):
+        self.activation_name = activation_name
+        if activation_name not in OP_TYPES:
+            raise ValueError(f"Unsupported activation: {activation_name}")
 
-        self.cuda_functions = {
-            "relu": cuda_activations.relu,
-            "sigmoid": cuda_activations.sigmoid,
-            "tanh": cuda_activations.tanh,
-        }
+    def generate_sparse_matrix_block(self, input_ids, node_offset):
+        input_len = len(input_ids)
+        N = node_offset + input_len
 
-    def build(self, input_dim):
-        self.input_dim = input_dim
-        self.output_dim = input_dim  # activation은 shape 유지
+        Conn = np.zeros((N, N), dtype=np.int8)
+        OpType = np.zeros((N,), dtype=np.int32)
+        ParamIndex = np.full((N,), -1, dtype=np.int32)
+        ParamValues = []
 
-    def call(self, inputs):
-        inputs = np.atleast_2d(inputs).astype(np.float32)
-
-        try:
-            activation_func = self.cuda_functions[self.activation_name]
-        except KeyError:
-            raise NotImplementedError(f"[ERROR] '{self.activation_name}' CUDA 미지원")
-
-        return activation_func(inputs)
-
-    def forward_matrix(self):
-        """컴파일 시 사용되는 activation 정보"""
-        return {
-            "type": "activation",
-            "activation": self.activation_name,
-            "input_dim": self.input_dim,
-            "output_dim": self.output_dim,
-        }
-
-    def generate_graph_matrices(self, input_ids, node_counter):
-        op_matrix = []
-        input_matrix = []
-        param_vector = []
-
-        act_op_name = f"activation_{self.activation_name}"
-        act_op_code = OP_TYPES[act_op_name]
-
-        act_id = node_counter
-        op_matrix.append(act_op_code)
-        input_matrix.append([input_ids[0], -1])
-        param_vector.append(None)
-        node_counter += 1
+        output_ids = []
+        for i in range(input_len):
+            input_id = input_ids[i]
+            nid = node_offset + i
+            Conn[input_id, nid] = 1
+            OpType[nid] = OP_TYPES[f"{self.activation_name}"]
+            output_ids.append(nid)
 
         return {
-            "op_matrix": op_matrix,
-            "input_matrix": input_matrix,
-            "param_vector": param_vector,
-            "output_ids": [act_id],
-            "next_node_counter": node_counter
+            "Conn": Conn,
+            "OpType": OpType,
+            "ParamIndex": ParamIndex,
+            "ParamValues": ParamValues,
+            "input_ids": input_ids,
+            "output_ids": output_ids,
+            "next_node_offset": node_offset + input_len
         }
