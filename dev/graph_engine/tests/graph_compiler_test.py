@@ -1,62 +1,53 @@
 import sys
 import os
-import numpy as np
 
 # ✅ 프로젝트 루트 경로 추가
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.insert(0, PROJECT_ROOT)
 
-from dev.graph_engine.graph_compiler import GraphCompiler
+
+import numpy as np
 from dev.layers.dense_mat import DenseMat
 from dev.layers.activation_mat import ActivationMat
+from dev.graph_engine.graph_compiler import GraphCompiler
 
+# 1️⃣ 레이어 구성: Dense → Sigmoid → Dense
+layer1 = DenseMat(units=3, input_dim=4)
+layer1.build(input_dim=4)
+act1 = ActivationMat("sigmoid")
+layer2 = DenseMat(units=2)
+layer2.build(input_dim=3)
+act2 = ActivationMat("sigmoid")
 
-def test_graph_compiler_deep_model():
-    # ✅ 모델: Dense(4→6)+ReLU → Dense(6→5)+Tanh → Dense(5→3)+Sigmoid
-    dense1 = DenseMat(units=6, activation='sigmoid', input_dim=4)
-    dense1.build(4)
+# 2️⃣ 컴파일러에 레이어 추가
+compiler = GraphCompiler()
+compiler.output_ids = [0, 1, 2, 3]  # 초기 입력 노드 ID들
+compiler.node_offset = 4           # 입력 이후부터 노드 시작
 
-    dense2 = DenseMat(units=5)
-    dense2.build(6)
-    act2 = ActivationMat('sigmoid')
-    act2.build(5)
+compiler.add_layer(layer1)
+compiler.add_layer(act1)
+compiler.add_layer(layer2)
+compiler.add_layer(act2)
 
-    dense3 = DenseMat(units=3)
-    dense3.build(5)
-    act3 = ActivationMat('sigmoid')
-    act3.build(3)
+# 3️⃣ 결과 확인
+graph = compiler.get_graph()
+Conn = graph["Conn"]
+OpType = graph["OpType"]
+ParamIndex = graph["ParamIndex"]
+ParamValues = graph["ParamValues"]
+OutputIDs = graph["OutputIDs"]
+TotalNodes = graph["TotalNodes"]
 
-    # ✅ GraphCompiler에 레이어 추가
-    compiler = GraphCompiler()
-    compiler.add_layer(dense1)
-    compiler.add_layer(dense2)
-    compiler.add_layer(act2)
-    compiler.add_layer(dense3)
-    compiler.add_layer(act3)
+print("🔗 Conn (non-zero entries):")
+for i, j in np.argwhere(Conn == 1):
+    print(f"Conn[{i}, {j}] = 1")
 
-    # ✅ 그래프 컴파일
-    compiler.build()
-    matrices = compiler.get_matrices()
+print("\n⚙️ OpType summary:")
+unique, counts = np.unique(OpType[OpType > 0], return_counts=True)
+for op, count in zip(unique, counts):
+    print(f"OpType {op}: {count} nodes")
 
-    # ✅ 출력 확인
-    print("🧩 op_matrix:")
-    print(matrices["op_matrix"])
-
-    print("\n🧩 input_matrix:")
-    print(matrices["input_matrix"])
-
-    print("\n🧩 param_vector (길이):", len(matrices["param_vector"]))
-
-    print("\n📊 visualize:")
-    print(compiler.visualize())
-
-    # ✅ 기본 검증
-    assert matrices["op_matrix"].ndim == 1
-    assert matrices["input_matrix"].ndim == 2
-    assert isinstance(matrices["param_vector"], np.ndarray)
-    assert len(matrices["op_matrix"]) == len(matrices["input_matrix"])
-    print("\n✅ 2-은닉층 모델 테스트 통과")
-
-
-if __name__ == "__main__":
-    test_graph_compiler_deep_model()
+print("\n📦 Param count:", len(ParamValues))
+print("📤 Output Node IDs:", OutputIDs)
+print("🔚 Total Node Count:", TotalNodes)
