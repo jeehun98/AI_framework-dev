@@ -9,6 +9,7 @@ class GraphCompiler:
         self.ParamValues = []
         self.node_offset = 0
         self.output_ids = []
+        self.optype_node_map = {}  # ✅ OpType별 노드 리스트 저장
 
     def add_layer(self, layer):
         print("\n🧱 [GraphCompiler] Adding layer:", layer.__class__.__name__)
@@ -58,6 +59,13 @@ class GraphCompiler:
         self.output_ids = block["output_ids"]
         self.node_offset = block["next_node_offset"]
 
+        # ✅ OpType별 노드 ID 정리
+        for i in range(start, end):
+            op = OpType_block[i]
+            if op not in self.optype_node_map:
+                self.optype_node_map[op] = []
+            self.optype_node_map[op].append(i)
+
         print("   ↪ updated node_offset:", self.node_offset)
 
     def get_graph(self):
@@ -67,5 +75,6 @@ class GraphCompiler:
             "ParamIndex": self.ParamIndex,
             "ParamValues": self.ParamValues,
             "OutputIDs": self.output_ids,
-            "TotalNodes": self.node_offset
+            "TotalNodes": self.node_offset,
+            "OpTypeNodeMap": self.optype_node_map  # ✅ 연산자별 노드 분해 결과 포함
         }
