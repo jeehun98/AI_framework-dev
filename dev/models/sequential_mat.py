@@ -47,7 +47,7 @@ class SequentialMat:
         self.loss_name = loss
         self.metric = metrics.get(p_metrics)
 
-        # ✅ 기존 plan 기반 forward 연산 구성
+        # ✅ forward_plan 구성 (for fast_forward)
         self.forward_plan = []
         for i, layer in enumerate(self._layers):
             if hasattr(layer, "forward_matrix"):
@@ -57,17 +57,26 @@ class SequentialMat:
             else:
                 print(f"[WARN] 레이어 {layer} 는 forward_matrix() 미구현 → forward_plan 생략")
 
-        # ✅ 그래프 컴파일러를 통한 행렬 기반 연산 준비
+        # ✅ 계산 그래프 IR 생성 (기존 compile_model 기능 통합)
+        print(f"\n🚀 [SequentialMat] compile_model() from compile()")
+        input_dim = self._layers[0].input_dim
         self.graph_compiler = GraphCompiler()
+        self.graph_compiler.output_ids = list(range(input_dim))
+        self.graph_compiler.node_offset = input_dim
 
-        for layer in self._layers:
+        for i, layer in enumerate(self._layers):
+            if hasattr(layer, "build") and layer.input_dim is None:
+                layer.build(input_dim)
+            input_dim = layer.output_dim
             self.graph_compiler.add_layer(layer)
-        self.graph_compiler.build()
 
-        matrices = self.graph_compiler.get_matrices()
-        print(f"[DEBUG] op_matrix shape: {np.shape(matrices['op_matrix'])}")
-        print(f"[DEBUG] input_matrix shape: {np.shape(matrices['input_matrix'])}")
-        print(f"[DEBUG] param_vector length: {len(matrices['param_vector'])}")
+        self.graph_ir = self.graph_compiler.get_graph()
+
+        print("✅ [SequentialMat] compile complete.")
+        print("   ├─ Total nodes:", self.graph_ir['TotalNodes'])
+        print("   └─ Output node IDs:", self.graph_ir['OutputIDs'])
+
+        # 선택적으로: self.graph_matrices = self.graph_compiler.get_matrices()
 
 
     def predict(self, x):

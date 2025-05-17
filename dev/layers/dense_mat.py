@@ -37,12 +37,11 @@ class DenseMat:
     def generate_sparse_matrix_block(self, input_ids, node_offset):
         input_dim = self.input_dim
         output_dim = self.output_dim
-
-        # 총 필요한 노드 수 계산
+        
         weight_const_count = input_dim * output_dim
         bias_const_count = output_dim
         mul_count = input_dim * output_dim
-        add_count = (input_dim - 1 + 1) * output_dim  # 3 mul-add + 1 bias-add per unit
+        add_count = (input_dim - 1 + 1) * output_dim  # add chain + bias add
         total_nodes = weight_const_count + bias_const_count + mul_count + add_count
         N = node_offset + total_nodes
 
@@ -53,7 +52,7 @@ class DenseMat:
 
         nid = node_offset
 
-        # Weight constants
+        # 1️⃣ Weight constants
         weight_ids = np.zeros((input_dim, output_dim), dtype=np.int32)
         for i in range(input_dim):
             for j in range(output_dim):
@@ -63,16 +62,16 @@ class DenseMat:
                 weight_ids[i, j] = nid
                 nid += 1
 
-        # Bias constants
-        bias_ids = []
+        # 2️⃣ Bias constants
+        bias_ids = np.zeros((output_dim,), dtype=np.int32)
         for j in range(output_dim):
             OpType[nid] = OP_TYPES["const"]
             ParamIndex[nid] = len(ParamValues)
             ParamValues.append(self.bias[0, j])
-            bias_ids.append(nid)
+            bias_ids[j] = nid
             nid += 1
 
-        # Multiply nodes
+        # 3️⃣ Multiply nodes: x_i * W_ij
         mul_ids = np.zeros((input_dim, output_dim), dtype=np.int32)
         for j in range(output_dim):
             for i in range(input_dim):
@@ -82,31 +81,31 @@ class DenseMat:
                 mul_ids[i, j] = nid
                 nid += 1
 
-        # Add chains for each output unit
-        output_ids = []
+        # 4️⃣ Add chains: sum(x_i * W_ij) + b_j
+        output_ids = np.zeros((output_dim,), dtype=np.int32)
         for j in range(output_dim):
-            # 처음 2개 곱을 더함
-            add_prev = nid
+            # 첫 두 곱셈 항
+            prev = nid
             OpType[nid] = OP_TYPES["add"]
             Conn[mul_ids[0, j], nid] = 1
             Conn[mul_ids[1, j], nid] = 1
             nid += 1
 
-            # 나머지 곱들을 반복해서 더함
+            # 나머지 항
             for i in range(2, input_dim):
                 OpType[nid] = OP_TYPES["add"]
-                Conn[add_prev, nid] = 1
+                Conn[prev, nid] = 1
                 Conn[mul_ids[i, j], nid] = 1
-                add_prev = nid
+                prev = nid
                 nid += 1
 
-            # 마지막에 bias 더함
+            # 마지막 bias add
             OpType[nid] = OP_TYPES["add"]
-            Conn[add_prev, nid] = 1
+            Conn[prev, nid] = 1
             Conn[bias_ids[j], nid] = 1
-            output_ids.append(nid)
+            output_ids[j] = nid
             nid += 1
-            
+
         return {
             "Conn": Conn,
             "OpType": OpType,
@@ -114,5 +113,8 @@ class DenseMat:
             "ParamValues": ParamValues,
             "input_ids": input_ids,
             "output_ids": output_ids,
+            "weight_ids": weight_ids,
+            "bias_ids": bias_ids,
+            "mul_ids": mul_ids,
             "next_node_offset": nid
         }
