@@ -91,3 +91,33 @@ for i in range(N):
 df_nonzero = pd.DataFrame(nonzero_entries, columns=["From", "To", "Value"])
 
 print(df_nonzero)
+
+# 입력값 x_i 복원 검증용 코드
+# mul 입력: x_i * w_ij = E[i][j]
+# 역으로: x_i = E[i][j] / W[i][j]
+
+recovered_inputs = {}
+
+for i in range(4):  # 입력 노드: x0 ~ x3
+    estimates = []
+    for j in range(5):
+        src = node_to_index[f"x{i}"]
+        dst = node_to_index[f"mul_{i}_{j}"]
+        w = W[src][dst]
+        if w != 0:
+            x_est = E[src][dst] / w
+            estimates.append(x_est)
+    if estimates:
+        avg_est = sum(estimates) / len(estimates)
+        recovered_inputs[f"x{i}"] = round(avg_est, 6)  # 평균으로 대표값 추정
+
+# 비교용: 원래 입력값
+original_inputs = {f"x{i}": val for i, val in enumerate([1.0, 2.0, 3.0, 4.0])}
+
+# 결과 정리
+df_verify = pd.DataFrame({
+    "Original x_i": original_inputs,
+    "Recovered x_i": recovered_inputs
+})
+
+print(df_verify)
