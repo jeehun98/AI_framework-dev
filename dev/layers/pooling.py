@@ -2,7 +2,7 @@ import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
 from dev.layers.layer import Layer
-from dev.backend.pooling import pooling
+from dev.backend.backend_ops.pooling import pooling
 
 class Pooling(Layer):
     def __init__(

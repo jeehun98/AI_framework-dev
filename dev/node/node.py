@@ -1,3 +1,6 @@
+
+import math
+
 class Node:
     def __init__(self, operation, input_value=0.0, weight_value=0.0, output=0.0, bias=0.0):
         """
@@ -137,20 +140,22 @@ class Node:
         for child in self.children:
             child.print_tree(depth + 2, visited)
 
+
     @staticmethod
     def _operations():
-        """지원되는 연산."""
         return {
             "add": lambda inputs, weight, bias: sum(inputs) + bias,
             "subtract": lambda inputs, weight, bias: inputs[0] - inputs[1] + bias,
             "multiply": lambda inputs, weight, bias: inputs[0] * weight + bias,
             "divide": lambda inputs, weight, bias: inputs[0] / (weight if weight != 0 else 1) + bias,
             "square": lambda inputs, weight, bias: inputs[0] ** 2 + bias,
+            "exp": lambda inputs, weight, bias: math.exp(inputs[0]) + bias,
+            "neg": lambda inputs, weight, bias: -inputs[0] + bias,
+            "reciprocal": lambda inputs, weight, bias: 1.0 / (inputs[0] if inputs[0] != 0 else 1e-6) + bias,
         }
 
     @staticmethod
     def _operations_gradient():
-        """연산별 그래디언트 계산 함수."""
         return {
             "add": lambda input_value, weight, output, upstream: (upstream, upstream),
             "subtract": lambda input_value, weight, output, upstream: (upstream, -upstream),
@@ -159,4 +164,10 @@ class Node:
                 upstream / (weight if weight != 0 else 1), -upstream * input_value / (weight ** 2 if weight != 0 else 1)
             ),
             "square": lambda input_value, weight, output, upstream: (2 * input_value * upstream, 0.0),
+            "exp": lambda input_value, weight, output, upstream: (output * upstream, 0.0),
+            "neg": lambda input_value, weight, output, upstream: (-1 * upstream, 0.0),
+            "reciprocal": lambda input_value, weight, output, upstream: (
+                -1.0 / (input_value ** 2 if input_value != 0 else 1e-6) * upstream,
+                0.0
+            ),
         }

@@ -5,9 +5,9 @@ sys.path.insert(0, 'C:/Users/owner/Desktop/AI_framework-dev')
 import numpy as np
 
 from dev.models.sequential import Sequential
-from dev.layers.core.Rnn import RNN
-from dev.layers.core.dense import Dense
-from dev.backend.node import node
+from dev.layers.Rnn import RNN
+from dev.layers.dense import Dense
+from dev.graph_engine.node import Node
 
 np.random.seed(42)
 
@@ -17,8 +17,8 @@ features = 4    # 입력 데이터의 차원
 samples = 10   # 샘플 수
 
 # 무작위 데이터 생성 (10, 3, 4)
-x_train = np.random.random((samples, timesteps, features))
-y_train = np.random.random((samples, 1))
+x_train = np.random.random((samples, timesteps, features)).astype(np.float64)
+y_train = np.random.random((samples, 1)).astype(np.float64)
 
 model = Sequential()
 

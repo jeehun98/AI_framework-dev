@@ -1,79 +1,39 @@
+# ✅ tests/backend_test_code/activation_test.py
+
 import os
 import sys
-
-# DLL 경로 추가
-os.add_dll_directory("C:/msys64/mingw64/bin")
-#os.add_dll_directory("C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev/dev/backend/activations/")
-
-# 경로 설정
-sys.path.insert(0, 'C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-dev')
-
-# activations 모듈 임포트
-try:
-    from dev.backend.activations import activations
-    print("activations 모듈 로드 성공")
-except ImportError as e:
-    print(f"ImportError 발생: {e}")
-
-# 테스트 코드 실행
-try:
-    if 'activations' in locals():
-        inputs = [0.5, -1.2, 3.0]  # 테스트용 입력값
-        result, nodes = activations.relu(inputs)
-        print("결과:", result)
-        print("노드:", nodes)
-    else:
-        print("activations 모듈이 정의되지 않았습니다.")
-except Exception as e:
-    print(f"테스트 실행 중 에러 발생: {e}")
-
-
 import numpy as np
 
-# 예시 입력
-inputs = np.array([[-1.0, 0.5, 2.0], [1.0, -0.5, 0.0]])
+# ✅ 프로젝트 루트(AI_framework-dev)를 sys.path에 명시적으로 추가
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-# ReLU 연산
-result, nodes = activations.relu(inputs)
-print("ReLU Result:", result)
+# ✅ test_setup 경로 활성화 (dev/tests/test_setup.py)
+from dev.tests.test_setup import setup_paths
+setup_paths()
 
-for node in nodes:
-    print(node.operation, node.output)
-    for child_node in node.children:
-        print(child_node.operation, node.output)
+# ✅ 활성화 함수 모듈 임포트
+from dev.backend.backend_ops.activations import activations
+print("✅ activations 모듈 로드 성공")
 
-# Sigmoid 연산
-result, nodes = activations.sigmoid(inputs)
-print("Sigmoid Result:", result)
 
-for node in nodes:
-    print(node.operation, node.output)
-    for child_node in node.children:
-        print(child_node.operation, node.output)
+# ✅ 입력 데이터
+inputs = np.array([[-1.0, 0.5, 2.0], [1.0, -0.5, 0.0]], dtype=np.float32)
 
-# Tanh 연산
-result, nodes = activations.tanh(inputs)
-print("Tanh Result:", result)
+# ✅ 활성화 함수 테스트 루틴
+def run_activation_test(name, func):
+    print(f"\n🔹 {name}")
+    result, nodes = func(inputs)
+    print("Result:", result)
+    for node in nodes:
+        print(f"🧱 {node.operation} → {node.output}")
+        for child in node.children:
+            print(f"   └─ {child.operation} → {child.output}")
 
-for node in nodes:
-    print(node.operation, node.output)
-    for child_node in node.children:
-        print(child_node.operation, node.output)
-
-# Leaky ReLU 연산
-result, nodes = activations.leaky_relu(inputs, alpha=0.01)
-print("Leaky ReLU Result:", result)
-
-for node in nodes:
-    print(node.operation, node.output)
-    for child_node in node.children:
-        print(child_node.operation, node.output)
-
-# Softmax 연산
-result, nodes = activations.softmax(inputs)
-print("Softmax Result:", result)
-
-for node in nodes:
-    print(node.operation, node.output)
-    for child_node in node.children:
-        print(child_node.operation, node.output)
+# ✅ 개별 테스트 실행
+run_activation_test("ReLU", activations.relu)
+run_activation_test("Sigmoid", activations.sigmoid)
+run_activation_test("Tanh", activations.tanh)
+run_activation_test("Leaky ReLU", lambda x: activations.leaky_relu(x, alpha=0.01))
+run_activation_test("Softmax", activations.softmax)
