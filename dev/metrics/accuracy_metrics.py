@@ -2,7 +2,7 @@
 import os
 os.add_dll_directory("C:\\msys64\\mingw64\\bin")
 
-from dev.backend.metrics import metrics
+from dev.backend.backend_ops.metrics import metrics
 
 class Accuracy():
     def __init__(self, name="accuracy"):

@@ -6,9 +6,9 @@ sys.path.insert(1, 'C:/Users/as042/OneDrive/Desktop/AI_framework/AI_framework-de
 import numpy as np
 
 from dev.models.sequential import Sequential
-from dev.layers.core.dense import Dense
+from dev.layers.dense import Dense
 from dev.layers.flatten import Flatten
-from dev.layers.activations import Activation
+from dev.layers.activation_layer import Activation
 
 # 랜덤 시드값 고정
 np.random.seed(42)

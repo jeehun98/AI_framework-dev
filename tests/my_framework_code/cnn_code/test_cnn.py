@@ -4,8 +4,8 @@ sys.path.insert(0, 'C:/Users/owner/Desktop/AI_framework-dev')
 
 import numpy as np
 from dev.models.sequential import Sequential
-from dev.layers.core.dense import Dense
-from dev.layers.core.Conv2D import Conv2D
+from dev.layers.dense import Dense
+from dev.layers.Conv2D import Conv2D
 from dev.layers.pooling import Pooling
 from dev.layers.flatten import Flatten
 
