@@ -1,14 +1,10 @@
+# dev/layers/dense.py
+
 import numpy as np
-
 from dev.layers.layer import Layer
-from dev import activations
-from dev.graph_engine import graph_utils
-from dev.graph_engine.core_ops import matrix_multiply_nodes, matrix_add_nodes
-from dev.graph_engine.activations_graph import build_sigmoid_node, build_relu_node, build_tanh_node
-from dev.graph_engine.graph_utils import connect_graphs
-
 from ..tests.test_setup import import_cuda_module
 
+# ✅ CUDA 모듈 로드 (CUDA 활성화 함수 포함)
 matrix_ops = import_cuda_module(
     module_name="operations_matrix_cuda",
     build_dir=r"C:\Users\owner\Desktop\AI_framework-dev\dev\backend\backend_ops\operaters\build\lib.win-amd64-cpython-312"
@@ -18,86 +14,19 @@ class Dense(Layer):
     def __init__(self, units, activation=None, name=None, initializer='he', **kwargs):
         super().__init__(name, **kwargs)
         self.units = units
-        self.output_shape = (1, units)
-        self.trainable = True
-        self.root_node_list = []   # ✅ 출력 노드
-        self.leaf_node_list = []   # ✅ 연결 대상 리프 노드
-        self.layer_name = "dense"
-        self.activation = activations.get(activation) if activation else None
+        self.activation = activation  # CUDA에서 가져온 함수
         self.initializer = initializer
+        self.input_shape = None
+        self.output_shape = (1, units)
+
         self.weights = None
         self.bias = None
 
-    def call(self, input_data):
-        
-        input_data = np.atleast_2d(input_data).astype(np.float32)
-
-        if self.weights is None or self.weights.shape[0] != input_data.shape[1]:
-            print(f"[DEBUG] Dense.call()에서 자동 build 재시도: input_data.shape={input_data.shape}")
-            self.build(input_shape=input_data.shape)
-
-        try:
-            matmul_result = matrix_ops.matrix_multiply(input_data, self.weights)
-            if isinstance(matmul_result, tuple):
-                matmul_result = matmul_result[0]
-        except Exception as e:
-            print(f"[ERROR] CUDA matmul 실패. fallback to np.dot: {e}")
-            matmul_result = np.dot(input_data, self.weights)
-
-        # ✅ 행렬 곱 계산 그래프 구성
-        mm_root, mm_leaf = matrix_multiply_nodes(
-            input_data.tolist(), self.weights.tolist(), matmul_result.tolist()
-        )
-        result = matmul_result
-        current_root = mm_root
-        current_leaf = mm_leaf
-
-        # ✅ bias 더하기
-        if self.bias is not None:
-            bias_reshaped = np.tile(self.bias, (input_data.shape[0], 1))
-            try:
-                result = matrix_ops.matrix_add(matmul_result, bias_reshaped)
-                if isinstance(result, tuple):
-                    result = result[0]
-            except Exception:
-                result = matmul_result + bias_reshaped
-
-            add_root, add_leaf = matrix_add_nodes(
-                matmul_result.tolist(), bias_reshaped.tolist(), result.tolist()
-            )
-
-            connect_graphs(current_root, add_leaf)
-            current_root = add_root
-
-        # ✅ activation 함수 처리
-        if self.activation is not None:
-            result = self.activation(result)
-
-            builder_map = {
-                "sigmoid": build_sigmoid_node,
-                "relu": build_relu_node,
-                "tanh": build_tanh_node,
-            }
-            act_name = self.activation.__name__
-            act_builder = builder_map[act_name]
-
-            act_root = []
-            act_leaf = []
-
-            for _ in range(result.size):
-                root, leaf = act_builder()
-                act_root.append(root)
-                act_leaf.extend(leaf)
-
-            connect_graphs(current_root, act_leaf)
-            current_root = act_root
-
-        # ✅ root/leaf 저장
-        self.root_node_list = current_root
-        self.leaf_node_list = current_leaf
-        self.output_shape = result.shape
-
-        return result
+        # 역전파에 필요한 정보
+        self.last_input = None
+        self.last_z = None
+        self.dW = None
+        self.db = None
 
     def build(self, input_shape):
         print(f"[DEBUG] Dense.build() 진입 - 받은 input_shape: {input_shape}")
@@ -105,17 +34,94 @@ class Dense(Layer):
         input_dim = input_shape[1]
 
         if self.initializer == 'ones':
-            self.weights = np.ones((input_dim, self.units))
+            self.weights = np.ones((input_dim, self.units)).astype(np.float32)
         elif self.initializer == 'zeros':
-            self.weights = np.zeros((input_dim, self.units))
+            self.weights = np.zeros((input_dim, self.units)).astype(np.float32)
         elif self.initializer == 'he':
             stddev = np.sqrt(2. / input_dim)
-            self.weights = np.random.randn(input_dim, self.units) * stddev
+            self.weights = (np.random.randn(input_dim, self.units) * stddev).astype(np.float32)
         elif self.initializer == 'xavier':
             stddev = np.sqrt(1. / input_dim)
-            self.weights = np.random.randn(input_dim, self.units) * stddev
+            self.weights = (np.random.randn(input_dim, self.units) * stddev).astype(np.float32)
         else:
             raise ValueError(f"Unknown initializer: {self.initializer}")
 
-        self.bias = np.zeros((1, self.units))
+        self.bias = np.zeros((1, self.units), dtype=np.float32)
         print(f"[DEBUG] Dense.build() 완료 - weights shape: {self.weights.shape}, bias shape: {self.bias.shape}")
+
+    def call(self, input_data):
+        input_data = np.atleast_2d(input_data).astype(np.float32)
+
+        if self.weights is None:
+            self.build(input_data.shape)
+
+        self.last_input = input_data
+
+        try:
+            z = matrix_ops.matrix_multiply(input_data, self.weights)
+            if isinstance(z, tuple):  # ✅ tuple일 경우 첫 요소 사용
+                z = z[0]
+        except Exception as e:
+            print(f"[ERROR] CUDA matmul 실패. fallback to np.dot: {e}")
+            z = np.dot(input_data, self.weights)
+
+        # ✅ numpy float32 array 보장
+        z = np.array(z, dtype=np.float32)
+
+        # ✅ bias shape 맞추기
+        if self.bias.shape[0] != z.shape[0]:
+            bias_reshaped = np.tile(self.bias, (z.shape[0], 1)).astype(np.float32)
+        else:
+            bias_reshaped = self.bias
+
+        z = z + bias_reshaped
+        self.last_z = z.copy()
+
+        if self.activation is not None:
+            try:
+                z = self.activation(z)
+            except Exception as e:
+                print(f"[ERROR] CUDA activation 실패. fallback to numpy: {e}")
+                z = self._fallback_activation(z)
+
+        return z
+
+
+    def backward(self, grad_output):
+        # ✅ 활성화 함수의 gradient 적용
+        if self.activation is not None:
+            grad_output = self._apply_activation_grad(grad_output, self.last_z)
+
+        # ✅ 가중치 및 입력에 대한 gradient 계산
+        self.dW = np.dot(self.last_input.T, grad_output)
+        self.db = np.sum(grad_output, axis=0, keepdims=True)
+        dx = np.dot(grad_output, self.weights.T)
+        return dx
+
+    def update(self, optimizer):
+        self.weights, self.bias = optimizer.update(self.weights, self.dW, self.bias, self.db)
+
+    def _apply_activation_grad(self, grad_output, z):
+        act_name = self.activation.__name__ if hasattr(self.activation, '__name__') else str(self.activation)
+
+        if act_name == "sigmoid":
+            sig = 1 / (1 + np.exp(-z))
+            return grad_output * sig * (1 - sig)
+        elif act_name == "relu":
+            return grad_output * (z > 0).astype(np.float32)
+        elif act_name == "tanh":
+            return grad_output * (1 - np.tanh(z) ** 2)
+        else:
+            return grad_output
+
+    def _fallback_activation(self, z):
+        act_name = self.activation.__name__ if hasattr(self.activation, '__name__') else str(self.activation)
+
+        if act_name == "sigmoid":
+            return 1 / (1 + np.exp(-z))
+        elif act_name == "relu":
+            return np.maximum(0, z)
+        elif act_name == "tanh":
+            return np.tanh(z)
+        else:
+            raise ValueError(f"지원하지 않는 activation: {act_name}")

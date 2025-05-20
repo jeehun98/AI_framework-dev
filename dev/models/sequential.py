@@ -7,19 +7,14 @@ from dev.losses import losses_mapping
 from dev import optimizers
 from dev.backend.backend_ops.losses import losses as cuda_losses
 from dev import metrics
-from dev.node.node import Node
-from dev.graph_engine.core_graph import Cal_graph
 
 
-class Sequential(Node):
-    def __new__(cls, *args, **kwargs):
-        return typing.cast(cls, super().__new__(cls))
-
+class Sequential:
     def __init__(self, layers=None, trainable=True, name=None):
         self.built = False
         self._layers = []
-        self.cal_graph = Cal_graph()
-        self.loss_node_list = []
+        self.trainable = trainable
+        self.name = name
 
     def get_config(self):
         sequential_config = {'name': 'sequential'}
@@ -35,15 +30,10 @@ class Sequential(Node):
             input_shape = previous_layer.output_shape
             if input_shape is not None:
                 layer.build(input_shape)
-            elif hasattr(layer, "input_shape") and layer.input_shape is not None:
-                layer.build(layer.input_shape)
-            else:
-                raise RuntimeError(f"레이어 {layer.layer_name}의 입력 shape을 추론할 수 없습니다.")
+        elif hasattr(layer, "input_shape") and layer.input_shape is not None:
+            layer.build(layer.input_shape)
         else:
-            if hasattr(layer, "input_shape") and layer.input_shape is not None:
-                layer.build(layer.input_shape)
-            else:
-                raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
+            raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
 
         print(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
         self._layers.append(layer)
@@ -56,18 +46,16 @@ class Sequential(Node):
 
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
-        self.loss = cuda_losses.get(loss)
-        self.loss_name = loss  # 손실 함수 이름 저장
-        self.metric = metrics.get(p_metrics)
+        self.loss_fn = cuda_losses.get(loss)
+        self.loss_name = loss
+        self.metric_fn = metrics.get(p_metrics)
         self.build()
-        self.get_weight()
-
 
     def get_compile_config(self):
         return {
             "optimizer": self.optimizer.get_config(),
-            "loss": self.loss.get_config(),
-            "metrics": self.metric.get_config(),
+            "loss": self.loss_fn.get_config(),
+            "metrics": self.metric_fn.get_config(),
         }
 
     def get_weight(self):
@@ -107,41 +95,19 @@ class Sequential(Node):
             print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
         return output
 
-    def connect_loss_graph(self):
-        if self.loss_node_list:
-            print(f"[DEBUG] Loss Graph 연결: 출력 유닛 {len(self.loss_leaf_nodes)}개")
+    def compute_loss_and_metrics(self, y_pred, y_true):
+        loss_value = self.loss_fn(y_true, y_pred)
+        metric_value = self.metric_fn(y_pred, y_true)
+        return loss_value, metric_value
 
-            # 출력층과 손실 함수 그래프 연결
-            self.cal_graph.root_node_list = self.cal_graph.connect_graphs(
-                self.cal_graph.root_node_list, self.loss_leaf_nodes
-            )
+    def backward_pass(self, grad_output):
+        for layer in reversed(self._layers):
+            grad_output = layer.backward(grad_output)
 
-            # 최종 루트는 손실 함수 루트로 덮어쓰기
-            self.cal_graph.root_node_list = self.loss_node_list[:]
-
-    def compute_loss_and_metrics(self, y_pred_array, y_true_array):
-        # 1️⃣ CUDA 연산
-        self.loss_value = self.loss(y_true_array, y_pred_array)
-
-        # 2️⃣ 계산 그래프 생성 (출력 유닛 수 기반)
-        num_outputs = y_pred_array.shape[1]  # (1, N) 형태 기준
-        try:
-            builder = getattr(losses_mapping, f"{self.loss_name}_graph")
-        except AttributeError:
-            raise NotImplementedError(f"{self.loss_name} 계산 그래프 미지원")
-
-        if self.loss_name == "categorical_crossentropy":
-            loss_root, leaf_nodes = builder(num_classes=num_outputs, result=self.loss_value)
-        else:
-            loss_root, leaf_nodes = builder(num_outputs=num_outputs, result=self.loss_value)
-
-        self.loss_node_list = [loss_root]
-        self.loss_leaf_nodes = leaf_nodes
-
-        # 3️⃣ 메트릭 계산
-        self.metric_value = self.metric(y_pred_array, y_true_array)
-
-        return self.loss_value
+    def update_weights(self):
+        for layer in self._layers:
+            if hasattr(layer, "update"):
+                layer.update(self.optimizer)
 
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
@@ -166,68 +132,30 @@ class Sequential(Node):
                 batch_loss_sum = 0
 
                 for data_idx in range(batch_datas):
-                    input_data = batch_x[data_idx]
-                    target = batch_y[data_idx]
+                    input_data = batch_x[data_idx:data_idx+1]
+                    target = batch_y[data_idx:data_idx+1]
 
                     print(f"\n[SHAPE TRACE] === Sample {data_idx + 1} ===")
-                    print(f"[SHAPE TRACE] Input: {input_data.shape}")
+                    y_pred = self.forward_pass(input_data)
 
-                    output = input_data
-                    prev_root_nodes = None
+                    loss_value, metric_value = self.compute_loss_and_metrics(y_pred, target)
+                    print(f"[DEBUG] 손실: {loss_value}, 메트릭: {metric_value}")
 
-                    for i, layer in enumerate(self._layers):
-                        print(f"[DEBUG] Layer {i}: {layer.__class__.__name__} call() 실행")
-                        output = layer.call(output)
-                        print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
-
-                        if hasattr(layer, "root_node_list") and layer.root_node_list:
-                            if prev_root_nodes is None:
-                                # 첫 레이어: 단순히 root 설정
-                                self.cal_graph.root_node_list = layer.root_node_list[:]
-                            else:
-                                # ✅ 연결만 수행, (parents - 이전 레이어의 루트 노드, children - 현재 레이어의 리프노드)
-                                self.cal_graph.connect_graphs(prev_root_nodes, layer.leaf_node_list)
-    
-                                # ✅ 루트는 항상 "현재 레이어의 root"로 갱신
-                                self.cal_graph.root_node_list = layer.root_node_list[:]   
-                        
-                            prev_root_nodes = layer.root_node_list[:]
-
-                    
-                    output = np.array(output).reshape(1, -1)
-                    target = np.array(target).reshape(1, -1)
-
-                    print("[DEBUG] 손실 및 메트릭 계산 시작")
-                    loss_value = self.compute_loss_and_metrics(output, target)
-                    print("[DEBUG] 손실 및 메트릭 계산 완료")
-
-                    self.connect_loss_graph()
+                    # gradient of loss w.r.t. y_pred
+                    grad = self.loss_fn.grad(y_pred, target)
+                    self.backward_pass(grad)
 
                     batch_loss_sum += loss_value
+
+                self.update_weights()
 
                 batch_loss = batch_loss_sum / batch_datas
                 print(f"[Batch {batch_idx + 1}] 평균 손실: {batch_loss}")
 
-                print("[DEBUG] 역전파 시작")
-                for root_node in self.cal_graph.root_node_list:
-                    root_node.backpropagate()
-                print("[DEBUG] 역전파 완료")
-
-                self.cal_graph.print_graph()
-
-                print("[DEBUG] 가중치 업데이트 시작")
-                for root_node in self.cal_graph.root_node_list:
-                    self.weight_update(root_node, batch_datas, self.optimizer)
-                print("[DEBUG] 가중치 업데이트 완료")
-
-                print("[DEBUG] 계산 그래프 출력:")
-                self.cal_graph.print_graph()
-
             total_loss = 0
             for i in range(x.shape[0]):
-                pred = self.predict(x[i])
-                pred = np.array(pred).reshape(1, -1)
-                loss = self.compute_loss_and_metrics(pred, y[i].reshape(1, -1))
+                pred = self.predict(x[i:i+1])
+                loss, _ = self.compute_loss_and_metrics(pred, y[i:i+1])
                 total_loss += loss
 
             print(f"\n📊 [Epoch {epoch + 1}] 전체 평균 손실: {total_loss / x.shape[0]}")
