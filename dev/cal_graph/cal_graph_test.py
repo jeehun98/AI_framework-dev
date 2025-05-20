@@ -50,7 +50,7 @@ def test_calculation_graph():
 
     E = np.zeros((2, 2), dtype=np.float32)
     # ✅ CUDA 또는 연산 결과값 (예제: NumPy로 행렬 덧셈 계산)
-    result2 = matrix_ops.matrix_add(C, D, E)
+    matrix_ops.matrix_add(C, D, E)
 
     node_list2 = cal_graph.matrix_add(C, D, E)  # ✅ result 추가
 
