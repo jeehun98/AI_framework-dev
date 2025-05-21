@@ -6,11 +6,10 @@ from dev.layers.layer import Layer
 
 class Flatten(Layer):
     def __init__(self, input_shape=None, **kwargs):
-        super().__init__(input_shape, **kwargs)
+        super().__init__(**kwargs)
         self.input_shape = input_shape
         self.output_shape = input_shape
         self.trainable = False
-        self.node_list = []
         self.layer_name = "flatten"
 
     def get_config(self):
@@ -26,6 +25,8 @@ class Flatten(Layer):
         return cls(**config)
 
     def call(self, inputs):
+        inputs = np.asarray(inputs, dtype=np.float32)
+
         if inputs.ndim == 1:
             inputs = inputs.reshape(1, -1)
         elif inputs.ndim > 2:
@@ -39,11 +40,15 @@ class Flatten(Layer):
     def compute_output_shape(self, input_shape):
         return (input_shape[0], np.prod(input_shape[1:]))
 
-    def multiply_tuple_elements(self, t):
-        return reduce(mul, t, 1)
-
     def build(self, input_shape):
         print("flatten 호출 확인")
-        result = self.multiply_tuple_elements(input_shape)
-        self.output_shape = (1, result)
-        super().build()
+        flattened_dim = int(np.prod(input_shape[1:])) if len(input_shape) > 1 else input_shape[0]
+        self.input_shape = input_shape
+        self.output_shape = (1, flattened_dim)
+        super().build(input_shape)
+
+    def get_weights(self):
+        return []
+
+    def backward(self, grad_output):
+        return grad_output.reshape(self.input_shape)

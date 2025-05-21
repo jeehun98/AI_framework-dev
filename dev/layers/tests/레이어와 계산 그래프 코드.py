@@ -14,7 +14,7 @@ from dev.layers.flatten import Flatten
 from dev.layers.activation_layer import Activation
 
 # ✅ 랜덤 시드 고정
-np.random.seed(42)
+np.random.seed(47)
 
 output_unit_count = 3
 
@@ -40,8 +40,6 @@ model.compile(
 )
 
 # ✅ 학습 실행  
-model.fit(x, y, epochs=1, batch_size=32)
+model.fit(x, y, epochs=5, batch_size=32)
 
 print("✅ 끝")
-
-model.cal_graph.print_graph()
