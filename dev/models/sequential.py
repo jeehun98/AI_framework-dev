@@ -3,9 +3,8 @@ import json
 import numpy as np
 
 from dev.layers.layer import Layer
-from dev.losses import losses_mapping
-from dev import optimizers
 from dev.backend.backend_ops.losses import losses as cuda_losses
+from dev.backend.backend_ops.optimizers import optimizers
 from dev import metrics
 
 
@@ -47,6 +46,7 @@ class Sequential:
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
         self.loss_fn = cuda_losses.get(loss)
+        self.loss_grad_fn = cuda_losses.get_grad(loss)
         self.loss_name = loss
         self.metric_fn = metrics.get(p_metrics)
         self.build()
@@ -54,7 +54,7 @@ class Sequential:
     def get_compile_config(self):
         return {
             "optimizer": self.optimizer.get_config(),
-            "loss": self.loss_fn.get_config(),
+            "loss": self.loss_fn.__name__,
             "metrics": self.metric_fn.get_config(),
         }
 
@@ -139,16 +139,13 @@ class Sequential:
                     y_pred = self.forward_pass(input_data)
 
                     loss_value, metric_value = self.compute_loss_and_metrics(y_pred, target)
-                    print(f"[DEBUG] 손실: {loss_value}, 메트릭: {metric_value}")
+                    print(f"[DEBUG] 손실: {loss_value}, 메틱: {metric_value}")
 
-                    # gradient of loss w.r.t. y_pred
-                    grad = self.loss_fn.grad(y_pred, target)
+                    grad = self.loss_grad_fn(target, y_pred)
                     self.backward_pass(grad)
-
                     batch_loss_sum += loss_value
 
                 self.update_weights()
-
                 batch_loss = batch_loss_sum / batch_datas
                 print(f"[Batch {batch_idx + 1}] 평균 손실: {batch_loss}")
 

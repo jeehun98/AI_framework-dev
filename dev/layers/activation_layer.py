@@ -1,8 +1,7 @@
-# dev/layers/activation_layer.py
-
 import numpy as np
 from dev.layers.layer import Layer
 from dev.backend.backend_ops.activations import activations as cuda_activations
+
 
 class Activation(Layer):
     def __init__(self, activation, **kwargs):
@@ -12,19 +11,18 @@ class Activation(Layer):
         self.layer_name = "activation"
 
         # ✅ CUDA 함수 매핑
+        from dev.backend.backend_ops.activations import activations as cuda_activations
         self.cuda_functions = {
             "relu": cuda_activations.relu,
             "sigmoid": cuda_activations.sigmoid,
             "tanh": cuda_activations.tanh,
         }
 
-        self.last_z = None  # ✅ 입력 저장 (역전파용)
+        self.last_z = None
 
     def call(self, inputs):
-        # ✅ 입력 저장 (activation 전에 z 로 사용됨)
         self.last_z = inputs.astype(np.float32)
 
-        # ✅ CUDA 활성화 함수 호출
         try:
             activation_func = self.cuda_functions[self.activation_name]
             output = activation_func(self.last_z)
@@ -35,6 +33,9 @@ class Activation(Layer):
         return output
 
     def backward(self, grad_output):
+        if isinstance(grad_output, tuple):
+            grad_output = grad_output[0]
+
         grad_output = grad_output.astype(np.float32)
         z = self.last_z
 

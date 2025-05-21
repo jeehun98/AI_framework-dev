@@ -22,7 +22,7 @@ except ImportError as e:
     raise ImportError(f"❌ activations_cuda import 실패: {e}")
 
 # ============================================
-# 🚨 CUDA 연산 래퍼 함수 (In-place 기반)
+# 🚀 CUDA Forward 연산 (In-place 기반, 복사 후 적용)
 # ============================================
 
 def relu(x):
@@ -39,6 +39,32 @@ def tanh(x):
     x = x.astype(np.float32, copy=True)
     activations_cuda.apply_activation(x, "tanh")
     return x
+
+# ============================================
+# 🔁 CUDA Backward 연산 (activation grad)
+# ============================================
+
+def relu_grad(z, grad_output):
+    z = z.astype(np.float32, copy=True)
+    grad_output = grad_output.astype(np.float32, copy=True)
+    activations_cuda.apply_activation_grad(z, grad_output, "relu")
+    return grad_output
+
+def sigmoid_grad(z, grad_output):
+    z = z.astype(np.float32, copy=True)
+    grad_output = grad_output.astype(np.float32, copy=True)
+    activations_cuda.apply_activation_grad(z, grad_output, "sigmoid")
+    return grad_output
+
+def tanh_grad(z, grad_output):
+    z = z.astype(np.float32, copy=True)
+    grad_output = grad_output.astype(np.float32, copy=True)
+    activations_cuda.apply_activation_grad(z, grad_output, "tanh")
+    return grad_output
+
+# ============================================
+# ⛔ 미구현 항목
+# ============================================
 
 def leaky_relu(x, alpha=0.01):
     raise NotImplementedError("Leaky ReLU는 아직 CUDA에 구현되지 않았습니다.")
