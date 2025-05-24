@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include <cuda_fp16.h>  // ✅ float16 지원
+#include <cuda_fp16.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
@@ -9,21 +9,25 @@ namespace py = pybind11;
 
 #define TILE_WIDTH 32
 
-// ✅ CuPy array → GPU 포인터 추출
+// ✅ CuPy array → float32 GPU 포인터
 float* get_device_ptr(py::object cupy_array) {
     auto interface = cupy_array.attr("__cuda_array_interface__").cast<py::dict>();
     uintptr_t ptr = interface["data"].cast<std::pair<uintptr_t, bool>>().first;
     return reinterpret_cast<float*>(ptr);
 }
 
-// ✅ __half 포인터 추출
+// ✅ CuPy array → float16 (__half) GPU 포인터
 __half* get_half_device_ptr(py::object cupy_array) {
     auto interface = cupy_array.attr("__cuda_array_interface__").cast<py::dict>();
     uintptr_t ptr = interface["data"].cast<std::pair<uintptr_t, bool>>().first;
     return reinterpret_cast<__half*>(ptr);
 }
 
-// ✅ 행렬 덧셈 (float32)
+// ------------------------------------------
+// float32 연산
+// ------------------------------------------
+
+// 덧셈 커널 (float32)
 __global__ void matrix_add_kernel(const float* __restrict__ A,
                                   const float* __restrict__ B,
                                   float* __restrict__ C,
@@ -36,7 +40,7 @@ __global__ void matrix_add_kernel(const float* __restrict__ A,
     }
 }
 
-// ✅ 행렬 곱 (float32, shared memory)
+// 곱셈 커널 (float32, shared memory)
 __global__ void matrix_mul_kernel(const float* __restrict__ A,
                                   const float* __restrict__ B,
                                   float* __restrict__ C,
@@ -46,7 +50,6 @@ __global__ void matrix_mul_kernel(const float* __restrict__ A,
 
     int row = blockIdx.y * TILE_WIDTH + threadIdx.y;
     int col = blockIdx.x * TILE_WIDTH + threadIdx.x;
-
     float acc = 0.0f;
 
     for (int t = 0; t < (K + TILE_WIDTH - 1) / TILE_WIDTH; ++t) {
@@ -70,7 +73,24 @@ __global__ void matrix_mul_kernel(const float* __restrict__ A,
         C[row * N + col] = acc;
 }
 
-// ✅ 행렬 곱 (float16, shared memory)
+// ------------------------------------------
+// float16 연산
+// ------------------------------------------
+
+// 덧셈 커널 (float16)
+__global__ void matrix_add_half_kernel(const __half* __restrict__ A,
+                                       const __half* __restrict__ B,
+                                       __half* __restrict__ C,
+                                       int rows, int cols) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idy = blockIdx.y * blockDim.y + threadIdx.y;
+    if (idx < cols && idy < rows) {
+        int index = idy * cols + idx;
+        C[index] = __hadd(A[index], B[index]);
+    }
+}
+
+// 곱셈 커널 (float16, shared memory)
 __global__ void matrix_mul_half_kernel(const __half* __restrict__ A,
                                        const __half* __restrict__ B,
                                        __half* __restrict__ C,
@@ -104,7 +124,11 @@ __global__ void matrix_mul_half_kernel(const __half* __restrict__ A,
         C[row * N + col] = acc;
 }
 
-// ✅ 덧셈 (float32)
+// ------------------------------------------
+// Pybind11 연동 함수
+// ------------------------------------------
+
+// 덧셈 (float32)
 void matrix_add(py::object a, py::object b, py::object c, int rows, int cols) {
     float* A = get_device_ptr(a);
     float* B = get_device_ptr(b);
@@ -112,12 +136,23 @@ void matrix_add(py::object a, py::object b, py::object c, int rows, int cols) {
 
     dim3 threads(32, 32);
     dim3 blocks((cols + 31) / 32, (rows + 31) / 32);
-
     matrix_add_kernel<<<blocks, threads>>>(A, B, C, rows, cols);
     cudaDeviceSynchronize();
 }
 
-// ✅ 곱셈 (float32)
+// 덧셈 (float16)
+void matrix_add_half(py::object a, py::object b, py::object c, int rows, int cols) {
+    __half* A = get_half_device_ptr(a);
+    __half* B = get_half_device_ptr(b);
+    __half* C = get_half_device_ptr(c);
+
+    dim3 threads(32, 32);
+    dim3 blocks((cols + 31) / 32, (rows + 31) / 32);
+    matrix_add_half_kernel<<<blocks, threads>>>(A, B, C, rows, cols);
+    cudaDeviceSynchronize();
+}
+
+// 곱셈 (float32)
 void matrix_mul(py::object a, py::object b, py::object c, int rows, int cols, int K) {
     float* A = get_device_ptr(a);
     float* B = get_device_ptr(b);
@@ -126,12 +161,11 @@ void matrix_mul(py::object a, py::object b, py::object c, int rows, int cols, in
     dim3 threads(TILE_WIDTH, TILE_WIDTH);
     dim3 blocks((cols + TILE_WIDTH - 1) / TILE_WIDTH,
                 (rows + TILE_WIDTH - 1) / TILE_WIDTH);
-
     matrix_mul_kernel<<<blocks, threads>>>(A, B, C, rows, cols, K);
     cudaDeviceSynchronize();
 }
 
-// ✅ 곱셈 (float16)
+// 곱셈 (float16)
 void matrix_mul_half(py::object a, py::object b, py::object c, int rows, int cols, int K) {
     __half* A = get_half_device_ptr(a);
     __half* B = get_half_device_ptr(b);
@@ -140,14 +174,19 @@ void matrix_mul_half(py::object a, py::object b, py::object c, int rows, int col
     dim3 threads(TILE_WIDTH, TILE_WIDTH);
     dim3 blocks((cols + TILE_WIDTH - 1) / TILE_WIDTH,
                 (rows + TILE_WIDTH - 1) / TILE_WIDTH);
-
     matrix_mul_half_kernel<<<blocks, threads>>>(A, B, C, rows, cols, K);
     cudaDeviceSynchronize();
 }
 
-// ✅ Pybind11 모듈 정의
+// ------------------------------------------
+// Pybind11 모듈 정의
+// ------------------------------------------
 PYBIND11_MODULE(matrix_ops, m) {
     m.def("matrix_add", &matrix_add, "Matrix addition (float32)",
+          py::arg("a"), py::arg("b"), py::arg("c"),
+          py::arg("rows"), py::arg("cols"));
+
+    m.def("matrix_add_half", &matrix_add_half, "Matrix addition (float16)",
           py::arg("a"), py::arg("b"), py::arg("c"),
           py::arg("rows"), py::arg("cols"));
 
