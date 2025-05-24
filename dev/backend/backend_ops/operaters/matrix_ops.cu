@@ -1,9 +1,14 @@
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
 #include <cuda_runtime.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
+#include <pybind11/stl.h>
+#include <pybind11/cast.h>
 
 namespace py = pybind11;
 
+#define TILE_WIDTH 16
+
+// ✅ 행렬 덧셈 커널
 __global__ void matrix_add_kernel(float* A, float* B, float* C, int rows, int cols) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -14,98 +19,107 @@ __global__ void matrix_add_kernel(float* A, float* B, float* C, int rows, int co
     }
 }
 
+// ✅ 기본 Global Memory 행렬 곱 커널
 __global__ void matrix_mul_kernel(float* A, float* B, float* C, int rows, int cols, int K) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (row < rows && col < cols) {
-        float value = 0;
-        for (int k = 0; k < K; k++) {
-            value += A[row * K + k] * B[k * cols + col];
+        float sum = 0.0;
+        for (int k = 0; k < K; ++k) {
+            sum += A[row * K + k] * B[k * cols + col];
         }
-        C[row * cols + col] = value;
-
+        C[row * cols + col] = sum;
     }
 }
 
+// ✅ Shared Memory Tiling 커널
+__global__ void tiled_matrix_mul_kernel(float* A, float* B, float* C, int M, int N, int K) {
+    __shared__ float tile_A[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float tile_B[TILE_WIDTH][TILE_WIDTH];
 
-void matrix_add(py::array_t<float> a, py::array_t<float> b, py::array_t<float> c) {
-    auto buf_a = a.request();
-    auto buf_b = b.request();
-    auto buf_c = c.request();
+    int row = blockIdx.y * TILE_WIDTH + threadIdx.y;
+    int col = blockIdx.x * TILE_WIDTH + threadIdx.x;
 
-    float* A = static_cast<float*>(buf_a.ptr);
-    float* B = static_cast<float*>(buf_b.ptr);
-    float* C = static_cast<float*>(buf_c.ptr);
+    float acc = 0.0f;
 
-    int rows = buf_a.shape[0];
-    int cols = buf_a.shape[1];
+    for (int t = 0; t < (K + TILE_WIDTH - 1) / TILE_WIDTH; ++t) {
+        int tiled_col = t * TILE_WIDTH + threadIdx.x;
+        int tiled_row = t * TILE_WIDTH + threadIdx.y;
 
-    float *d_A, *d_B, *d_C;
-    size_t size = rows * cols * sizeof(float);
+        tile_A[threadIdx.y][threadIdx.x] = (row < M && tiled_col < K) ? A[row * K + tiled_col] : 0.0f;
+        tile_B[threadIdx.y][threadIdx.x] = (tiled_row < K && col < N) ? B[tiled_row * N + col] : 0.0f;
 
-    cudaMalloc(&d_A, size);
-    cudaMalloc(&d_B, size);
-    cudaMalloc(&d_C, size);
+        __syncthreads();
 
-    cudaMemcpy(d_A, A, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, B, size, cudaMemcpyHostToDevice);
+        for (int i = 0; i < TILE_WIDTH; ++i)
+            acc += tile_A[threadIdx.y][i] * tile_B[i][threadIdx.x];
 
-    dim3 threadsPerBlock(16, 16);
-    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
+        __syncthreads();
+    }
 
-    matrix_add_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rows, cols);
-
-    cudaMemcpy(C, d_C, size, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+    if (row < M && col < N)
+        C[row * N + col] = acc;
 }
 
-void matrix_mul(py::array_t<float> a, py::array_t<float> b, py::array_t<float> c) {
-    auto buf_a = a.request();
-    auto buf_b = b.request();
-    auto buf_c = c.request();
+// ✅ CuPy array → GPU 포인터 가져오기
+float* get_device_ptr(py::object cupy_array) {
+    auto interface = cupy_array.attr("__cuda_array_interface__").cast<py::dict>();
+    uintptr_t ptr = interface["data"].cast<std::pair<uintptr_t, bool>>().first;
+    return reinterpret_cast<float*>(ptr);
+}
 
-    float* A = static_cast<float*>(buf_a.ptr);
-    float* B = static_cast<float*>(buf_b.ptr);
-    float* C = static_cast<float*>(buf_c.ptr);
+// ✅ 행렬 덧셈 함수
+void matrix_add(py::object a, py::object b, py::object c, int rows, int cols) {
+    float* A = get_device_ptr(a);
+    float* B = get_device_ptr(b);
+    float* C = get_device_ptr(c);
 
-    int rows = buf_a.shape[0];
-    int K = buf_a.shape[1];
-    int cols = buf_b.shape[1];
+    dim3 threads(16, 16);
+    dim3 blocks((cols + 15) / 16, (rows + 15) / 16);
 
-    float *d_A, *d_B, *d_C;
-    size_t size_A = rows * K * sizeof(float);
-    size_t size_B = K * cols * sizeof(float);
-    size_t size_C = rows * cols * sizeof(float);
-
-    cudaMalloc(&d_A, size_A);
-    cudaMalloc(&d_B, size_B);
-    cudaMalloc(&d_C, size_C);
-
-    cudaMemcpy(d_A, A, size_A, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, B, size_B, cudaMemcpyHostToDevice);
-    cudaMemset(d_C, 0, size_C);  // ✅ C 초기화
-
-    dim3 threadsPerBlock(16, 16);
-    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
-
-    matrix_mul_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rows, cols, K);
-
-    // ✅ 커널 실행 완료 후 동기화
+    matrix_add_kernel<<<blocks, threads>>>(A, B, C, rows, cols);
     cudaDeviceSynchronize();
-
-    cudaMemcpy(C, d_C, size_C, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
 }
 
+// ✅ 기본 행렬 곱 호출
+void matrix_mul(py::object a, py::object b, py::object c, int rows, int cols, int K) {
+    float* A = get_device_ptr(a);
+    float* B = get_device_ptr(b);
+    float* C = get_device_ptr(c);
 
+    dim3 threads(16, 16);
+    dim3 blocks((cols + 15) / 16, (rows + 15) / 16);
+
+    matrix_mul_kernel<<<blocks, threads>>>(A, B, C, rows, cols, K);
+    cudaDeviceSynchronize();
+}
+
+// ✅ Shared Memory 버전 호출
+void matrix_mul_shared(py::object a, py::object b, py::object c, int rows, int cols, int K) {
+    float* A = get_device_ptr(a);
+    float* B = get_device_ptr(b);
+    float* C = get_device_ptr(c);
+
+    dim3 threads(TILE_WIDTH, TILE_WIDTH);
+    dim3 blocks((cols + TILE_WIDTH - 1) / TILE_WIDTH,
+                (rows + TILE_WIDTH - 1) / TILE_WIDTH);
+
+    tiled_matrix_mul_kernel<<<blocks, threads>>>(A, B, C, rows, cols, K);
+    cudaDeviceSynchronize();
+}
+
+// ✅ Pybind11 모듈 정의
 PYBIND11_MODULE(matrix_ops, m) {
-    m.def("matrix_add", &matrix_add, "Matrix addition");
-    m.def("matrix_mul", &matrix_mul, "Matrix multiplication");
+    m.def("matrix_add", &matrix_add, "Matrix addition (global memory)",
+          py::arg("a"), py::arg("b"), py::arg("c"),
+          py::arg("rows"), py::arg("cols"));
+
+    m.def("matrix_mul", &matrix_mul, "Matrix multiplication (global memory)",
+          py::arg("a"), py::arg("b"), py::arg("c"),
+          py::arg("rows"), py::arg("cols"), py::arg("K"));
+
+    m.def("matrix_mul_shared", &matrix_mul_shared, "Matrix multiplication (shared memory tiling)",
+          py::arg("a"), py::arg("b"), py::arg("c"),
+          py::arg("rows"), py::arg("cols"), py::arg("K"));
 }
