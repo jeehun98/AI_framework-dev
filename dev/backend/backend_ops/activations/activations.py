@@ -1,73 +1,53 @@
-import os
-import sys
 import numpy as np
+from dev.layers.layer import Layer
+from dev.backend.backend_ops.activations import activations as cuda_activations
 
-# ✅ .pyd 경로 등록
-pyd_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "build", "lib.win-amd64-cpython-312"))
-if pyd_dir not in sys.path:
-    sys.path.insert(0, pyd_dir)
 
-# ✅ CUDA DLL 경로 등록
-cuda_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
-if os.path.exists(cuda_path):
-    if hasattr(os, "add_dll_directory"):
-        os.add_dll_directory(cuda_path)
-    else:
-        os.environ["PATH"] = cuda_path + os.pathsep + os.environ["PATH"]
+class Activation(Layer):
+    def __init__(self, activation, **kwargs):
+        super().__init__(**kwargs)
+        self.activation_name = activation.lower()
+        self.trainable = False
+        self.layer_name = "activation"
+        self.last_z = None
 
-# ✅ CUDA 모듈 로드
-try:
-    import activations_cuda
-except ImportError as e:
-    raise ImportError(f"❌ activations_cuda import 실패: {e}")
+        # ✅ CUDA 함수 매핑 (forward, backward 각각)
+        self.cuda_forward = {
+            "relu": cuda_activations.relu,
+            "sigmoid": cuda_activations.sigmoid,
+            "tanh": cuda_activations.tanh,
+        }
 
-# ============================================
-# 🚀 CUDA Forward 연산 (In-place 기반, 복사 후 적용)
-# ============================================
+        self.cuda_backward = {
+            "relu": cuda_activations.relu_grad,
+            "sigmoid": cuda_activations.sigmoid_grad,
+            "tanh": cuda_activations.tanh_grad,
+        }
 
-def relu(x):
-    x = x.astype(np.float32, copy=True)
-    activations_cuda.apply_activation(x, "relu")
-    return x
+    def call(self, inputs):
+        self.last_z = inputs.astype(np.float32)
+        try:
+            func = self.cuda_forward[self.activation_name]
+            output = func(self.last_z)
+        except KeyError:
+            raise NotImplementedError(f"[ERROR] CUDA 활성화 미지원: '{self.activation_name}'")
+        self.output_shape = output.shape
+        return output
 
-def sigmoid(x):
-    x = x.astype(np.float32, copy=True)
-    activations_cuda.apply_activation(x, "sigmoid")
-    return x
+    def backward(self, grad_output):
+        grad_output = grad_output.astype(np.float32)
+        z = self.last_z
 
-def tanh(x):
-    x = x.astype(np.float32, copy=True)
-    activations_cuda.apply_activation(x, "tanh")
-    return x
+        try:
+            grad_func = self.cuda_backward[self.activation_name]
+            return grad_func(z, grad_output)
+        except KeyError:
+            raise NotImplementedError(f"[ERROR] '{self.activation_name}' 미분 미지원")
 
-# ============================================
-# 🔁 CUDA Backward 연산 (activation grad)
-# ============================================
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
-def relu_grad(z, grad_output):
-    z = z.astype(np.float32, copy=True)
-    grad_output = grad_output.astype(np.float32, copy=True)
-    activations_cuda.apply_activation_grad(z, grad_output, "relu")
-    return grad_output
-
-def sigmoid_grad(z, grad_output):
-    z = z.astype(np.float32, copy=True)
-    grad_output = grad_output.astype(np.float32, copy=True)
-    activations_cuda.apply_activation_grad(z, grad_output, "sigmoid")
-    return grad_output
-
-def tanh_grad(z, grad_output):
-    z = z.astype(np.float32, copy=True)
-    grad_output = grad_output.astype(np.float32, copy=True)
-    activations_cuda.apply_activation_grad(z, grad_output, "tanh")
-    return grad_output
-
-# ============================================
-# ⛔ 미구현 항목
-# ============================================
-
-def leaky_relu(x, alpha=0.01):
-    raise NotImplementedError("Leaky ReLU는 아직 CUDA에 구현되지 않았습니다.")
-
-def softmax(x):
-    raise NotImplementedError("Softmax는 아직 CUDA에 구현되지 않았습니다.")
+    def build(self, input_shape):
+        self.input_shape = input_shape
+        self.output_shape = input_shape
+        super().build(input_shape)
