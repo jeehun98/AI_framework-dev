@@ -1,5 +1,6 @@
 import os
 import sys
+import cupy as cp  # ✅ CuPy 기반
 import numpy as np
 
 # ✅ .pyd 경로 등록
@@ -22,30 +23,42 @@ except ImportError as e:
     raise ImportError(f"❌ losses_cuda import 실패: {e}")
 
 # ============================================
-# 🚀 Forward 연산 래퍼
+# 🚀 Forward 연산 (loss) 래퍼
 # ============================================
 
+import cupy as cp
+
 def mse(y_true, y_pred):
-    return losses_cuda.mse_loss(y_true.astype(np.float32), y_pred.astype(np.float32))
+    y_true = cp.asarray(y_true)
+    y_pred = cp.asarray(y_pred)
+    return float(losses_cuda.mse_loss(y_true, y_pred))
+
 
 def binary_crossentropy(y_true, y_pred):
-    return losses_cuda.binary_crossentropy(y_true.astype(np.float32), y_pred.astype(np.float32))
+    return float(losses_cuda.binary_crossentropy(y_true, y_pred))
 
 def categorical_crossentropy(y_true, y_pred):
-    return losses_cuda.categorical_crossentropy(y_true.astype(np.float32), y_pred.astype(np.float32))
+    return float(losses_cuda.categorical_crossentropy(y_true, y_pred))
 
 # ============================================
 # 🔁 Backward (gradient) 연산 래퍼
 # ============================================
-
 def mse_grad(y_true, y_pred):
-    return losses_cuda.mse_grad(y_true.astype(np.float32), y_pred.astype(np.float32))
+    y_true = cp.asarray(y_true)
+    y_pred = cp.asarray(y_pred)
+    grad = cp.zeros_like(y_true)
+    losses_cuda.mse_grad(y_true, y_pred, grad)
+    return grad
 
 def bce_grad(y_true, y_pred):
-    return losses_cuda.bce_grad(y_true.astype(np.float32), y_pred.astype(np.float32))
+    grad = cp.zeros_like(y_true)
+    losses_cuda.bce_grad(y_true, y_pred, grad)
+    return grad
 
 def cce_grad(y_true, y_pred):
-    return losses_cuda.cce_grad(y_true.astype(np.float32), y_pred.astype(np.float32))
+    grad = cp.zeros_like(y_true)
+    losses_cuda.cce_grad(y_true, y_pred, grad)
+    return grad
 
 # ============================================
 # 📦 Dict 등록 및 Getter

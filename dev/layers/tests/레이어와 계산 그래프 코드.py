@@ -26,9 +26,9 @@ y = np.random.rand(1, output_unit_count)
 # ✅ 모델 생성 및 레이어 추가
 model = Sequential()
 model.add(Flatten(input_shape=(4,)))
-model.add(Dense(10))
+model.add(Dense(10, initializer="xavier"))
 model.add(Activation('sigmoid'))
-model.add(Dense(output_unit_count))
+model.add(Dense(output_unit_count, initializer="xavier"))
 model.add(Activation('sigmoid'))
 
 # ✅ 모델 컴파일
@@ -36,7 +36,7 @@ model.compile(
     optimizer='sgd',
     loss='mse',
     p_metrics='mse',
-    learning_rate=0.001
+    learning_rate=0.0001
 )
 
 # ✅ 학습 실행  

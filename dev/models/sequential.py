@@ -98,6 +98,11 @@ class Sequential:
     def compute_loss_and_metrics(self, y_pred, y_true):
         loss_value = self.loss_fn(y_true, y_pred)
         metric_value = self.metric_fn(y_pred, y_true)
+        
+        print("[DEBUG] y_pred:", y_pred)
+        print("[DEBUG] target :", y_true)
+        print("[DEBUG] loss fn input dtype:", y_pred.dtype)
+
         return loss_value, metric_value
 
     def backward_pass(self, grad_output):

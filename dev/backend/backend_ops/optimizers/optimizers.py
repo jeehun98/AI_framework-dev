@@ -1,5 +1,6 @@
 from dev.tests.test_setup import import_cuda_module
 import numpy as np
+import cupy as cp
 
 # ✅ CUDA 모듈 로드
 optimizers_cuda = import_cuda_module(
@@ -25,20 +26,19 @@ class SGD:
         optimizers_cuda.sgd_update(weights, dW, bias, db, self.lr)
 
 # ✅ Momentum SGD Optimizer (in-place CUDA 연산)
+
 class MomentumSGD:
     def __init__(self, learning_rate, momentum):
         self.lr = learning_rate
         self.momentum = momentum
-        self.v_w = None  # weight velocity
-        self.v_b = None  # bias velocity
+        self.v_w = None
+        self.v_b = None
 
     def update(self, weights, dW, bias, db):
-        # 초기화 시점에서 zeros_like 사용
         if self.v_w is None:
-            self.v_w = np.zeros_like(weights)
-            self.v_b = np.zeros_like(bias)
+            self.v_w = cp.zeros_like(weights)
+            self.v_b = cp.zeros_like(bias)
 
-        # CUDA 커널 실행 (in-place 업데이트)
         optimizers_cuda.momentum_update(
             weights, dW, bias, db,
             self.v_w, self.v_b,
