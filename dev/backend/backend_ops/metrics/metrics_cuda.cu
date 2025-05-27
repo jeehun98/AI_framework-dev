@@ -49,6 +49,10 @@ __global__ void mseKernel(const float* y_true, const float* y_pred, float* loss,
     float val = 0.0f;
     if (idx < n) {
         float diff = y_true[idx] - y_pred[idx];
+        // ✅ 수치 안정성 강화
+        if (!isfinite(diff) || fabsf(diff) > 1e3f) {
+            diff = 0.0f;
+        }
         val = diff * diff;
     }
     partial[tid] = val;
@@ -60,6 +64,7 @@ __global__ void mseKernel(const float* y_true, const float* y_pred, float* loss,
     }
     if (tid == 0) atomicAdd(loss, partial[0]);
 }
+
 
 float accuracy(py::object y_true, py::object y_pred) {
     int* d_y_true = get_device_ptr_int(y_true);

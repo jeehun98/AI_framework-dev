@@ -36,10 +36,10 @@ model.compile(
     optimizer='sgd',
     loss='mse',
     p_metrics='mse',
-    learning_rate=0.0001
+    learning_rate=0.001
 )
 
 # ✅ 학습 실행  
-model.fit(x, y, epochs=5, batch_size=32)
+model.fit(x, y, epochs=100, batch_size=32)
 
 print("✅ 끝")

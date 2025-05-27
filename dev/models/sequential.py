@@ -1,6 +1,7 @@
 import typing
 import json
 import numpy as np
+import cupy as cp
 
 from dev.layers.layer import Layer
 from dev.backend.backend_ops.losses import losses as cuda_losses
@@ -96,15 +97,18 @@ class Sequential:
         return output
 
     def compute_loss_and_metrics(self, y_pred, y_true):
+        y_pred = cp.asarray(y_pred, dtype=cp.float32)
+        y_true = cp.asarray(y_true, dtype=cp.float32)
+
         loss_value = self.loss_fn(y_true, y_pred)
         metric_value = self.metric_fn(y_pred, y_true)
-        
+
         print("[DEBUG] y_pred:", y_pred)
         print("[DEBUG] target :", y_true)
         print("[DEBUG] loss fn input dtype:", y_pred.dtype)
 
         return loss_value, metric_value
-
+    
     def backward_pass(self, grad_output):
         for layer in reversed(self._layers):
             grad_output = layer.backward(grad_output)
@@ -126,6 +130,9 @@ class Sequential:
             x = x[indices]
             y = y[indices]
 
+            x = cp.asarray(x, dtype=cp.float32)
+            y = cp.asarray(y, dtype=cp.float32)
+
             for batch_idx in range(batch_counts):
                 print(f"\n[Batch {batch_idx + 1}] 처리 시작")
 
@@ -146,7 +153,10 @@ class Sequential:
                     loss_value, metric_value = self.compute_loss_and_metrics(y_pred, target)
                     print(f"[DEBUG] 손실: {loss_value}, 메틱: {metric_value}")
 
+                    target = cp.asarray(target, dtype=cp.float32)
+                    y_pred = cp.asarray(y_pred, dtype=cp.float32)
                     grad = self.loss_grad_fn(target, y_pred)
+
                     self.backward_pass(grad)
                     batch_loss_sum += loss_value
 

@@ -1,7 +1,6 @@
-import numpy as np
+import cupy as cp
 from dev.layers.layer import Layer
 from dev.utils.load_cuda import load_activations_cuda  # CUDA Pybind11 모듈 로더
-
 
 class Activation(Layer):
     def __init__(self, activation, **kwargs):
@@ -16,9 +15,18 @@ class Activation(Layer):
         self.activations_cuda = load_activations_cuda()
 
     def call(self, inputs):
-        # ✅ CuPy 배열 그대로 사용
+        # ✅ CuPy가 아니면 변환
+        if not isinstance(inputs, cp.ndarray):
+            inputs = cp.asarray(inputs, dtype=cp.float32)
+        else:
+            inputs = inputs.astype(cp.float32, copy=False)
+
         self.input_shape = inputs.shape
         self.last_z = inputs  # CuPy로 유지
+
+        # ✅ 수치 안정성 디버깅 (선택)
+        if cp.isnan(inputs).any() or cp.isinf(inputs).any():
+            print("[WARNING] 입력에 NaN 또는 inf 포함됨")
 
         try:
             self.activations_cuda.apply_activation(inputs, self.activation_name)
@@ -29,6 +37,11 @@ class Activation(Layer):
     def backward(self, grad_output):
         if isinstance(grad_output, tuple):
             grad_output = grad_output[0]
+
+        if not isinstance(grad_output, cp.ndarray):
+            grad_output = cp.asarray(grad_output, dtype=cp.float32)
+        else:
+            grad_output = grad_output.astype(cp.float32, copy=False)
 
         try:
             self.activations_cuda.apply_activation_grad(self.last_z, grad_output, self.activation_name)

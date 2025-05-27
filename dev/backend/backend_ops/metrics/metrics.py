@@ -17,11 +17,11 @@ import metrics_cuda
 
 # CuPy 기반 wrapper 함수
 def mse(y_true, y_pred):
-    y_true = cp.asarray(y_true)
-    y_pred = cp.asarray(y_pred)
-    return float(metrics_cuda.mse(y_true, y_pred))
+    y_true = cp.asarray(y_true, dtype=cp.float32)
+    y_pred = cp.asarray(y_pred, dtype=cp.float32)
+    return float(metrics_cuda.mse(y_true, y_pred))  # CUDA 반환값은 float
 
 def accuracy(y_true, y_pred):
-    y_true = cp.asarray(y_true)
-    y_pred = cp.asarray(y_pred)
+    y_true = cp.asarray(y_true, dtype=cp.float32)
+    y_pred = cp.asarray(y_pred, dtype=cp.float32)
     return float(metrics_cuda.accuracy(y_true, y_pred))
