@@ -40,6 +40,6 @@ model.compile(
 )
 
 # ✅ 학습 실행  
-model.fit(x, y, epochs=100, batch_size=32)
+model.fit(x, y, epochs=10, batch_size=32)
 
 print("✅ 끝")
