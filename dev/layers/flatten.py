@@ -1,4 +1,5 @@
 import numpy as np
+import cupy as cp
 from functools import reduce
 from operator import mul
 
@@ -25,8 +26,13 @@ class Flatten(Layer):
         return cls(**config)
 
     def call(self, inputs):
-        inputs = np.asarray(inputs, dtype=np.float32)
+        # ✅ CuPy 대응 처리
+        if isinstance(inputs, cp.ndarray):
+            inputs = inputs.astype(cp.float32)
+        else:
+            inputs = np.asarray(inputs, dtype=np.float32)
 
+        # ✅ 차원 축소
         if inputs.ndim == 1:
             inputs = inputs.reshape(1, -1)
         elif inputs.ndim > 2:
@@ -51,4 +57,5 @@ class Flatten(Layer):
         return []
 
     def backward(self, grad_output):
+        # ✅ CuPy 또는 NumPy 모두 reshape 허용
         return grad_output.reshape(self.input_shape)
