@@ -1,96 +1,122 @@
-import os
-os.add_dll_directory("C:\\msys64\\mingw64\\bin")
-
+import cupy as cp
 from dev.layers.layer import Layer
-from dev.backend.backend_ops.convolution import convolution
-
-
-import numpy as np
 
 class Conv2D(Layer):
-    def __init__(
-        self, 
-        filters,
-        kernel_size,
-        strides=(1,1),
-        padding="valid",
-        activation=None,
-        use_bias=True,
-        input_shape=None,
-        **kwargs
-    ):
-        super().__init__()
+    def __init__(self, filters, kernel_size, activation=None, input_shape=None, name=None,
+                 initializer='he', use_backend_init=False, **kwargs):
+        super().__init__(name=name, **kwargs)
         self.filters = filters
-        self.kernel_size = kernel_size
-        self.strides = strides
-        self.padding = padding
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.activation = activation
-        self.use_biss = use_bias
+        self.initializer = initializer
+        self.use_backend_init = use_backend_init
+
         self.input_shape = input_shape
-        self.weights = []
-        self.bias = []
-        self.node_list = []
-        self.built = False
-        self.trainable = True
-        self.output_shape = []
-        self.layer_name = "conv2d"
-    
-    # 가중치 생성
+        self.output_shape = None
+
+        self.weights = None
+        self.bias = None
+        self.last_input = None
+        self.last_z = None
+        self.dW = None
+        self.db = None
+
+        # ✅ GraphCompiler용 인덱스
+        self.name = name or f"conv2d_{id(self)}"
+        self.input_idx = None
+        self.output_idx = None
+
     def build(self, input_shape):
-        # 필터의 개수만큼 임의의 가중치 생성
-        # print(self.input_shape, "인풋 쉐이프")
-        # 입력 데이터의 차원 수 
-        in_channels = input_shape[2]    
-
-        self.weights = np.random.randn(self.filters, self.kernel_size[0], self.kernel_size[1], in_channels)
-
-        # 필터별 가중치 생성
-        if self.use_biss:
-            self.bias = np.random.rand(self.filters)
-
-        self.call_output_shape(input_shape)
-        super().build()
-
-    # 출력 차원의 크기를 미리 계산한다.
-    def call_output_shape(self, input_shape):
-        input_height, input_width, input_channels = input_shape
-        filter_height, filter_width = self.kernel_size
-        stride_height, stride_width = self.strides
-
-        if self.padding == 'same':
-            output_height = int((input_height + stride_height - 1) / stride_height)
-            output_width = int((input_width + stride_width - 1) / stride_width)
-
-        elif self.padding == 'valid':
-            output_height = int((input_height - filter_height) / stride_height) + 1
-            output_width = int((input_width - filter_width) / stride_width) + 1
-
+        if len(input_shape) == 3:
+            in_h, in_w, in_channels = input_shape
+        elif len(input_shape) == 4:
+            _, in_h, in_w, in_channels = input_shape
         else:
-            raise ValueError("Invalid padding type. Use 'same' or 'valid'.")
+            raise ValueError(f"Conv2D input_shape 오류: {input_shape}")
 
+        kh, kw = self.kernel_size
+        out_channels = self.filters
 
-        output_channels = self.filters  # 필터 개수만큼 출력 채널 생성
+        self.output_shape = (None, in_h - kh + 1, in_w - kw + 1, out_channels)
 
-        # 출력 차원을 저장하거나 반환
-        self.output_shape = (output_height, output_width, output_channels)
-      
-        # return self.output_shape
-    
+        if self.use_backend_init:
+            return  # ✅ backend에서 초기화
+
+        fan_in = kh * kw * in_channels
+        if self.initializer == 'he':
+            stddev = cp.sqrt(2. / fan_in)
+            self.weights = cp.random.randn(kh, kw, in_channels, out_channels).astype(cp.float32) * stddev
+        elif self.initializer == 'xavier':
+            stddev = cp.sqrt(1. / fan_in)
+            self.weights = cp.random.randn(kh, kw, in_channels, out_channels).astype(cp.float32) * stddev
+        elif self.initializer == 'zeros':
+            self.weights = cp.zeros((kh, kw, in_channels, out_channels), dtype=cp.float32)
+        elif self.initializer == 'ones':
+            self.weights = cp.ones((kh, kw, in_channels, out_channels), dtype=cp.float32)
+        else:
+            raise ValueError(f"Unknown initializer: {self.initializer}")
+
+        self.bias = cp.zeros((out_channels,), dtype=cp.float32)
+
     def call(self, input_data):
-        """
-        Conv2D 연산, 필터 개수만큼의 출력 필요
-        """
-        # 전달하는 데이터들 타입 확인 및 변환
-        input_data = np.asarray(input_data, dtype=np.float64)
-        self.weights = np.asarray(self.weights, dtype=np.float64)
-        stride = self.strides[0] if isinstance(self.strides, (tuple, list)) else self.strides
-        if not isinstance(self.node_list, list):
-            self.node_list = []
-        
-        # conv2d 함수 호출
-        # node_list 는 각 성분을 이루는 요소들임, 개많아
-        x, self.node_list = convolution.conv2d(input_data, self.weights, stride, self.padding)
+        input_data = cp.asarray(input_data, dtype=cp.float32)
+        if self.weights is None:
+            self.build(input_data.shape)
 
-        self.output_shape = x.shape
+        self.last_input = input_data
+        batch, in_h, in_w, in_channels = input_data.shape
+        kh, kw, _, out_channels = self.weights.shape
+        out_h = in_h - kh + 1
+        out_w = in_w - kw + 1
 
-        return x
+        output = cp.zeros((batch, out_h, out_w, out_channels), dtype=cp.float32)
+
+        for b in range(batch):
+            for h in range(out_h):
+                for w in range(out_w):
+                    for c in range(out_channels):
+                        region = input_data[b, h:h+kh, w:w+kw, :]
+                        output[b, h, w, c] = cp.sum(region * self.weights[:, :, :, c]) + self.bias[c]
+
+        self.last_z = output
+
+        if self.activation:
+            output = self._apply_activation(output)
+
+        return output
+
+    def backward(self, grad_output):
+        raise NotImplementedError("Conv2D.backward()는 아직 구현되지 않았습니다.")
+
+    def update(self, optimizer):
+        if self.dW is not None and self.db is not None:
+            optimizer.update(self.weights, self.dW, self.bias, self.db)
+
+    def _apply_activation(self, z):
+        if self.activation is None:
+            return z
+        return self.activation(z)
+
+    # ✅ GraphCompiler용 forward_matrix 정의
+    def forward_matrix(self, input_name="input"):
+        if self.use_backend_init:
+            # Conv2D weights shape: (kh, kw, in_channels, out_channels)
+            _, in_h, in_w, in_channels = self.input_shape
+            kh, kw = self.kernel_size
+            return {
+                "input_idx": self.input_idx,
+                "output_idx": self.output_idx,
+                "op_type": 20,  # Conv2D 연산 코드
+                "W_shape": (kh, kw, in_channels, self.filters),
+                "b_shape": (self.filters,),
+                "W": None,
+                "b": None
+            }
+        else:
+            return {
+                "input_idx": self.input_idx,
+                "output_idx": self.output_idx,
+                "op_type": 20,  # Conv2D 연산 코드
+                "W": self.weights,
+                "b": self.bias
+            }

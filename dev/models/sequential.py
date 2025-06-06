@@ -5,16 +5,19 @@ import cupy as cp
 
 from dev.layers.layer import Layer
 from dev.backend.backend_ops.losses import losses as cuda_losses
+from dev.graph_engine.graph_compiler import GraphCompiler
 from dev.backend.backend_ops.optimizers import optimizers
 from dev import metrics
 
-
 class Sequential:
-    def __init__(self, layers=None, trainable=True, name=None):
+    def __init__(self, layers=None, trainable=True, name=None, input_shape=None):
         self.built = False
         self._layers = []
+        self.input_shape = input_shape
         self.trainable = trainable
         self.name = name
+        self.graph_ops = []  # ✅ GraphCompiler용 연산 저장
+        self.output_var = None  # ✅ 최종 출력 이름
 
     def get_config(self):
         sequential_config = {'name': 'sequential'}
@@ -45,6 +48,19 @@ class Sequential:
         return {"input_shape": self.input_shape}
 
     def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
+
+        if optimizer is None:
+            optimizer = 'sgd'
+        if loss is None:
+            loss = 'mse'
+        if p_metrics is None:
+            p_metrics = 'mse'
+
+        self.compiler = GraphCompiler()
+
+        for layer in self._layers:
+            self.compiler.add_layer(layer)
+
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
         self.loss_fn = cuda_losses.get(loss)
         self.loss_grad_fn = cuda_losses.get_grad(loss)
@@ -90,10 +106,8 @@ class Sequential:
 
     def forward_pass(self, input_data):
         output = input_data
-        print(f"[SHAPE TRACE] Input: {output.shape}")
         for i, layer in enumerate(self._layers):
             output = layer.call(output)
-            print(f"[SHAPE TRACE] Layer {i}: {layer.__class__.__name__} → output: {output.shape}")
         return output
 
     def compute_loss_and_metrics(self, y_pred, y_true):
@@ -108,7 +122,7 @@ class Sequential:
         print("[DEBUG] loss fn input dtype:", y_pred.dtype)
 
         return loss_value, metric_value
-    
+
     def backward_pass(self, grad_output):
         for layer in reversed(self._layers):
             grad_output = layer.backward(grad_output)
@@ -171,3 +185,17 @@ class Sequential:
                 total_loss += loss
 
             print(f"\n📊 [Epoch {epoch + 1}] 전체 평균 손실: {total_loss / x.shape[0]}")
+
+    # ✅ GraphCompiler용 연산 리스트 생성
+    def compile_graph(self, input_var="x0"):
+        self.graph_ops = []
+        current_input = input_var
+
+        for layer in self._layers:
+            if hasattr(layer, "forward_matrix"):
+                ops = layer.forward_matrix(current_input)
+                self.graph_ops.extend(ops)
+                current_input = ops[-1][-1]  # 마지막 연산의 output을 다음 input으로 설정
+
+        self.output_var = current_input
+        return self.graph_ops
