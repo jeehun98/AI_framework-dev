@@ -1,90 +1,89 @@
 import numpy as np
+import cupy as cp
 
 class GraphCompiler:
     def __init__(self):
-        self.Conn = None
-        self.OpType = None
-        self.ParamIndex = None
-        self.ParamValues = []
-        self.node_offset = 0
-        self.output_ids = []
-        self.optype_node_map = {}  # ✅ OpType별 노드 리스트 저장
+        self.E_rows = []           # [from_idx, to_idx, op_type, W_idx, b_idx]
+        self.W_list = []           # 실제 weight
+        self.b_list = []           # 실제 bias
+        self.W_shapes = []         # backend용 weight shape
+        self.b_shapes = []         # backend용 bias shape
+        self.node_counter = 0      # auto node 번호 증가용
 
     def add_layer(self, layer):
-        print("\n🧱 [GraphCompiler] Adding layer:", layer.__class__.__name__)
+        plan = layer.forward_matrix()
 
-        input_ids = self.output_ids.tolist() if isinstance(self.output_ids, np.ndarray) else self.output_ids
-        input_ids = input_ids if len(input_ids) > 0 else [0, 1, 2, 3]
+        # ✅ input/output index 자동 할당
+        from_idx = plan.get("input_idx")
+        if from_idx is None:
+            from_idx = self.node_counter
+        to_idx = plan.get("output_idx")
+        if to_idx is None:
+            to_idx = from_idx + 1
 
-        print("   ↪ input_ids:", input_ids)
-        print("   ↪ node_offset:", self.node_offset)
+        op_type = plan["op_type"]
 
-        block = layer.generate_sparse_matrix_block(
-            input_ids=input_ids,
-            node_offset=self.node_offset
-        )
+        # ✅ 파라미터 index 처리
+        W_idx = -1
+        b_idx = -1
 
-        Conn_block = block["Conn"]
-        OpType_block = block["OpType"]
-        ParamIndex_block = block["ParamIndex"]
-        ParamValues_block = block["ParamValues"]
+        # Python 초기화
+        if "W" in plan and plan["W"] is not None:
+            W_idx = len(self.W_list)
+            self.W_list.append(plan["W"])
+        elif "W_shape" in plan:
+            W_idx = len(self.W_shapes)
+            self.W_shapes.append(plan["W_shape"])
 
-        start = self.node_offset
-        end = block["next_node_offset"]
-        N_block = end
-        print("   ↪ output_ids:", block["output_ids"])
-        print("   ↪ added nodes:", end - start)
+        if "b" in plan and plan["b"] is not None:
+            b_idx = len(self.b_list)
+            self.b_list.append(plan["b"])
+        elif "b_shape" in plan:
+            b_idx = len(self.b_shapes)
+            self.b_shapes.append(plan["b_shape"])
 
-        # 병합할 전체 크기 계산
-        N_total = max(
-            self.Conn.shape[0] if self.Conn is not None else 0,
-            N_block
-        )
+        self.E_rows.append([from_idx, to_idx, op_type, W_idx, b_idx])
 
-        # Conn 병합
-        Conn_new = np.zeros((N_total, N_total), dtype=np.int8)
-        if self.Conn is not None:
-            Conn_new[:self.Conn.shape[0], :self.Conn.shape[1]] = self.Conn
-        Conn_new[start:end, start:end] = Conn_block[start:end, start:end]
-        self.Conn = Conn_new
+        # ✅ layer 내부에도 node 번호 반영
+        layer.input_idx = from_idx
+        layer.output_idx = to_idx
 
-        # OpType 병합
-        OpType_new = np.zeros((N_total,), dtype=np.int32)
-        if self.OpType is not None:
-            OpType_new[:self.OpType.shape[0]] = self.OpType
-        OpType_new[start:end] = OpType_block[start:end]
-        self.OpType = OpType_new
+        self.node_counter = max(self.node_counter, to_idx + 1)
 
-        # ParamIndex 병합
-        ParamIndex_new = np.full((N_total,), -1, dtype=np.int32)
-        if self.ParamIndex is not None:
-            ParamIndex_new[:self.ParamIndex.shape[0]] = self.ParamIndex
-        ParamIndex_new[start:end] = ParamIndex_block[start:end]
-        self.ParamIndex = ParamIndex_new
+    def compile_plan(self, use_backend_init=True):
+        E = np.array(self.E_rows, dtype=np.int32)
+        output_node = self.E_rows[-1][1] if self.E_rows else None
 
-        # ParamValues 병합
-        self.ParamValues += ParamValues_block
+        if use_backend_init:
+            return {
+                "E": E,
+                "W_shapes": self.W_shapes,
+                "b_shapes": self.b_shapes,
+                "input_node": 0,
+                "output_node": output_node
+            }
+        else:
+            return {
+                "E": E,
+                "W_list": self.W_list,
+                "b_list": self.b_list,
+                "input_node": 0,
+                "output_node": output_node
+            }
+        
+    def prepare_cuda_inputs(compiled):
+        # CuPy 배열로 변환
+        E_gpu = cp.asarray(compiled["E"], dtype=cp.int32)
 
-        # 출력 노드 및 오프셋 갱신
-        self.output_ids = block["output_ids"]
-        self.node_offset = block["next_node_offset"]
+        # shape 정보는 그냥 전달하거나 GPU 메모리 공간 할당 시 사용
+        W_shapes = compiled.get("W_shapes", [])
+        b_shapes = compiled.get("b_shapes", [])
 
-        # ✅ OpType별 노드 ID 정리
-        for i in range(start, end):
-            op = self.OpType[i]
-            if op not in self.optype_node_map:
-                self.optype_node_map[op] = []
-            self.optype_node_map[op].append(i)
-
-        print("   ↪ updated node_offset:", self.node_offset)
-
-    def get_graph(self):
         return {
-            "Conn": self.Conn,
-            "OpType": self.OpType,
-            "ParamIndex": self.ParamIndex,
-            "ParamValues": self.ParamValues,
-            "OutputIDs": self.output_ids,
-            "TotalNodes": self.node_offset,
-            "OpTypeNodeMap": self.optype_node_map  # ✅ 연산자별 노드 분해 결과 포함
+            "E_gpu": E_gpu,
+            "W_shapes": W_shapes,
+            "b_shapes": b_shapes,
+            "input_node": compiled["input_node"],
+            "output_node": compiled["output_node"]
         }
+
