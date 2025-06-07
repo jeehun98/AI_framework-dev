@@ -120,3 +120,11 @@ class Conv2D(Layer):
                 "W": self.weights,
                 "b": self.bias
             }
+        
+    def compute_output_shape(self, input_shape):
+        _, in_h, in_w, in_channels = input_shape
+        kh, kw = self.kernel_size
+        out_channels = self.filters
+        out_h = in_h - kh + 1
+        out_w = in_w - kw + 1
+        return (None, out_h, out_w, out_channels)

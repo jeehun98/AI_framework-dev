@@ -79,3 +79,6 @@ class Activation(Layer):
             "W": None,
             "b": None
         }
+
+    def compute_output_shape(self, input_shape):
+        return input_shape

@@ -4,6 +4,7 @@ from dev.layers.layer import Layer
 class Dense(Layer):
     def __init__(self, units, activation=None, input_shape=None, name=None, initializer='he', use_backend_init=False, **kwargs):
         super().__init__(name, **kwargs)
+        self.layer_name = "dense"
         self.units = units
         self.activation = activation
         self.initializer = initializer
@@ -106,3 +107,6 @@ class Dense(Layer):
             return grad_output * (1 - cp.tanh(z) ** 2)
         else:
             raise ValueError(f"Unsupported activation grad: {name}")
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.units)
