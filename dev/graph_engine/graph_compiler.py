@@ -1,89 +1,74 @@
+# dev/graph_engine/graph_compiler.py
+
 import numpy as np
-import cupy as cp
 
 class GraphCompiler:
     def __init__(self):
-        self.E_rows = []           # [from_idx, to_idx, op_type, W_idx, b_idx]
-        self.W_list = []           # 실제 weight
-        self.b_list = []           # 실제 bias
-        self.W_shapes = []         # backend용 weight shape
-        self.b_shapes = []         # backend용 bias shape
-        self.node_counter = 0      # auto node 번호 증가용
+        self.E_matrix = []  # [op_type, input_1, input_2, output, extra(optional)]
+        self.node_count = 0
+        self.weights = []
+        self.biases = []
+        self.var_map = {}  # 기록된 output 노드 ID
+
+    def _new_id(self):
+        self.node_count += 1
+        return self.node_count - 1
+
+    def _register_weight(self, W):
+        idx = len(self.weights)
+        self.weights.append(W)
+        return -(idx + 1)  # 음수 인덱스: 가중치로 인식
+
+    def _register_bias(self, b):
+        idx = len(self.biases)
+        self.biases.append(b)
+        return -(idx + 1001)  # -1001부터: bias 인덱스
 
     def add_layer(self, layer):
-        plan = layer.forward_matrix()
-
-        # ✅ input/output index 자동 할당
-        from_idx = plan.get("input_idx")
-        if from_idx is None:
-            from_idx = self.node_counter
-        to_idx = plan.get("output_idx")
-        if to_idx is None:
-            to_idx = from_idx + 1
-
-        op_type = plan["op_type"]
-
-        # ✅ 파라미터 index 처리
-        W_idx = -1
-        b_idx = -1
-
-        # Python 초기화
-        if "W" in plan and plan["W"] is not None:
-            W_idx = len(self.W_list)
-            self.W_list.append(plan["W"])
-        elif "W_shape" in plan:
-            W_idx = len(self.W_shapes)
-            self.W_shapes.append(plan["W_shape"])
-
-        if "b" in plan and plan["b"] is not None:
-            b_idx = len(self.b_list)
-            self.b_list.append(plan["b"])
-        elif "b_shape" in plan:
-            b_idx = len(self.b_shapes)
-            self.b_shapes.append(plan["b_shape"])
-
-        self.E_rows.append([from_idx, to_idx, op_type, W_idx, b_idx])
-
-        # ✅ layer 내부에도 node 번호 반영
-        layer.input_idx = from_idx
-        layer.output_idx = to_idx
-
-        self.node_counter = max(self.node_counter, to_idx + 1)
-
-    def compile_plan(self, use_backend_init=True):
-        E = np.array(self.E_rows, dtype=np.int32)
-        output_node = self.E_rows[-1][1] if self.E_rows else None
-
-        if use_backend_init:
-            return {
-                "E": E,
-                "W_shapes": self.W_shapes,
-                "b_shapes": self.b_shapes,
-                "input_node": 0,
-                "output_node": output_node
-            }
+        if layer.layer_name == "dense":
+            self._compile_dense(layer)
+        elif layer.layer_name == "activation":
+            self._compile_activation(layer)
+        elif layer.layer_name == "flatten":
+            self._compile_flatten(layer)
         else:
-            return {
-                "E": E,
-                "W_list": self.W_list,
-                "b_list": self.b_list,
-                "input_node": 0,
-                "output_node": output_node
-            }
-        
-    def prepare_cuda_inputs(compiled):
-        # CuPy 배열로 변환
-        E_gpu = cp.asarray(compiled["E"], dtype=cp.int32)
+            raise NotImplementedError(f"GraphCompiler: unknown layer {layer.layer_name}")
 
-        # shape 정보는 그냥 전달하거나 GPU 메모리 공간 할당 시 사용
-        W_shapes = compiled.get("W_shapes", [])
-        b_shapes = compiled.get("b_shapes", [])
+    def _compile_dense(self, layer):
+        input_id = self.var_map.get("last_output", 0)
+        W_id = self._register_weight(layer.weights)
+        b_id = self._register_bias(layer.bias)
 
+        matmul_out = self._new_id()
+        add_out = self._new_id()
+
+        self.E_matrix.append(["matmul", input_id, W_id, matmul_out, -1])
+        self.E_matrix.append(["add", matmul_out, b_id, add_out, -1])
+
+        self.var_map["last_output"] = add_out
+
+        if layer.activation:
+            act_out = self._new_id()
+            self.E_matrix.append([f"activation_{layer.activation_name}", add_out, -1, act_out, -1])
+            self.var_map["last_output"] = act_out
+
+    def _compile_activation(self, layer):
+        input_id = self.var_map.get("last_output")
+        act_out = self._new_id()
+        self.E_matrix.append([f"activation_{layer.activation_name}", input_id, -1, act_out, -1])
+        self.var_map["last_output"] = act_out
+
+    def _compile_flatten(self, layer):
+        input_id = self.var_map.get("last_output", 0)
+        flat_out = self._new_id()
+        self.E_matrix.append(["flatten", input_id, -1, flat_out, -1])
+        self.var_map["last_output"] = flat_out
+
+    def get_compiled(self):
         return {
-            "E_gpu": E_gpu,
-            "W_shapes": W_shapes,
-            "b_shapes": b_shapes,
-            "input_node": compiled["input_node"],
-            "output_node": compiled["output_node"]
+            "E": self.E_matrix,
+            "W": self.weights,
+            "b": self.biases,
+            "input_node": 0,
+            "output_node": self.var_map.get("last_output")
         }
-

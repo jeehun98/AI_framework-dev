@@ -41,32 +41,47 @@ class Sequential:
         print(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
         self._layers.append(layer)
 
-    def build(self):
-        self.input_shape = self._layers[0].input_shape
-
+    def build(self, input_shape):
+        current_shape = input_shape
+        for layer in self._layers:
+            layer.build(current_shape)
+            current_shape = layer.compute_output_shape(current_shape)
+        self.built = True
+        
     def get_build_config(self):
         return {"input_shape": self.input_shape}
 
-    def compile(self, optimizer=None, loss=None, p_metrics=None, learning_rate=0.001):
+    def compile(self, optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001):
+            # ✅ 기본값 처리
+            optimizer = optimizer or 'sgd'
+            loss = loss or 'mse'
+            p_metrics = p_metrics or 'mse'
 
-        if optimizer is None:
-            optimizer = 'sgd'
-        if loss is None:
-            loss = 'mse'
-        if p_metrics is None:
-            p_metrics = 'mse'
+            # ✅ GraphCompiler 생성
+            self.compiler = GraphCompiler()
 
-        self.compiler = GraphCompiler()
+            # ✅ 레이어 연결 및 build()
+            current_shape = None
+            for i, layer in enumerate(self._layers):
+                if i == 0:
+                    # 첫 레이어는 반드시 input_shape가 있어야 함
+                    if not layer.input_shape:
+                        raise ValueError("첫 번째 레이어에 input_shape가 지정되어야 합니다.")
+                    current_shape = layer.input_shape
 
-        for layer in self._layers:
-            self.compiler.add_layer(layer)
+                # build() 호출 및 출력 shape 계산
+                layer.build(current_shape)
+                current_shape = layer.compute_output_shape(current_shape)
+                
+                # GraphCompiler에 등록
+                self.compiler.add_layer(layer)
 
-        self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
-        self.loss_fn = cuda_losses.get(loss)
-        self.loss_grad_fn = cuda_losses.get_grad(loss)
-        self.loss_name = loss
-        self.metric_fn = metrics.get(p_metrics)
-        self.build()
+            # ✅ Optimizer / Loss / Metric 설정
+            self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
+            self.loss_fn = cuda_losses.get(loss)
+            self.metric_fn = metrics.get(p_metrics)
+
+            self.built = True
 
     def get_compile_config(self):
         return {

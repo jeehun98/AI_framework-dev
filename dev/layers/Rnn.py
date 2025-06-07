@@ -138,3 +138,6 @@ class RNN(Layer):
                 "Wh": self.Wh,
                 "b": self.b
             }
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.units)
