@@ -206,11 +206,36 @@ class Sequential:
         self.graph_ops = []
         current_input = input_var
 
-        for layer in self._layers:
+        for i, layer in enumerate(self._layers):
             if hasattr(layer, "forward_matrix"):
                 ops = layer.forward_matrix(current_input)
+
+                # dict 단일 반환 방어: 리스트로 변환
+                if isinstance(ops, dict):
+                    ops = [ops]
+
+                if not isinstance(ops, list) or not ops:
+                    raise ValueError(f"Empty or invalid ops list returned by forward_matrix from layer {i}: {layer}")
+
+                # 모든 연산에서 input/output 형식 보장
+                for op in ops:
+                    # GraphCompiler가 실제 ID를 부여할 예정이므로 placeholder 유지
+                    if "input_idx" not in op:
+                        op["input_idx"] = None
+                    if "output_idx" not in op:
+                        op["output_idx"] = None
+                    if "param_idx" not in op:
+                        op["param_idx"] = None
+
                 self.graph_ops.extend(ops)
-                current_input = ops[-1][-1]  # 마지막 연산의 output을 다음 input으로 설정
+
+                # 마지막 연산의 output_idx를 다음 input으로 사용
+                last_op = ops[-1]
+                if "output_idx" in last_op:
+                    current_input = last_op["output_idx"]
+                else:
+                    raise ValueError(f"Missing 'output_idx' in operation: {last_op}")
 
         self.output_var = current_input
         return self.graph_ops
+

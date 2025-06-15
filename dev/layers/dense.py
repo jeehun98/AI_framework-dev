@@ -54,28 +54,31 @@ class Dense(Layer):
             return self.activation(z)
         return z
 
-    # ✅ GraphCompiler용 연산 정의
+    # ✅ GraphCompiler용 연산 정의 (Dense Layer)
     def forward_matrix(self, input_name="input"):
         self.input_var = input_name
 
-        if self.use_backend_init:
-            return {
-                "input_idx": None,   # node 번호는 GraphCompiler가 채움
-                "output_idx": None,
-                "op_type": 0,
-                "W_shape": (self.input_shape[1], self.units),
-                "b_shape": (1, self.units),
-                "W": None,
-                "b": None
-            }
-        else:
-            return {
-                "input_idx": None,
-                "output_idx": None,
-                "op_type": 0,
-                "W": self.weights,
-                "b": self.bias
-            }
+        # GraphCompiler가 연결 정보를 할당할 수 있도록 None으로 초기화
+        matmul_op = {
+            "input_idx": None,
+            "param_idx": None,   # weight
+            "output_idx": None,
+            "op_type": 0,  # matmul
+            "W_shape": (self.input_shape[1], self.units) if self.use_backend_init else None,
+            "W": None if self.use_backend_init else self.weights
+        }
+
+        add_op = {
+            "input_idx": None,
+            "param_idx": None,   # bias
+            "output_idx": None,
+            "op_type": 1,  # add
+            "b_shape": (1, self.units) if self.use_backend_init else None,
+            "b": None if self.use_backend_init else self.bias
+        }
+
+        return [matmul_op, add_op]
+
 
     def backward(self, grad_output):
         grad_output = cp.asarray(grad_output, dtype=cp.float32)

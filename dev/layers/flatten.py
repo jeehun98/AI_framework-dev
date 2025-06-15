@@ -65,13 +65,13 @@ class Flatten(Layer):
     def backward(self, grad_output):
         return grad_output.reshape(self.input_shape)
 
-    # ✅ GraphCompiler용 forward_matrix 정의
+    # Flatten 레이어 예시
     def forward_matrix(self, input_name="input"):
         self.input_var = input_name
-        return {
-            "input_idx": self.input_idx,    # GraphCompiler가 자동으로 채움
+        return [{
+            "input_idx": self.input_idx,
             "output_idx": self.output_idx,
-            "op_type": 5,                   # 예: Flatten 연산용 사용자 정의 코드
+            "op_type": 5,   # 예: Flatten
             "W": None,
             "b": None
-        }
+        }]
