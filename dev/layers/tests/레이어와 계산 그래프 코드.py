@@ -39,6 +39,12 @@ model.compile(
     learning_rate=0.0005
 )
 
+model.compile_graph()
+print("📊 컴파일된 그래프 연산 목록:")
+for idx, op in enumerate(model.graph_ops):
+    print(f"{idx:02d}: {op}")
+
+
 # ✅ 학습 실행  
 model.fit(x, y, epochs=100, batch_size=32)
 

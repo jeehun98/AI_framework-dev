@@ -69,16 +69,18 @@ class Activation(Layer):
         self.output_shape = input_shape
         super().build(input_shape)
 
-    # ✅ GraphCompiler용 연산 정보 반환
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+    # ✅ GraphCompiler용 연산 정보 반환 (Activation Layer)
     def forward_matrix(self, input_name="input"):
         self.input_var = input_name
-        return {
-            "input_idx": self.input_idx,   # None이면 compiler가 채움
+
+        return [{
+            "input_idx": self.input_idx,     # None이면 GraphCompiler가 채움
+            "param_idx": None,               # 매개변수 없음
             "output_idx": self.output_idx,
             "op_type": ACTIVATION_OP_TYPES[self.activation_name],
             "W": None,
             "b": None
-        }
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
+        }]
