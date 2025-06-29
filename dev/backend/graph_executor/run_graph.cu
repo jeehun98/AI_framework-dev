@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include "run_graph.cuh"
+#include "matmul_shared_optimized.cuh"
 
 #define TILE_WIDTH 16
 
@@ -77,7 +78,7 @@ extern "C" void run_graph_cuda(int* E, int E_len, int* shapes, int shapes_len,
     dim3 dimBlock(TILE_WIDTH, TILE_WIDTH);
     dim3 dimGrid((W_cols + TILE_WIDTH - 1) / TILE_WIDTH,
                  (batch + TILE_WIDTH - 1) / TILE_WIDTH);
-    matmul_shared_row_major<<<dimGrid, dimBlock>>>(x_d, W_d, out_d, batch, input_dim, W_cols);
+    matmul_shared_kernel_coalesced<<<dimGrid, dimBlock>>>(x_d, W_d, out_d, batch, input_dim, W_cols);
 
     int total = batch * W_cols;
     add_bias_relu<<<(total + 255) / 256, 256>>>(out_d, b_d, out_d, batch, W_cols);
