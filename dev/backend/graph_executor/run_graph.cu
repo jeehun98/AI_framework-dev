@@ -85,7 +85,7 @@ extern "C" void run_graph_cuda(int* E, int E_len, int* shapes, int shapes_len,
     float* out_host = new float[batch * W_cols];
     cudaMemcpy(out_host, out_d, out_size, cudaMemcpyDeviceToHost);
 
-    std::cout << "✅ CUDA 그래프 실행 완료!\n출력: ";
+    std::cout << "CUDA graph !\noutput: ";
     for (int i = 0; i < batch * W_cols; ++i) {
         std::cout << out_host[i] << " ";
     }
