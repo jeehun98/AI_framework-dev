@@ -1,7 +1,8 @@
-// run_graph.cu (디버그용 전체 수정 버전)
+
 #include <iostream>
 #include <string>
 #include <vector>
+#include <fstream>
 #include <cuda_runtime.h>
 #include <unordered_map>
 
@@ -12,16 +13,19 @@
 
 #define TILE_WIDTH 16
 
-// 디버깅용 device -> host 출력 함수
-void print_device_matrix(const std::string& name, float* d_ptr, int rows, int cols) {
+// 디버깅용 device -> host 출력 함수 (파일 저장 포함)
+void print_device_matrix_to_file(const std::string& tag, const std::string& name, float* d_ptr, int rows, int cols) {
     std::vector<float> h_data(rows * cols);
     cudaMemcpy(h_data.data(), d_ptr, rows * cols * sizeof(float), cudaMemcpyDeviceToHost);
-    std::cout << "\n" << name << " (" << rows << "x" << cols << "):\n";
+
+    std::ofstream file("debug_forward_" + tag + "_" + name + ".txt");
+    if (!file) return;
+
+    file << name << " (" << rows << "x" << cols << "):\n";
     for (int i = 0; i < rows; ++i) {
-        std::cout << "  ";
         for (int j = 0; j < cols; ++j)
-            std::cout << h_data[i * cols + j] << " ";
-        std::cout << "\n";
+            file << h_data[i * cols + j] << " ";
+        file << "\n";
     }
 }
 
@@ -48,6 +52,7 @@ void run_graph_cuda(
             out_shape = in_shape;
         }
 
+        // ✅ output 메모리 새로 할당
         if (tensors.find(op.output_id) == tensors.end()) {
             float* out_ptr;
             cudaMalloc(&out_ptr, out_shape.rows * out_shape.cols * sizeof(float));
@@ -70,14 +75,14 @@ void run_graph_cuda(
                   << " | param: " << op.param_id
                   << " | output: " << op.output_id << " ===\n";
 
-        print_device_matrix("input", input, shapes[op.input_id].rows, shapes[op.input_id].cols);
+        print_device_matrix_to_file(op.output_id, "input", input, shapes[op.input_id].rows, shapes[op.input_id].cols);
         if (param) {
-            print_device_matrix("param", param, shapes[op.param_id].rows, shapes[op.param_id].cols);
+            print_device_matrix_to_file(op.output_id, "param", param, shapes[op.param_id].rows, shapes[op.param_id].cols);
         }
 
         const float* bias = nullptr;
 
-        if (op.op_type == ADD || op.op_type == RELU || op.op_type == TANH) {
+        if (op.op_type == ADD || op.op_type == RELU || op.op_type == TANH || op.op_type == SIGMOID) {
             bias = param;  // param이 bias일 경우
         }
 
@@ -103,11 +108,11 @@ void run_graph_cuda(
                 break;
         }
 
-
         cudaDeviceSynchronize();
-        print_device_matrix("output", output, rows, cols);
+        print_device_matrix_to_file(op.output_id, "output", output, rows, cols);
     }
 
+    // ✅ 최종 출력 결과 복사
     Shape out_shape = shapes[final_output_id];
     cudaMemcpy(out_host, tensors[final_output_id], out_shape.rows * out_shape.cols * sizeof(float), cudaMemcpyDeviceToHost);
 }
