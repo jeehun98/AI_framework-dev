@@ -29,12 +29,6 @@ class Dense(Layer):
         self.input_shape = input_shape
         input_dim = input_shape[1]
 
-        if self.use_backend_init:
-            # backend에서 초기화할 것이므로 생성 생략
-            self.weights = None
-            self.bias = None
-            return
-
         if self.initializer == 'ones':
             self.weights = cp.ones((input_dim, self.units), dtype=cp.float32)
         elif self.initializer == 'zeros':

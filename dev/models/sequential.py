@@ -51,38 +51,6 @@ class Sequential:
     def get_build_config(self):
         return {"input_shape": self.input_shape}
 
-    def compile(self, optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001):
-            # ✅ 기본값 처리
-            optimizer = optimizer or 'sgd'
-            loss = loss or 'mse'
-            p_metrics = p_metrics or 'mse'
-
-            # ✅ GraphCompiler 생성
-            self.compiler = GraphCompiler()
-
-            # ✅ 레이어 연결 및 build()
-            current_shape = None
-            for i, layer in enumerate(self._layers):
-                if i == 0:
-                    # 첫 레이어는 반드시 input_shape가 있어야 함
-                    if not layer.input_shape:
-                        raise ValueError("첫 번째 레이어에 input_shape가 지정되어야 합니다.")
-                    current_shape = layer.input_shape
-
-                # build() 호출 및 출력 shape 계산
-                layer.build(current_shape)
-                current_shape = layer.compute_output_shape(current_shape)
-                
-                # GraphCompiler에 등록
-                self.compiler.add_layer(layer)
-
-            # ✅ Optimizer / Loss / Metric 설정
-            self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
-            self.loss_fn = cuda_losses.get(loss)
-            self.metric_fn = metrics.get(p_metrics)
-
-            self.built = True
-
     def get_compile_config(self):
         return {
             "optimizer": self.optimizer.get_config(),
@@ -201,41 +169,44 @@ class Sequential:
 
             print(f"\n📊 [Epoch {epoch + 1}] 전체 평균 손실: {total_loss / x.shape[0]}")
 
-    # ✅ GraphCompiler용 연산 리스트 생성
-    def compile_graph(self, input_var="x0"):
-        self.graph_ops = []
-        current_input = input_var
+    def compile(self, optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001):
+        optimizer = optimizer or 'sgd'
+        loss = loss or 'mse'
+        p_metrics = p_metrics or 'mse'
+
+        self.E = []
+        self.weights = {}
+        self.biases = {}
+
+        current_shape = None
+        input_id = "input"
 
         for i, layer in enumerate(self._layers):
-            if hasattr(layer, "forward_matrix"):
-                ops = layer.forward_matrix(current_input)
+            if i == 0:
+                if not layer.input_shape:
+                    raise ValueError("첫 번째 레이어에 input_shape가 지정되어야 합니다.")
+                current_shape = layer.input_shape
 
-                # dict 단일 반환 방어: 리스트로 변환
-                if isinstance(ops, dict):
-                    ops = [ops]
+            # layer 준비
+            layer.build(current_shape)
+            current_shape = layer.compute_output_shape(current_shape)
 
-                if not isinstance(ops, list) or not ops:
-                    raise ValueError(f"Empty or invalid ops list returned by forward_matrix from layer {i}: {layer}")
+            # E 행렬 생성
+            e_block, w, b, output_id = layer.to_e_matrix(input_id)
+            self.E.extend(e_block)
+            self.weights.update(w)
+            self.biases.update(b)
+            input_id = output_id
 
-                # 모든 연산에서 input/output 형식 보장
-                for op in ops:
-                    # GraphCompiler가 실제 ID를 부여할 예정이므로 placeholder 유지
-                    if "input_idx" not in op:
-                        op["input_idx"] = None
-                    if "output_idx" not in op:
-                        op["output_idx"] = None
-                    if "param_idx" not in op:
-                        op["param_idx"] = None
+        self.output_var = input_id
 
-                self.graph_ops.extend(ops)
+        # Optimizer / Loss / Metric
+        self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
+        self.loss_fn = cuda_losses.get(loss)
+        self.loss_grad_fn = cuda_losses.get_grad(loss)
+        self.metric_fn = metrics.get(p_metrics)
 
-                # 마지막 연산의 output_idx를 다음 input으로 사용
-                last_op = ops[-1]
-                if "output_idx" in last_op:
-                    current_input = last_op["output_idx"]
-                else:
-                    raise ValueError(f"Missing 'output_idx' in operation: {last_op}")
+        self.built = True
 
-        self.output_var = current_input
-        return self.graph_ops
-
+        # (선택) 저장
+        np.savez("compiled_graph.npz", E=self.E, weights=self.weights, biases=self.biases)

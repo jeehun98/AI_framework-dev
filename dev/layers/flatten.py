@@ -1,8 +1,5 @@
 import numpy as np
 import cupy as cp
-from functools import reduce
-from operator import mul
-
 from dev.layers.layer import Layer
 
 class Flatten(Layer):
@@ -14,11 +11,7 @@ class Flatten(Layer):
         self.layer_name = "flatten"
         self.use_backend_init = use_backend_init
 
-        # ✅ GraphCompiler 연산 정보용
         self.name = name or f"flatten_{id(self)}"
-        self.input_idx = None
-        self.output_idx = None
-        self.input_var = None
         self.output_var = f"{self.name}_out"
 
     def get_config(self):
@@ -53,7 +46,6 @@ class Flatten(Layer):
         return (input_shape[0], int(np.prod(input_shape[1:])))
 
     def build(self, input_shape):
-        print("flatten 호출 확인")
         flattened_dim = int(np.prod(input_shape[1:])) if len(input_shape) > 1 else input_shape[0]
         self.input_shape = input_shape
         self.output_shape = (1, flattened_dim)
@@ -65,13 +57,17 @@ class Flatten(Layer):
     def backward(self, grad_output):
         return grad_output.reshape(self.input_shape)
 
-    # Flatten 레이어 예시
-    def forward_matrix(self, input_name="input"):
-        self.input_var = input_name
-        return [{
-            "input_idx": self.input_idx,
-            "output_idx": self.output_idx,
-            "op_type": 5,   # 예: Flatten
-            "W": None,
-            "b": None
+    # ✅ Sequential 내부 E 행렬용 연산 정의
+    def to_e_matrix(self, input_id):
+        """
+        Flatten 연산: 차원만 변형하므로 W, b는 없음
+        """
+        output_id = f"{self.name}_out"
+        e_block = [{
+            "op_type": 5,  # Flatten
+            "input_id": input_id,
+            "param_id": None,
+            "output_id": output_id
         }]
+
+        return e_block, {}, {}, output_id
