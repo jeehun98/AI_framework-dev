@@ -2,7 +2,7 @@ import cupy as cp
 from dev.layers.layer import Layer
 
 class Dense(Layer):
-    def __init__(self, units, activation=None, input_shape=None, name=None, initializer='he', use_backend_init=False, **kwargs):
+    def __init__(self, units, activation=None, input_shape=None, name=None, initializer='he', **kwargs):
         super().__init__(name, **kwargs)
         self.layer_name = "dense"
         self.units = units
@@ -10,7 +10,6 @@ class Dense(Layer):
         self.initializer = initializer
         self.input_shape = input_shape
         self.output_shape = (1, units)
-        self.use_backend_init = use_backend_init
 
         self.weights = None
         self.bias = None
@@ -54,30 +53,49 @@ class Dense(Layer):
             return self.activation(z)
         return z
 
-    # ✅ GraphCompiler용 연산 정의 (Dense Layer)
-    def forward_matrix(self, input_name="input"):
-        self.input_var = input_name
+    def to_e_matrix(self, input_id):
+        weight_id = f"{self.name}_W"
+        bias_id = f"{self.name}_b"
+        linear_out_id = f"{self.name}_linear"
+        output_id = f"{self.name}_out"
 
-        # GraphCompiler가 연결 정보를 할당할 수 있도록 None으로 초기화
-        matmul_op = {
-            "input_idx": None,
-            "param_idx": None,   # weight
-            "output_idx": None,
-            "op_type": 0,  # matmul
-            "W_shape": (self.input_shape[1], self.units) if self.use_backend_init else None,
-            "W": None if self.use_backend_init else self.weights
-        }
+        e_block = [
+            {
+                "op_type": 0,  # matmul
+                "input_id": input_id,
+                "param_id": weight_id,
+                "output_id": linear_out_id
+            },
+            {
+                "op_type": 1,  # add
+                "input_id": linear_out_id,
+                "param_id": bias_id,
+                "output_id": output_id if self.activation is None else f"{self.name}_preact"
+            }
+        ]
 
-        add_op = {
-            "input_idx": None,
-            "param_idx": None,   # bias
-            "output_idx": None,
-            "op_type": 1,  # add
-            "b_shape": (1, self.units) if self.use_backend_init else None,
-            "b": None if self.use_backend_init else self.bias
-        }
+        # ✅ 활성화 함수가 있는 경우, 추가 노드 삽입
+        if self.activation:
+            activation_name = self.activation.__name__.lower()
+            activation_map = {
+                "relu": 2,
+                "sigmoid": 3,
+                "tanh": 4
+            }
+            if activation_name not in activation_map:
+                raise ValueError(f"Unsupported activation: {activation_name}")
 
-        return [matmul_op, add_op]
+            e_block.append({
+                "op_type": activation_map[activation_name],  # e.g. 2: relu
+                "input_id": f"{self.name}_preact",
+                "param_id": None,
+                "output_id": output_id
+            })
+
+        weights = {weight_id: self.weights}
+        biases = {bias_id: self.bias}
+
+        return e_block, weights, biases, output_id
 
 
     def backward(self, grad_output):
