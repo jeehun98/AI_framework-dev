@@ -11,35 +11,37 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "build", "lib.win-amd64-
 import numpy as np
 import graph_executor
 
-# === 설정 ===
-batch = 2         # 입력 샘플 수 (행 개수)
-input_dim = 3     # 입력 특징 차원
-output_dim = 4    # 출력 차원 (가중치 열 수)
+# 공통 설정
+batch = 2
+input_dim = 3
+output_dim = 4
 
-# === E와 shapes는 아직 실제로 사용되지 않지만 구조 맞춰서 전달 ===
-# E: dummy 그래프 정의 배열
-E = np.array([0], dtype=np.int32)
+# 가짜 E 행렬과 shapes 정보
+E = np.array([], dtype=np.int32)  # 현재는 연산 순서를 안 씀
+E_len = 0
+shapes = np.array([1, batch, input_dim], dtype=np.int32)
+shapes_len = len(shapes)
 
-# shapes: [num_dims, batch, input_dim] 구조라고 가정 (run_graph_cuda 내부에서 사용)
-shapes = np.array([3, batch, input_dim], dtype=np.int32)
-
-# === 가중치 및 편향 ===
+# Weight (3x4)와 Bias (1x4)
 W = np.array([
-    [1.0, 2.0, 3.0, 4.0],
-    [1.0, 1.0, 1.0, 1.0],
-    [0.5, 0.5, 0.5, 0.5]
-], dtype=np.float32)  # shape = (input_dim, output_dim)
+    [0.1, 0.2, 0.3, 0.4],
+    [0.5, 0.6, 0.7, 0.8],
+    [0.9, 1.0, 1.1, 1.2]
+], dtype=np.float32)
+b = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32)
 
-b = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32)  # shape = (output_dim,)
+W_rows, W_cols = W.shape
 
-# === 실행 ===
-graph_executor.run_graph_cuda(
-    E,
-    len(E),
-    shapes,
-    len(shapes),
-    W,
-    b,
-    W.shape[0],  # W_rows = input_dim
-    W.shape[1]   # W_cols = output_dim
-)
+def run_test(activation_type, name):
+    print(f"\n🔸 Activation: {name}")
+    result = graph_executor.run_graph_cuda(
+        E, E_len, shapes, shapes_len,
+        W, b, W_rows, W_cols, activation_type
+    )
+    print("Result from GPU:")
+    print(result)
+
+# 활성화 함수별 테스트
+run_test(0, "ReLU")
+run_test(1, "Sigmoid")
+run_test(2, "Tanh")

@@ -1,22 +1,11 @@
 #pragma once
-#include <math.h>
 
-__device__ float sigmoid(float x) {
-    return 1.0f / (1.0f + expf(-x));
-}
+enum ActivationType {
+    ACT_RELU = 0,
+    ACT_SIGMOID = 1,
+    ACT_TANH = 2
+};
 
-__device__ float relu(float x) {
-    return x > 0.0f ? x : 0.0f;
-}
-
-__device__ float tanh_custom(float x) {
-    return tanhf(x);
-}
-
-__device__ void activation_vec(float* input, float* output, int dim, int type) {
-    for (int i = 0; i < dim; ++i) {
-        if (type == 2)        output[i] = sigmoid(input[i]);
-        else if (type == 3)   output[i] = relu(input[i]);
-        else if (type == 4)   output[i] = tanh_custom(input[i]);
-    }
-}
+__global__ void activation_relu(const float* input, const float* bias, float* output, int rows, int cols);
+__global__ void activation_sigmoid(const float* input, const float* bias, float* output, int rows, int cols);
+__global__ void activation_tanh(const float* input, const float* bias, float* output, int rows, int cols);
