@@ -2,7 +2,7 @@ import cupy as cp
 from dev.layers.layer import Layer
 from dev.utils.load_cuda import load_activations_cuda
 
-# ✅ 연산 코드 매핑
+# 연산 코드 매핑
 ACTIVATION_OP_TYPES = {
     'sigmoid': 2,
     'relu': 3,
@@ -19,13 +19,8 @@ class Activation(Layer):
         self.input_shape = None
         self.use_backend_init = use_backend_init
 
-        # ✅ GraphCompiler 연산 이름 정의
         self.name = name or f"activation_{id(self)}"
-        self.input_var = None
         self.output_var = f"{self.name}_out"
-        self.input_idx = None
-        self.output_idx = None
-
         self.activations_cuda = load_activations_cuda()
 
     def call(self, inputs):
@@ -69,18 +64,21 @@ class Activation(Layer):
         self.output_shape = input_shape
         super().build(input_shape)
 
-    def compute_output_shape(self, input_shape):
-        return input_shape
+    # ✅ Sequential 기반 E 행렬용 연산 정의
+    def to_e_matrix(self, input_id):
+        output_id = f"{self.name}_out"
 
-    # ✅ GraphCompiler용 연산 정보 반환 (Activation Layer)
-    def forward_matrix(self, input_name="input"):
-        self.input_var = input_name
+        # op_type: 2(sigmoid), 3(relu), 4(tanh)
+        if self.activation_name not in ACTIVATION_OP_TYPES:
+            raise ValueError(f"[ERROR] Unsupported activation: {self.activation_name}")
 
-        return [{
-            "input_idx": self.input_idx,     # None이면 GraphCompiler가 채움
-            "param_idx": None,               # 매개변수 없음
-            "output_idx": self.output_idx,
-            "op_type": ACTIVATION_OP_TYPES[self.activation_name],
-            "W": None,
-            "b": None
+        op_type = ACTIVATION_OP_TYPES[self.activation_name]
+
+        e_block = [{
+            "op_type": op_type,
+            "input_id": input_id,
+            "param_id": None,
+            "output_id": output_id
         }]
+
+        return e_block, {}, {}, output_id

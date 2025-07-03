@@ -1,42 +1,48 @@
 #include <cuda_runtime.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl.h>
+#include <unordered_map>
+#include <string>
 #include "run_graph.cuh"
 
 namespace py = pybind11;
 
-py::array_t<float> run_graph_cuda_wrapper(
-    py::array_t<int> E,
-    int E_len,
-    py::array_t<int> shapes,
-    int shapes_len,
-    py::array_t<float> W,
-    py::array_t<float> b,
-    int W_rows,
-    int W_cols,
-    int activation_type)  // ✅ 추가
+// 변경된 run_graph_entry
+void run_graph_entry(
+    const std::vector<OpStruct>& E,
+    const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,  // ✅ uintptr_t로 받기
+    const std::unordered_map<std::string, Shape>& shapes,
+    py::array_t<float> out_host,
+    const std::string& final_output_id)
 {
-    auto result = py::array_t<float>({shapes.at(1), W_cols});
-    float* out_ptr;
-    cudaMallocHost(&out_ptr, sizeof(float) * shapes.at(1) * W_cols);
+    std::unordered_map<std::string, float*> tensors;
+    for (const auto& kv : tensor_ptrs) {
+        tensors[kv.first] = reinterpret_cast<float*>(kv.second);  // ✅ 안전하게 캐스팅
+    }
 
-    run_graph_cuda(
-        E.mutable_data(), E_len,
-        shapes.mutable_data(), shapes_len,
-        W.mutable_data(), b.mutable_data(),
-        W_rows, W_cols, activation_type,  // ✅ 추가
-        out_ptr);
-
-    std::memcpy(result.mutable_data(), out_ptr, sizeof(float) * shapes.at(1) * W_cols);
-    cudaFreeHost(out_ptr);
-    return result;
+    float* out_ptr = out_host.mutable_data();
+    run_graph_cuda(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), out_ptr, final_output_id);
 }
 
+
 PYBIND11_MODULE(graph_executor, m) {
-    m.def("run_graph_cuda", &run_graph_cuda_wrapper,
-          py::arg("E"), py::arg("E_len"),
-          py::arg("shapes"), py::arg("shapes_len"),
-          py::arg("W"), py::arg("b"),
-          py::arg("W_rows"), py::arg("W_cols"),
-          py::arg("activation_type"));  // ✅ 추가
+    py::class_<OpStruct>(m, "OpStruct")
+        .def(py::init<int, std::string, std::string, std::string>())
+        .def_readwrite("op_type", &OpStruct::op_type)
+        .def_readwrite("input_id", &OpStruct::input_id)
+        .def_readwrite("param_id", &OpStruct::param_id)
+        .def_readwrite("output_id", &OpStruct::output_id);
+
+    py::class_<Shape>(m, "Shape")
+        .def(py::init<int, int>())
+        .def_readwrite("rows", &Shape::rows)
+        .def_readwrite("cols", &Shape::cols);
+
+    m.def("run_graph_cuda", &run_graph_entry,
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("out_host"),
+        py::arg("final_output_id"));
 }
