@@ -2,6 +2,13 @@ import cupy as cp
 from dev.layers.layer import Layer
 from dev.utils.load_cuda import load_activations_cuda
 
+import sys
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor")
+import graph_executor as ge  # Pybind11 모듈
+
+# graph_executor에서 정의된 Shape 사용
+Shape = ge.Shape
+
 # 연산 코드 매핑
 ACTIVATION_OP_TYPES = {
     'sigmoid': 2,
@@ -64,11 +71,9 @@ class Activation(Layer):
         self.output_shape = input_shape
         super().build(input_shape)
 
-    # ✅ Sequential 기반 E 행렬용 연산 정의
     def to_e_matrix(self, input_id):
         output_id = f"{self.name}_out"
 
-        # op_type: 2(sigmoid), 3(relu), 4(tanh)
         if self.activation_name not in ACTIVATION_OP_TYPES:
             raise ValueError(f"[ERROR] Unsupported activation: {self.activation_name}")
 
@@ -77,8 +82,22 @@ class Activation(Layer):
         e_block = [{
             "op_type": op_type,
             "input_id": input_id,
-            "param_id": None,
+            "param_id": "",  # ❗️ Pybind11은 str 타입만 받음
             "output_id": output_id
         }]
 
-        return e_block, {}, {}, output_id
+        # ✅ input_shape 검증
+        if (
+            not self.input_shape
+            or not isinstance(self.input_shape, (tuple, list))
+            or len(self.input_shape) != 2
+            or not all(isinstance(v, int) for v in self.input_shape)
+        ):
+            raise ValueError(f"[ERROR] input_shape가 잘못되었습니다: {self.input_shape}")
+
+        shape_map = {
+            input_id: Shape(int(self.input_shape[0]), int(self.input_shape[1])),
+            output_id: Shape(int(self.input_shape[0]), int(self.input_shape[1]))
+        }
+
+        return e_block, {}, {}, output_id, shape_map
