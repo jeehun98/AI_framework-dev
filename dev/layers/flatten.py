@@ -2,6 +2,14 @@ import numpy as np
 import cupy as cp
 from dev.layers.layer import Layer
 
+import sys
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor")
+import graph_executor as ge  # Pybind11 모듈
+
+# graph_executor에서 정의된 Shape 사용
+Shape = ge.Shape
+
+
 class Flatten(Layer):
     def __init__(self, input_shape=None, name=None, use_backend_init=False, **kwargs):
         super().__init__(name=name, **kwargs)
@@ -57,12 +65,12 @@ class Flatten(Layer):
     def backward(self, grad_output):
         return grad_output.reshape(self.input_shape)
 
-    # ✅ Sequential 내부 E 행렬용 연산 정의
     def to_e_matrix(self, input_id):
         """
         Flatten 연산: 차원만 변형하므로 W, b는 없음
         """
-        output_id = f"{self.name}_out"
+        output_id = self.output_var
+
         e_block = [{
             "op_type": 5,  # Flatten
             "input_id": input_id,
@@ -70,4 +78,13 @@ class Flatten(Layer):
             "output_id": output_id
         }]
 
-        return e_block, {}, {}, output_id
+        # ✅ Flatten된 shape 계산
+        input_rows = self.input_shape[0]
+        input_cols = int(np.prod(self.input_shape[1:]))
+
+        shape_map = {
+            input_id: ge.Shape(input_rows, input_cols),
+            output_id: ge.Shape(*self.output_shape)
+        }
+
+        return e_block, {}, {}, output_id, shape_map
