@@ -14,20 +14,20 @@
 #define TILE_WIDTH 16
 
 // 디버깅용 device -> host 출력 함수 (파일 저장 포함)
-void print_device_matrix_to_file(const std::string& tag, const std::string& name, float* d_ptr, int rows, int cols) {
-    std::vector<float> h_data(rows * cols);
-    cudaMemcpy(h_data.data(), d_ptr, rows * cols * sizeof(float), cudaMemcpyDeviceToHost);
-
-    std::ofstream file("debug_forward_" + tag + "_" + name + ".txt");
-    if (!file) return;
-
-    file << name << " (" << rows << "x" << cols << "):\n";
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < cols; ++j)
-            file << h_data[i * cols + j] << " ";
-        file << "\n";
-    }
-}
+// void print_device_matrix_to_file(const std::string& tag, const std::string& name, float* d_ptr, int rows, int cols) {
+//     std::vector<float> h_data(rows * cols);
+//     cudaMemcpy(h_data.data(), d_ptr, rows * cols * sizeof(float), cudaMemcpyDeviceToHost);
+//
+//     std::ofstream file("debug_forward_" + tag + "_" + name + ".txt");
+//     if (!file) return;
+//
+//     file << name << " (" << rows << "x" << cols << "):\n";
+//     for (int i = 0; i < rows; ++i) {
+//         for (int j = 0; j < cols; ++j)
+//             file << h_data[i * cols + j] << " ";
+//         file << "\n";
+//     }
+// }
 
 void run_graph_cuda(
     const std::vector<OpStruct>& E,
@@ -75,10 +75,10 @@ void run_graph_cuda(
                   << " | param: " << op.param_id
                   << " | output: " << op.output_id << " ===\n";
 
-        print_device_matrix_to_file(op.output_id, "input", input, shapes[op.input_id].rows, shapes[op.input_id].cols);
-        if (param) {
-            print_device_matrix_to_file(op.output_id, "param", param, shapes[op.param_id].rows, shapes[op.param_id].cols);
-        }
+        // print_device_matrix_to_file(op.output_id, "input", input, shapes[op.input_id].rows, shapes[op.input_id].cols);
+        // if (param) {
+        //     print_device_matrix_to_file(op.output_id, "param", param, shapes[op.param_id].rows, shapes[op.param_id].cols);
+        // }
 
         const float* bias = nullptr;
 
@@ -109,7 +109,7 @@ void run_graph_cuda(
         }
 
         cudaDeviceSynchronize();
-        print_device_matrix_to_file(op.output_id, "output", output, rows, cols);
+        // print_device_matrix_to_file(op.output_id, "output", output, rows, cols);
     }
 
     // ✅ 최종 출력 결과 복사
