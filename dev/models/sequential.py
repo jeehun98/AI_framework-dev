@@ -204,3 +204,14 @@ class Sequential:
 
                 avg_loss = batch_loss_sum / batch_x.shape[0]
                 logger.info(f"[Batch 완료] 평균 손실: {avg_loss:.6f}")
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        """
+        추론 전용 메서드. 입력 데이터를 받아 forward pass 결과를 반환합니다.
+        """
+        if not self.built:
+            raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
+        
+        x_cp = cp.asarray(x, dtype=cp.float32)
+        output = self.run_forward(x_cp)
+        return output
