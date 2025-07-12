@@ -30,18 +30,27 @@ from dev.layers.flatten import Flatten
 def test_sequential_model_fit():
     print("\n=== [TEST] Sequential 모델 학습 테스트 ===")
 
+    # 3. 입력 / 타겟 데이터 정의
+    x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)  # shape: (1, 2, 2)
+    y = np.array([[0.7, 0.1]], dtype=np.float32)  # shape: (1, 2)
+
     # 1. 모델 구성
     model = Sequential(input_shape=(1, 2, 2))
     model.add(Flatten(input_shape=(1, 2, 2)))
     model.add(Dense(units=2, activation=None))
     model.add(Activation("sigmoid"))
 
+    # ✅ Dense 강제 초기화 (여기에 삽입)
+    for layer in model._layers:
+        if isinstance(layer, Dense):
+            layer.weights = cp.ones_like(layer.weights) * 0.5
+            layer.bias = cp.ones_like(layer.bias) * 0.1
+            layer.weights = cp.asarray(layer.weights)
+            layer.bias = cp.asarray(layer.bias)
+            print(f"[INFO] Dense layer `{layer.name}` 초기화 완료: weight=0.5, bias=0.1")
+
     # 2. 모델 컴파일
     model.compile(optimizer="sgd", loss="mse")
-
-    # 3. 입력 / 타겟 데이터 정의
-    x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)  # shape: (1, 2, 2)
-    y = np.array([[0.7, 0.1]], dtype=np.float32)  # shape: (1, 2)
 
     # 4. 학습
     model.fit(x, y, epochs=3)

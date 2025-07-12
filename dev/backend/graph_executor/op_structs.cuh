@@ -7,7 +7,8 @@ enum OpType {
     ADD = 1,
     RELU = 2,
     SIGMOID = 3,
-    TANH = 4
+    TANH = 4,
+    FLATTEN = 5
 };
 
 struct OpStruct {

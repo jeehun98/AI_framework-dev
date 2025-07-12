@@ -103,10 +103,15 @@ void run_graph_cuda(
             case TANH:
                 activation_tanh<<<blocks, threads>>>(input, bias, output, rows, cols);
                 break;
+            case FLATTEN:
+                // ✅ Flatten: input → output 복사 (차원은 이미 shape에 의해 flatten된 상태)
+                cudaMemcpy(output, input, rows * cols * sizeof(float), cudaMemcpyDeviceToDevice);
+                break;
             default:
                 std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;
                 break;
         }
+
 
         cudaDeviceSynchronize();
         // print_device_matrix_to_file(op.output_id, "output", output, rows, cols);

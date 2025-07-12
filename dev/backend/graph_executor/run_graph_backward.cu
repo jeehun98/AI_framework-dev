@@ -131,6 +131,15 @@ void run_graph_backward(
 
                 break;
             }
+            case FLATTEN: {
+                // Flatten backward는 단순히 grad_out을 grad_input에 복사
+                cudaMemcpy(grad_input, grad_out, rows * cols * sizeof(float), cudaMemcpyDeviceToDevice);
+                cudaError_t err = cudaGetLastError();
+                if (err != cudaSuccess) {
+                    std::cerr << "[KERNEL ERROR] flatten backward failed: " << cudaGetErrorString(err) << std::endl;
+                }
+                break;
+            }
 
             case SIGMOID:
             case RELU:
