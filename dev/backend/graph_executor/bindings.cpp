@@ -11,13 +11,14 @@
 
 namespace py = pybind11;
 
-// ✅ Forward entry function
+// ✅ Forward entry function (with batch_size)
 void run_graph_entry(
     const std::vector<OpStruct>& E,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     const std::unordered_map<std::string, Shape>& shapes,
     py::array_t<float> out_host,
-    const std::string& final_output_id)
+    const std::string& final_output_id,
+    int batch_size)
 {
     std::unordered_map<std::string, float*> tensors;
     for (const auto& kv : tensor_ptrs) {
@@ -25,16 +26,17 @@ void run_graph_entry(
     }
 
     float* out_ptr = out_host.mutable_data();
-    run_graph_cuda(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), out_ptr, final_output_id);
+    run_graph_cuda(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), out_ptr, final_output_id, batch_size);
 }
 
-// ✅ Backward entry function (with return of gradient ptrs)
+// ✅ Backward entry function (with batch_size)
 py::dict run_graph_backward_entry(
     const std::vector<OpStruct>& E,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     const std::unordered_map<std::string, Shape>& shapes,
     const std::unordered_map<std::string, uintptr_t>& gradient_ptrs,
-    const std::string& final_output_id)
+    const std::string& final_output_id,
+    int batch_size)
 {
     std::unordered_map<std::string, float*> tensors;
     std::unordered_map<std::string, float*> gradients;
@@ -46,10 +48,8 @@ py::dict run_graph_backward_entry(
         gradients[kv.first] = reinterpret_cast<float*>(kv.second);
     }
 
-    // ✅ run_graph_backward에서 내부적으로 gradients가 새로 채워짐
-    run_graph_backward(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), gradients, final_output_id);
+    run_graph_backward(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), gradients, final_output_id, batch_size);
 
-    // ✅ Python으로 전체 gradient 맵을 반환
     py::dict result;
     for (const auto& kv : gradients) {
         result[py::str(kv.first)] = reinterpret_cast<uintptr_t>(kv.second);
@@ -58,6 +58,7 @@ py::dict run_graph_backward_entry(
     return result;
 }
 
+// ✅ Pybind11 module definition
 PYBIND11_MODULE(graph_executor, m) {
     py::class_<OpStruct>(m, "OpStruct")
         .def(py::init<int, std::string, std::string, std::string>())
@@ -76,12 +77,14 @@ PYBIND11_MODULE(graph_executor, m) {
           py::arg("tensors"),
           py::arg("shapes"),
           py::arg("out_host"),
-          py::arg("final_output_id"));
+          py::arg("final_output_id"),
+          py::arg("batch_size"));  // ✅ batch_size 추가
 
     m.def("run_graph_backward", &run_graph_backward_entry,
           py::arg("E"),
           py::arg("tensors"),
           py::arg("shapes"),
           py::arg("gradients"),
-          py::arg("final_output_id"));
+          py::arg("final_output_id"),
+          py::arg("batch_size"));  // ✅ batch_size 추가
 }
