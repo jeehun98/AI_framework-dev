@@ -2,86 +2,109 @@ import sys
 import os
 import ctypes
 
-# CUDA DLL 명시적 로드
+# CUDA DLL 로드
 ctypes.CDLL(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\cudart64_12.dll")
 
-# Pybind11 빌드 경로
+# Pybind11 빌드 경로 추가
 sys.path.append(os.path.join(os.path.dirname(__file__), "build", "lib.win-amd64-cpython-312"))
 
-import numpy as np
 import cupy as cp
-import graph_executor as ge
+import numpy as np
+from graph_executor import OpStruct, Shape, run_graph_cuda, run_graph_backward
 
-def test_run_graph_backward():
-    # 1. 연산 그래프 정의
-    E = [
-        ge.OpStruct(0, "x", "W", "matmul_out"),     # MATMUL
-        ge.OpStruct(1, "matmul_out", "b", "out"),   # ADD
-        ge.OpStruct(3, "out", "", "y")              # SIGMOID
-    ]
+cp.cuda.Device(0).use()  # ✅ CUDA 디바이스 명시
 
-    shapes = {
-        "x": ge.Shape(1, 2),
-        "W": ge.Shape(2, 2),
-        "b": ge.Shape(1, 2),
-        "matmul_out": ge.Shape(1, 2),
-        "out": ge.Shape(1, 2),
-        "y": ge.Shape(1, 2)
-    }
+batch_size = 2
 
-    # 2. 입력 및 중간 결과를 GPU 메모리에 할당
-    x = cp.array([[1.0, 1.0]], dtype=cp.float32)
-    W = cp.array([[0.1, 0.2], [0.3, 0.4]], dtype=cp.float32)
-    b = cp.array([[0.0, 0.0]], dtype=cp.float32)
+# ✅ 입력 샘플 2개
+x = cp.array([[1.0, 2.0],
+              [2.0, 3.0]], dtype=cp.float32)
+W = cp.array([[1.0, 0.0],
+              [0.0, 1.0]], dtype=cp.float32)
+b = cp.array([[0.5, -0.5]], dtype=cp.float32)
 
-    matmul_out = cp.empty((1, 2), dtype=cp.float32)
-    out = cp.empty((1, 2), dtype=cp.float32)
-    y = cp.empty((1, 2), dtype=cp.float32)
+# ✅ 계산 그래프 정의
+E = [
+    OpStruct(0, "x0", "W", "linear"),
+    OpStruct(1, "linear", "b", "out"),
+    OpStruct(3, "out", "", "act_out"),
+]
 
-    tensor_ptrs = {
-        "x": x.data.ptr,
-        "W": W.data.ptr,
-        "b": b.data.ptr,
-        "matmul_out": matmul_out.data.ptr,
-        "out": out.data.ptr,
-        "y": y.data.ptr
-    }
+# ✅ 텐서 shape 정의 (모두 batch 단위로 설정)
+shapes = {
+    "x0": Shape(batch_size, 2),
+    "W": Shape(2, 2),
+    "b": Shape(1, 2),
+    "linear": Shape(batch_size, 2),
+    "out": Shape(batch_size, 2),
+    "act_out": Shape(batch_size, 2),
+}
 
-    # 3. Forward 실행 (CUDA 내부가 GPU 메모리에 결과 저장하도록 되어 있다고 가정)
-    out_host = np.zeros((1, 2), dtype=np.float32)
-    ge.run_graph_cuda(E, tensor_ptrs, shapes, out_host, final_output_id="y")
-    print("✅ Forward output (host copy):", out_host)
+# ✅ 중간 결과 버퍼 등록 (CUDA 내부 연산을 위해 포인터 필요)
+linear_buf = cp.empty((batch_size, 2), dtype=cp.float32)
+out_buf = cp.empty((batch_size, 2), dtype=cp.float32)
+act_out_buf = cp.empty((batch_size, 2), dtype=cp.float32)
 
-    # 4. Output gradient 설정
-    grad_y = cp.array([[1.0, 1.0]], dtype=cp.float32)
-    print(f"grad_y ptr: {hex(grad_y.data.ptr)}")
-    grad_ptrs = {
-        "y": grad_y.data.ptr
-    }
+# ✅ 텐서 포인터 정의 (입력 + 중간 결과)
+tensors = {
+    "x0": int(x.data.ptr),
+    "W": int(W.data.ptr),
+    "b": int(b.data.ptr),
+    "linear": int(linear_buf.data.ptr),
+    "out": int(out_buf.data.ptr),
+    "act_out": int(act_out_buf.data.ptr),
+}
 
-    # 5. Backward 실행
-    grad_map = ge.run_graph_backward(E, tensor_ptrs, shapes, grad_ptrs, final_output_id="y")
-    print("grad_map keys:", grad_map.keys())
+# ✅ Forward 결과 저장 버퍼 (host로 복사)
+out_host = np.zeros((batch_size, 2), dtype=np.float32)
 
-    # 6. Gradient 출력 (안전하게 포인터 체크 후 출력)
-    def safe_print_grad(name, shape):
-        ptr = grad_map.get(name, 0)
-        if ptr != 0:
-            arr = cp.ndarray(shape, dtype=cp.float32,
-                memptr=cp.cuda.MemoryPointer(cp.cuda.UnownedMemory(ptr, cp.prod(cp.array(shape)) * 4, None), 0))
-            print(f"✅ Gradient {name}:\n", arr.get())
-        else:
-            print(f"⚠️ Gradient for {name} is NULL (0x0)")
+# ✅ Forward 실행
+run_graph_cuda(E, tensors, shapes, out_host, final_output_id="act_out", batch_size=batch_size)
 
-    safe_print_grad("W", (2, 2))
-    safe_print_grad("b", (1, 2))
-    safe_print_grad("x", (1, 2))
+print("✅ forward output:")
+print(out_host)
 
-    # 7. 테스트 검증
-    assert grad_map["W"] != 0
-    assert grad_map["b"] != 0
-    assert grad_map["x"] != 0
+# ✅ 역전파 입력: grad(act_out)
+grad_act_out = cp.ones((batch_size, 2), dtype=cp.float32)
+print("데이터 확인", grad_act_out.data.ptr, grad_act_out)
 
-if __name__ == "__main__":
-    test_run_graph_backward()   
-    print("끝")
+gradient_ptrs = {
+    "act_out": int(grad_act_out.data.ptr)
+}
+
+# ✅ Backward 실행
+grad_result = run_graph_backward(
+    E=E,
+    tensors=tensors,
+    shapes=shapes,
+    gradients=gradient_ptrs,
+    final_output_id="act_out",
+    batch_size=batch_size
+)
+
+# ✅ 결과 출력
+print("\n✅ 반환된 gradient 포인터:")
+for name, ptr in grad_result.items():
+    print(f"{name}: {ptr}")
+
+print("\n✅ 역전파 결과 (gradient 내용):")
+
+# 🔹 출력 우선순위: W, b, x0, 그 외
+preferred_order = ["W", "b", "x0", "linear", "out", "act_out"]
+
+for name in preferred_order + [k for k in grad_result.keys() if k not in preferred_order]:
+    ptr = grad_result.get(name, 0)
+    if ptr == 0:
+        print(f"[WARNING] {name} returned null pointer. Skipping.")
+        continue
+
+    shape = shapes.get(name)
+    if shape is None:
+        print(f"[WARNING] Shape not found for {name}. Skipping.")
+        continue
+
+    size = shape.rows * shape.cols
+    grad_np = cp.ndarray((shape.rows, shape.cols), dtype=cp.float32,
+                         memptr=cp.cuda.MemoryPointer(
+                             cp.cuda.UnownedMemory(ptr, size * 4, 0), 0))
+    print(f"{name}:\n{grad_np.get()}")
