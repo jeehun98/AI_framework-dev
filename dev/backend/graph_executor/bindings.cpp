@@ -1,17 +1,17 @@
-// bindings.cpp
 #include <cuda_runtime.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 #include <unordered_map>
 #include <string>
+#include <iostream>
 
 #include "run_graph.cuh"
 #include "run_graph_backward.cuh"
 
 namespace py = pybind11;
 
-// ✅ Forward entry function (with batch_size)
+// ✅ Forward 실행 함수
 void run_graph_entry(
     const std::vector<OpStruct>& E,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
@@ -29,7 +29,7 @@ void run_graph_entry(
     run_graph_cuda(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), out_ptr, final_output_id, batch_size);
 }
 
-// ✅ Backward entry function (with batch_size)
+// ✅ Backward 실행 함수
 py::dict run_graph_backward_entry(
     const std::vector<OpStruct>& E,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
@@ -44,8 +44,10 @@ py::dict run_graph_backward_entry(
     for (const auto& kv : tensor_ptrs) {
         tensors[kv.first] = reinterpret_cast<float*>(kv.second);
     }
+
     for (const auto& kv : gradient_ptrs) {
         gradients[kv.first] = reinterpret_cast<float*>(kv.second);
+        std::cout << "[DEBUG] gradients[" << kv.first << "] = " << kv.second << std::endl;
     }
 
     run_graph_backward(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), gradients, final_output_id, batch_size);
@@ -58,7 +60,7 @@ py::dict run_graph_backward_entry(
     return result;
 }
 
-// ✅ Pybind11 module definition
+// ✅ Pybind11 모듈 정의
 PYBIND11_MODULE(graph_executor, m) {
     py::class_<OpStruct>(m, "OpStruct")
         .def(py::init<int, std::string, std::string, std::string>())
@@ -78,7 +80,7 @@ PYBIND11_MODULE(graph_executor, m) {
           py::arg("shapes"),
           py::arg("out_host"),
           py::arg("final_output_id"),
-          py::arg("batch_size"));  // ✅ batch_size 추가
+          py::arg("batch_size"));
 
     m.def("run_graph_backward", &run_graph_backward_entry,
           py::arg("E"),
@@ -86,5 +88,5 @@ PYBIND11_MODULE(graph_executor, m) {
           py::arg("shapes"),
           py::arg("gradients"),
           py::arg("final_output_id"),
-          py::arg("batch_size"));  // ✅ batch_size 추가
+          py::arg("batch_size"));
 }

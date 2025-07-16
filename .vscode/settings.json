@@ -79,7 +79,8 @@
     "semaphore": "cpp",
     "span": "cpp",
     "stop_token": "cpp",
-    "text_encoding": "cpp"
+    "text_encoding": "cpp",
+    "xstring": "cpp"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",

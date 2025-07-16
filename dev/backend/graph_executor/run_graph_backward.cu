@@ -1,8 +1,19 @@
-#include "run_graph_backward.cuh"
+// run_graph_backward.cu
+#include <iostream>
+#include <unordered_map>
+#include <string>
+#include <cuda_runtime.h>
+#include "run_graph.cuh"
 #include "backward_kernels.cuh"
 #include "activation_backward.cuh"
-#include <cuda_runtime.h>
-#include <iostream>
+__global__ void transpose(float* input, float* output, int rows, int cols) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < rows && j < cols) {
+        output[j * rows + i] = input[i * cols + j];
+    }
+}
+
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,
@@ -10,145 +21,118 @@ void run_graph_backward(
     std::unordered_map<std::string, Shape>& shapes,
     std::unordered_map<std::string, float*>& gradients,
     const std::string& final_output_id,
-    int batch_size)  // ✅ 추가
+    int batch_size)
 {
-    float* grad_output = gradients[final_output_id];
+    // ✅ 최종 출력의 gradient 수동 삽입 (없을 경우)
+    int total_size = shapes[final_output_id].rows * shapes[final_output_id].cols;
+    float* grad_output = nullptr;
+    cudaMalloc(&grad_output, total_size * sizeof(float));
 
-    for (int i = static_cast<int>(E.size()) - 1; i >= 0; --i) {
-        const OpStruct& op = E[i];
+    if (grad_output == nullptr) {
+        std::cerr << "[ERROR] grad_output is nullptr for final_output_id = " << final_output_id << std::endl;
+        return;
+    }
 
-        std::cout << "[BACKWARD] op_type=" << op.op_type
-                  << ", input=" << op.input_id
-                  << ", param=" << op.param_id
-                  << ", output=" << op.output_id << std::endl;
+    int threads = 256;
+    int blocks = (total_size + threads - 1) / threads;
+    fill_gradient<<<blocks, threads>>>(grad_output, total_size, 1.0f);
+    cudaDeviceSynchronize();
+
+    if (gradients.count(final_output_id) == 0 || gradients[final_output_id] == nullptr) {
+        gradients[final_output_id] = grad_output;
+        std::cout << "[INFO] Manually inserted grad_output to gradients[" << final_output_id << "]\n";
+    }
+
+    // 역순으로 연산 그래프 순회 (backward)
+    for (auto it = E.rbegin(); it != E.rend(); ++it) {
+        const OpStruct& op = *it;
+        std::cout << "[BACKWARD] op_type=" << op.op_type << ", input=" << op.input_id
+                  << ", param=" << op.param_id << ", output=" << op.output_id << std::endl;
 
         float* input = tensors[op.input_id];
-        float* output = tensors[op.output_id];
-        float* grad_out = nullptr;
+        float* param = (!op.param_id.empty() && tensors.count(op.param_id)) ? tensors[op.param_id] : nullptr;
+        float* grad_out = gradients[op.output_id];
 
-        if (gradients.find(op.output_id) != gradients.end()) {
-            grad_out = gradients[op.output_id];
-        } else if (op.output_id == final_output_id) {
-            grad_out = grad_output;
-            gradients[op.output_id] = grad_output;
-        } else {
-            std::cerr << "[Backward] Missing gradient for " << op.output_id << std::endl;
+        if (input == nullptr || grad_out == nullptr) {
+            std::cerr << "[NULL PTR] input/output/grad_out is nullptr at op_type " << op.op_type << std::endl;
             continue;
         }
 
-        int rows = shapes[op.output_id].rows;
-        int cols = shapes[op.output_id].cols;
-        size_t tensor_size = rows * cols;
+        Shape in_shape = shapes[op.input_id];
+        Shape out_shape = shapes[op.output_id];
+        int in_rows = in_shape.rows;
+        int in_cols = in_shape.cols;
+        int out_rows = out_shape.rows;
+        int out_cols = out_shape.cols;
 
-        // ✅ 배치 단위 grad_input 메모리 할당
-        if (gradients.find(op.input_id) == gradients.end() || gradients[op.input_id] == nullptr) {
-            float* grad_in = nullptr;
-            cudaMalloc(&grad_in, batch_size * tensor_size * sizeof(float));
-            cudaMemset(grad_in, 0, batch_size * tensor_size * sizeof(float));
-            gradients[op.input_id] = grad_in;
+        float* grad_input = nullptr;
+        cudaError_t err = cudaMalloc(&grad_input, in_rows * in_cols * sizeof(float));
+        if (err != cudaSuccess) {
+            std::cerr << "[ERROR] cudaMalloc failed for grad_input: " << cudaGetErrorString(err) << std::endl;
+            continue;
         }
-
-        float* grad_input = gradients[op.input_id];
-        float* param = (!op.param_id.empty() && tensors.find(op.param_id) != tensors.end()) ? tensors[op.param_id] : nullptr;
 
         switch (op.op_type) {
             case MATMUL: {
-                Shape in_shape = shapes[op.input_id];
-                Shape w_shape = shapes[op.param_id];
+                matmul_backward_input<<<blocks, threads>>>(
+                    grad_out, param, grad_input, out_rows, in_cols, out_cols);
 
-                if (gradients.find(op.param_id) == gradients.end() || gradients[op.param_id] == nullptr) {
-                    float* grad_W;
-                    cudaMalloc(&grad_W, w_shape.rows * w_shape.cols * sizeof(float));
-                    cudaMemset(grad_W, 0, w_shape.rows * w_shape.cols * sizeof(float));
-                    gradients[op.param_id] = grad_W;
-                }
+                float* grad_weight = nullptr;
+                cudaMalloc(&grad_weight, in_cols * out_cols * sizeof(float));
 
-                float* grad_W = gradients[op.param_id];
+                float* input_T = nullptr;
+                cudaMalloc(&input_T, in_cols * in_rows * sizeof(float));
 
-                dim3 threads(16, 16);
-                dim3 grid_input((in_shape.cols + 15) / 16, (in_shape.rows + 15) / 16);
-                dim3 grid_weight((w_shape.cols + 15) / 16, (w_shape.rows + 15) / 16);
+                // ✅ transpose input → input_T
+                dim3 blockDimT(16, 16);
+                dim3 gridDimT((in_cols + 15) / 16, (in_rows + 15) / 16);
+                transpose<<<gridDimT, blockDimT>>>(input, input_T, in_rows, in_cols);
 
-                for (int b = 0; b < batch_size; ++b) {
-                    float* input_b     = input + b * in_shape.rows * in_shape.cols;
-                    float* grad_out_b  = grad_out + b * in_shape.rows * w_shape.cols;
-                    float* grad_input_b = grad_input + b * in_shape.rows * in_shape.cols;
+                // ✅ weight gradient 계산
+                matmul_backward_weight<<<blocks, threads>>>(
+                    input_T, grad_out, grad_weight, in_rows, in_cols, out_cols);
 
-                    matmul_backward_input<<<grid_input, threads>>>(
-                        grad_out_b, param, grad_input_b,
-                        in_shape.rows, w_shape.cols, w_shape.rows);
+                gradients[op.param_id] = grad_weight;
 
-                    matmul_backward_weight<<<grid_weight, threads>>>(
-                        input_b, grad_out_b, grad_W,
-                        in_shape.rows, in_shape.cols, w_shape.cols);
-                }
-
+                cudaFree(input_T);
                 break;
             }
+
 
             case ADD: {
-                for (int b = 0; b < batch_size; ++b) {
-                    float* grad_out_b  = grad_out + b * tensor_size;
-                    float* grad_input_b = grad_input + b * tensor_size;
-                    cudaMemcpy(grad_input_b, grad_out_b, tensor_size * sizeof(float), cudaMemcpyDeviceToDevice);
-                }
+                // grad_input = grad_out
+                add_backward_input<<<blocks, threads>>>(grad_out, grad_input, out_rows * out_cols);
 
-                if (gradients.find(op.param_id) == gradients.end() || gradients[op.param_id] == nullptr) {
-                    Shape b_shape = shapes[op.param_id];
-                    float* grad_b;
-                    cudaMalloc(&grad_b, b_shape.rows * b_shape.cols * sizeof(float));
-                    cudaMemset(grad_b, 0, b_shape.rows * b_shape.cols * sizeof(float));
-                    gradients[op.param_id] = grad_b;
-                }
+                // ✅ bias의 gradient도 계산
+                float* grad_bias = nullptr;
+                cudaMalloc(&grad_bias, out_cols * sizeof(float));
 
-                float* grad_b = gradients[op.param_id];
-                int threads = 256;
-                int blocks = (cols + threads - 1) / threads;
-
-                for (int b = 0; b < batch_size; ++b) {
-                    float* grad_out_b = grad_out + b * tensor_size;
-                    add_backward_bias<<<blocks, threads>>>(grad_out_b, grad_b, rows, cols);
-                }
-
-                break;
-            }
-
-            case FLATTEN: {
-                for (int b = 0; b < batch_size; ++b) {
-                    float* grad_out_b = grad_out + b * tensor_size;
-                    float* grad_input_b = grad_input + b * tensor_size;
-                    cudaMemcpy(grad_input_b, grad_out_b, tensor_size * sizeof(float), cudaMemcpyDeviceToDevice);
-                }
+                add_backward_bias<<<blocks, threads>>>(grad_out, grad_bias, out_rows, out_cols);
+                gradients[op.param_id] = grad_bias;
                 break;
             }
 
             case SIGMOID:
             case RELU:
-            case TANH: {
-                int threads = 256;
-                int blocks = (tensor_size + threads - 1) / threads;
-
-                for (int b = 0; b < batch_size; ++b) {
-                    float* grad_out_b = grad_out + b * tensor_size;
-                    float* output_b   = output + b * tensor_size;
-                    float* grad_input_b = grad_input + b * tensor_size;
-
-                    activation_backward<<<blocks, threads>>>(
-                        grad_out_b, output_b, grad_input_b, rows, cols, op.op_type);
-                }
+            case TANH:
+                activation_backward<<<blocks, threads>>>(
+                    grad_out,
+                    tensors[op.output_id],  // output tensor (y)
+                    grad_input,
+                    out_rows,
+                    out_cols,
+                    op.op_type              // 3=sigmoid, 2=relu, 4=tanh
+                );
                 break;
-            }
-
             default:
-                std::cerr << "[Backward] Unsupported op_type: " << op.op_type << std::endl;
+                std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;
                 break;
         }
 
-        // 디버깅용 (샘플 하나만 확인)
-        float debug[2];
-        cudaMemcpy(debug, grad_input, sizeof(float) * 2, cudaMemcpyDeviceToHost);
-        std::cout << "Grad[" << op.input_id << "] = " << debug[0] << ", " << debug[1] << std::endl;
 
         cudaDeviceSynchronize();
+        gradients[op.input_id] = grad_input;
     }
+
+    std::cout << "??run_graph_backward finished.\n";
 }

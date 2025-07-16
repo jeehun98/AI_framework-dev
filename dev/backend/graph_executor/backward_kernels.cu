@@ -1,7 +1,7 @@
-
 #include <cuda_runtime.h>
 #include "backward_kernels.cuh"
 
+// ✅ dL/dx 계산 (input에 대한 gradient)
 __global__ void matmul_backward_input(const float* d_out, const float* W_T, float* d_input, int M, int N, int K) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -13,6 +13,7 @@ __global__ void matmul_backward_input(const float* d_out, const float* W_T, floa
     }
 }
 
+// ✅ dL/dW 계산 (weight에 대한 gradient)
 __global__ void matmul_backward_weight(const float* input_T, const float* d_out, float* d_weight, int M, int N, int K) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -24,6 +25,7 @@ __global__ void matmul_backward_weight(const float* input_T, const float* d_out,
     }
 }
 
+// ✅ bias에 대한 gradient (broadcast된 경우 합산)
 __global__ void add_backward_bias(const float* d_out, float* d_bias, int rows, int cols) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col < cols) {
@@ -31,5 +33,21 @@ __global__ void add_backward_bias(const float* d_out, float* d_bias, int rows, i
         for (int i = 0; i < rows; ++i)
             sum += d_out[i * cols + col];
         d_bias[col] = sum;
+    }
+}
+
+// ✅ 입력에도 gradient 전파 (Add 레이어에서)
+__global__ void add_backward_input(const float* d_out, float* d_input, int size) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size) {
+        d_input[i] = d_out[i];  // 그대로 복사
+    }
+}
+
+// ✅ 최종 출력에 대한 gradient 수동 초기화용 커널
+__global__ void fill_gradient(float* grad, int total_size, float value) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < total_size) {
+        grad[i] = value;
     }
 }
