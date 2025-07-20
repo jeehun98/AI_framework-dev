@@ -1,19 +1,15 @@
-// run_graph_backward.cu
 #include <iostream>
-#include <unordered_map>
 #include <string>
+#include <vector>
+#include <fstream>
 #include <cuda_runtime.h>
-#include "run_graph.cuh"
-#include "backward_kernels.cuh"
-#include "activation_backward.cuh"
-__global__ void transpose(float* input, float* output, int rows, int cols) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < rows && j < cols) {
-        output[j * rows + i] = input[i * cols + j];
-    }
-}
+#include <unordered_map>
 
+#include "run_graph.cuh"
+#include "backward_kernels_optimized.cuh"
+#include "activation_backward.cuh"
+#include "cnn_kernels.cuh"
+#include "op_structs.cuh"
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,
@@ -23,7 +19,6 @@ void run_graph_backward(
     const std::string& final_output_id,
     int batch_size)
 {
-    // ✅ 최종 출력의 gradient 수동 삽입 (없을 경우)
     int total_size = shapes[final_output_id].rows * shapes[final_output_id].cols;
     float* grad_output = nullptr;
     cudaMalloc(&grad_output, total_size * sizeof(float));
@@ -43,7 +38,6 @@ void run_graph_backward(
         std::cout << "[INFO] Manually inserted grad_output to gradients[" << final_output_id << "]\n";
     }
 
-    // 역순으로 연산 그래프 순회 (backward)
     for (auto it = E.rbegin(); it != E.rend(); ++it) {
         const OpStruct& op = *it;
         std::cout << "[BACKWARD] op_type=" << op.op_type << ", input=" << op.input_id
@@ -74,40 +68,33 @@ void run_graph_backward(
 
         switch (op.op_type) {
             case MATMUL: {
-                matmul_backward_input<<<blocks, threads>>>(
+                dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
+                dim3 gridDimInput((out_cols + TILE_WIDTH - 1) / TILE_WIDTH,
+                                  (out_rows + TILE_WIDTH - 1) / TILE_WIDTH);
+
+                matmul_backward_input_shared<<<gridDimInput, blockDim>>>(
                     grad_out, param, grad_input, out_rows, in_cols, out_cols);
 
                 float* grad_weight = nullptr;
                 cudaMalloc(&grad_weight, in_cols * out_cols * sizeof(float));
 
-                float* input_T = nullptr;
-                cudaMalloc(&input_T, in_cols * in_rows * sizeof(float));
+                dim3 gridDimWeight((out_cols + TILE_WIDTH - 1) / TILE_WIDTH,
+                                   (in_cols + TILE_WIDTH - 1) / TILE_WIDTH);
 
-                // ✅ transpose input → input_T
-                dim3 blockDimT(16, 16);
-                dim3 gridDimT((in_cols + 15) / 16, (in_rows + 15) / 16);
-                transpose<<<gridDimT, blockDimT>>>(input, input_T, in_rows, in_cols);
-
-                // ✅ weight gradient 계산
-                matmul_backward_weight<<<blocks, threads>>>(
-                    input_T, grad_out, grad_weight, in_rows, in_cols, out_cols);
+                matmul_backward_weight_shared<<<gridDimWeight, blockDim>>>(
+                    input, grad_out, grad_weight, out_rows, out_cols, in_cols);
 
                 gradients[op.param_id] = grad_weight;
-
-                cudaFree(input_T);
                 break;
             }
 
-
             case ADD: {
-                // grad_input = grad_out
                 add_backward_input<<<blocks, threads>>>(grad_out, grad_input, out_rows * out_cols);
 
-                // ✅ bias의 gradient도 계산
                 float* grad_bias = nullptr;
                 cudaMalloc(&grad_bias, out_cols * sizeof(float));
-
-                add_backward_bias<<<blocks, threads>>>(grad_out, grad_bias, out_rows, out_cols);
+                add_backward_bias<<<(out_cols + threads - 1) / threads, threads>>>(
+                    grad_out, grad_bias, out_rows, out_cols);
                 gradients[op.param_id] = grad_bias;
                 break;
             }
@@ -117,22 +104,50 @@ void run_graph_backward(
             case TANH:
                 activation_backward<<<blocks, threads>>>(
                     grad_out,
-                    tensors[op.output_id],  // output tensor (y)
+                    tensors[op.output_id],
                     grad_input,
                     out_rows,
                     out_cols,
-                    op.op_type              // 3=sigmoid, 2=relu, 4=tanh
+                    op.op_type
                 );
                 break;
+
+            case CONV2D: {
+                int B = op.extra_params.batch_size;
+                int H = op.extra_params.input_h;
+                int W = op.extra_params.input_w;
+                int KH = op.extra_params.kernel_h;
+                int KW = op.extra_params.kernel_w;
+                int OH = out_rows;
+                int OW = out_cols;
+
+                float* d_input = grad_input;
+                float* d_kernel = nullptr;
+                cudaMalloc(&d_kernel, KH * KW * sizeof(float));
+
+                dim3 blockDim(16, 16);
+                dim3 gridDimInput((W + 15) / 16, (H + 15) / 16, B);
+                conv2d_backward_input_kernel<<<gridDimInput, blockDim>>>(
+                    grad_out, param, d_input, B, H, W, KH, KW, OH, OW
+                );
+
+                dim3 gridDimWeight((KW + 15) / 16, (KH + 15) / 16);
+                conv2d_backward_kernel_kernel<<<gridDimWeight, blockDim>>>(
+                    input, grad_out, d_kernel, B, H, W, KH, KW, OH, OW
+                );
+
+                gradients[op.param_id] = d_kernel;
+                break;
+            }
+
             default:
                 std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;
                 break;
         }
 
-
         cudaDeviceSynchronize();
         gradients[op.input_id] = grad_input;
     }
 
-    std::cout << "??run_graph_backward finished.\n";
+    std::cout << "✅ run_graph_backward finished.\n";
 }
