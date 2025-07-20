@@ -39,7 +39,6 @@ class Sequential:
     def add(self, layer):
         if not isinstance(layer, Layer):
             raise ValueError("Only instances of Layer can be added.")
-
         if self._layers:
             prev = self._layers[-1]
             input_shape = prev.output_shape
@@ -50,7 +49,6 @@ class Sequential:
             layer.build(layer.input_shape)
         else:
             raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
-
         self._layers.append(layer)
         logger.info(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
 
@@ -66,15 +64,12 @@ class Sequential:
         for i, layer in enumerate(self._layers):
             if i == 0 and not layer.input_shape:
                 raise ValueError("첫 번째 레이어에 input_shape가 필요합니다.")
-
             current_shape = layer.compute_output_shape(current_shape)
             e_block, w, b, output_id, shape_map = layer.to_e_matrix(input_id)
-
             self.E_raw.extend(e_block)
             self.weights.update(w)
             self.biases.update(b)
             self.shapes.update(shape_map)
-
             input_id = output_id
 
         self.output_var = input_id
@@ -119,7 +114,14 @@ class Sequential:
         out_host = np.zeros(out_shape, dtype=np.float32)
 
         try:
-            ge.run_graph_cuda(E, tensor_ptrs, self.shapes, out_host, final_output_id=self.output_var)
+            ge.run_graph_cuda(
+                E,
+                tensor_ptrs,
+                self.shapes,
+                out_host,
+                final_output_id=self.output_var,
+                batch_size=input_data.shape[0]  # ✅ 여기 추가
+            )
         except Exception as e:
             raise RuntimeError(f"CUDA forward execution failed: {e}")
 
@@ -145,7 +147,15 @@ class Sequential:
                 self.grad_buffers[out_id] = grad_buf
 
         try:
-            grad_map = ge.run_graph_backward(self.E, tensor_ptrs, self.shapes, grad_ptrs, final_output_id=self.output_var)
+            grad_map = ge.run_graph_backward(
+            self.E,
+            tensor_ptrs,
+            self.shapes,
+            grad_ptrs,
+            self.output_var,
+            batch_size=x.shape[0]   # ✅ 이 줄 추가
+        )
+
         except Exception as e:
             raise RuntimeError(f"CUDA backward execution failed: {e}")
 
@@ -206,12 +216,9 @@ class Sequential:
                 logger.info(f"[Batch 완료] 평균 손실: {avg_loss:.6f}")
 
     def predict(self, x: np.ndarray) -> np.ndarray:
-        """
-        추론 전용 메서드. 입력 데이터를 받아 forward pass 결과를 반환합니다.
-        """
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
-        
+
         x_cp = cp.asarray(x, dtype=cp.float32)
         output = self.run_forward(x_cp)
         return output

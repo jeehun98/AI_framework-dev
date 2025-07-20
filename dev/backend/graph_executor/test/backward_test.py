@@ -88,7 +88,7 @@ for name, ptr in grad_result.items():
     print(f"{name}: {ptr}")
 
 print("\n✅ 역전파 결과 (gradient 내용):")
-
+    
 # 🔹 출력 우선순위: W, b, x0, 그 외
 preferred_order = ["W", "b", "x0", "linear", "out", "act_out"]
 
