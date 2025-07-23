@@ -20,8 +20,12 @@ OW = W - KW + 1             # Output Width
 print(f"[INFO] Output shape: ({B}, {OH}, {OW})")
 
 # 입력 데이터
-x_np = np.random.rand(B, H, W).astype(np.float32)
-K_np = np.ones((KH, KW), dtype=np.float32)  # 간단한 평균 필터
+x_np = np.array([[[1, 2, 3, 4, 5],
+                  [6, 7, 8, 9, 10],
+                  [11,12,13,14,15],
+                  [16,17,18,19,20],
+                  [21,22,23,24,25]]], dtype=np.float32)
+K_np = np.ones((3, 3), dtype=np.float32)
 
 # GPU로 전송
 x = cp.asarray(x_np)

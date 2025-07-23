@@ -11,7 +11,7 @@ from dev.backend.backend_ops.losses import losses as cuda_losses
 from dev.backend.backend_ops.optimizers import optimizers
 from dev import metrics
 
-sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor")
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
 
 # CUDA 연동 Pybind11 모듈
 import graph_executor as ge
@@ -62,9 +62,16 @@ class Sequential:
         current_shape = self.input_shape
 
         for i, layer in enumerate(self._layers):
-            if i == 0 and not layer.input_shape:
-                raise ValueError("첫 번째 레이어에 input_shape가 필요합니다.")
-            current_shape = layer.compute_output_shape(current_shape)
+            if i == 0:
+                if not layer.input_shape:
+                    raise ValueError("첫 번째 레이어에 input_shape가 필요합니다.")
+                layer.build(layer.input_shape)
+                current_shape = layer.compute_output_shape(layer.input_shape)
+            else:
+                layer.input_shape = current_shape
+                layer.build(current_shape)
+                current_shape = layer.compute_output_shape(current_shape)
+
             e_block, w, b, output_id, shape_map = layer.to_e_matrix(input_id)
             self.E_raw.extend(e_block)
             self.weights.update(w)
@@ -80,13 +87,25 @@ class Sequential:
         self.metric_fn = metrics.get(p_metrics)
 
         self.built = True
-        np.savez(GRAPH_FILE, E=self.E_raw, weights=self.weights, biases=self.biases)
 
     def run_forward(self, input_data: np.ndarray):
+
         try:
-            E = [OpStruct(int(op["op_type"]), str(op["input_id"]),
-                          str(op["param_id"]) if op["param_id"] else "",
-                          str(op["output_id"])) for op in self.E_raw]
+            E = []
+            for op in self.E_raw:
+                extra = op.get("extra_params", ge.OpExtraParams())
+                param_id = op.get("param_id", "")
+                if param_id is None:
+                    param_id = ""
+                node = OpStruct(
+                    int(op["op_type"]),
+                    str(op["input_id"]),
+                    str(param_id),
+                    str(op["output_id"]),
+                    extra
+                )
+                E.append(node)
+
         except Exception as e:
             raise RuntimeError(f"연산 구조 생성 실패: {e}")
 

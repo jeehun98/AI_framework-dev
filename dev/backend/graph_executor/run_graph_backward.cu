@@ -19,6 +19,13 @@ void run_graph_backward(
     const std::string& final_output_id,
     int batch_size)
 {
+    std::cout << "=== [DEBUG] All backward ops ===\n";
+    for (const auto& op : E) {
+        std::cout << "op_type=" << op.op_type << " input=" << op.input_id
+                << " param=" << op.param_id << " output=" << op.output_id << "\n";
+    }
+
+
     int total_size = shapes[final_output_id].rows * shapes[final_output_id].cols;
     float* grad_output = nullptr;
     cudaMalloc(&grad_output, total_size * sizeof(float));
@@ -35,13 +42,12 @@ void run_graph_backward(
 
     if (gradients.count(final_output_id) == 0 || gradients[final_output_id] == nullptr) {
         gradients[final_output_id] = grad_output;
-        std::cout << "[INFO] Manually inserted grad_output to gradients[" << final_output_id << "]\n";
+        // std::cout << "[INFO] Manually inserted grad_output to gradients[" << final_output_id << "]\n";
     }
 
     for (auto it = E.rbegin(); it != E.rend(); ++it) {
         const OpStruct& op = *it;
-        std::cout << "[BACKWARD] op_type=" << op.op_type << ", input=" << op.input_id
-                  << ", param=" << op.param_id << ", output=" << op.output_id << std::endl;
+        // std::cout << "[BACKWARD] op_type=" << op.op_type << ", input=" << op.input_id << ", param=" << op.param_id << ", output=" << op.output_id << std::endl;
 
         float* input = tensors[op.input_id];
         float* param = (!op.param_id.empty() && tensors.count(op.param_id)) ? tensors[op.param_id] : nullptr;
@@ -111,34 +117,54 @@ void run_graph_backward(
                     op.op_type
                 );
                 break;
+            
+            case FLATTEN: {
+                // Flatten의 역전파는 reshape만 하므로 grad_out 그대로 사용
+                gradients[op.input_id] = grad_out;
+
+                // grad_input에 따로 메모리 할당할 필요 없음
+                cudaFree(grad_input);  // 메모리 누수 방지 (이미 할당된 grad_input은 필요 없음)
+                break;
+            }
+
 
             case CONV2D: {
+                std::cout << "[DEBUG] Entering CONV2D backward for param: " << op.param_id << std::endl;
+
                 int B = op.extra_params.batch_size;
                 int H = op.extra_params.input_h;
                 int W = op.extra_params.input_w;
                 int KH = op.extra_params.kernel_h;
                 int KW = op.extra_params.kernel_w;
+                int IC = op.extra_params.input_c;
+                int OC = op.extra_params.output_c;
                 int OH = out_rows;
                 int OW = out_cols;
 
                 float* d_input = grad_input;
-                float* d_kernel = nullptr;
-                cudaMalloc(&d_kernel, KH * KW * sizeof(float));
 
+                // ✅ 커널 메모리 크기 확장
+                float* d_kernel = nullptr;
+                cudaMalloc(&d_kernel, OC * IC * KH * KW * sizeof(float));
+
+                // ✅ backward input 커널
                 dim3 blockDim(16, 16);
                 dim3 gridDimInput((W + 15) / 16, (H + 15) / 16, B);
                 conv2d_backward_input_kernel<<<gridDimInput, blockDim>>>(
-                    grad_out, param, d_input, B, H, W, KH, KW, OH, OW
+                    grad_out, param, d_input, B, H, W, IC, OC, KH, KW, OH, OW
                 );
 
+                // ✅ backward weight 커널
                 dim3 gridDimWeight((KW + 15) / 16, (KH + 15) / 16);
                 conv2d_backward_kernel_kernel<<<gridDimWeight, blockDim>>>(
-                    input, grad_out, d_kernel, B, H, W, KH, KW, OH, OW
+                    input, grad_out, d_kernel, B, H, W, IC, OC, KH, KW, OH, OW
                 );
 
+                // ✅ 결과 저장
                 gradients[op.param_id] = d_kernel;
                 break;
             }
+
 
             default:
                 std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;

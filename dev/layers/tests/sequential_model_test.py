@@ -13,7 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "build", "lib.win-amd64-
 # AI framework 루트 경로 추가
 sys.path.insert(0, os.path.abspath("C:/Users/owner/Desktop/AI_framework-dev"))
 
-sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor")
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
 import graph_executor as ge  # Pybind11 모듈
 
 

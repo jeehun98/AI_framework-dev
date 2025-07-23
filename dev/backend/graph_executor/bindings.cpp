@@ -48,7 +48,7 @@ py::dict run_graph_backward_entry(
 
     for (const auto& kv : gradient_ptrs) {
         gradients[kv.first] = reinterpret_cast<float*>(kv.second);
-        std::cout << "[DEBUG] gradients[" << kv.first << "] = " << kv.second << std::endl;
+        //std::cout << "[DEBUG] gradients[" << kv.first << "] = " << kv.second << std::endl;
     }
 
     run_graph_backward(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), gradients, final_output_id, batch_size);
