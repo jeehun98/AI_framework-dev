@@ -74,6 +74,8 @@ class Activation(Layer):
     def to_e_matrix(self, input_id):
         output_id = f"{self.name}_out"
 
+        extra = ge.OpExtraParams()
+
         if self.activation_name not in ACTIVATION_OP_TYPES:
             raise ValueError(f"[ERROR] Unsupported activation: {self.activation_name}")
 
@@ -83,7 +85,8 @@ class Activation(Layer):
             "op_type": op_type,
             "input_id": input_id,
             "param_id": "",  # ❗️ Pybind11은 str 타입만 받음
-            "output_id": output_id
+            "output_id": output_id,
+            "extra_params": extra
         }]
 
         # ✅ input_shape 검증

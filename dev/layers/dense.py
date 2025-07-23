@@ -89,24 +89,37 @@ class Dense(Layer):
         return (input_shape[0], self.units)
 
     def to_e_matrix(self, input_id):
+
+        if self.input_shape is None:
+            raise ValueError("[Dense] input_shape is None. Did you forget to call build()?")
+
+        if self.output_shape is None:
+            self.output_shape = self.compute_output_shape(self.input_shape)
+
+
         weight_id = f"{self.name}_W"
         bias_id = f"{self.name}_b"
         linear_out_id = f"{self.name}_linear"
         output_id = f"{self.name}_out"
         preact_id = f"{self.name}_preact"
 
+        extra = ge.OpExtraParams()
+
+
         e_block = [
             {
                 "op_type": 0,  # matmul
                 "input_id": input_id,
                 "param_id": weight_id,
-                "output_id": linear_out_id
+                "output_id": linear_out_id,
+                "extra_params": extra
             },
             {
                 "op_type": 1,  # add
                 "input_id": linear_out_id,
                 "param_id": bias_id,
-                "output_id": preact_id if self.activation else output_id
+                "output_id": preact_id if self.activation else output_id,
+                "extra_params": extra
             }
         ]
 
@@ -125,7 +138,8 @@ class Dense(Layer):
                 "op_type": activation_map[activation_name],
                 "input_id": preact_id,
                 "param_id": "",  # 반드시 빈 문자열
-                "output_id": output_id
+                "output_id": output_id,
+                "extra_params": extra
             })
 
         # ✅ 가중치 및 편향
@@ -146,3 +160,16 @@ class Dense(Layer):
         shape_map[output_id] = Shape(int(self.input_shape[0]), int(self.units))  # 최종 출력 포함
 
         return e_block, weights, biases, output_id, shape_map
+
+
+    def compute_output_shape(self, input_shape):
+        """
+        입력 shape을 받아 출력 shape을 계산합니다.
+        input_shape: (batch_size, input_dim)
+        return: (batch_size, units)
+        """
+        if input_shape is None or len(input_shape) != 2:
+            raise ValueError(f"Dense layer expects input shape to be 2D (batch_size, input_dim), got {input_shape}")
+        
+        batch_size, _ = input_shape
+        return (batch_size, self.units)

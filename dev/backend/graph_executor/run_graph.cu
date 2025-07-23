@@ -56,10 +56,7 @@ void run_graph_cuda(
         int threads = 256;
         int blocks = (total + threads - 1) / threads;
 
-        std::cout << "\n=== [CUDA EXECUTE] op_type: " << op.op_type
-                  << " | input: " << op.input_id
-                  << " | param: " << op.param_id
-                  << " | output: " << op.output_id << " ===\n";
+        // std::cout << "\n=== [CUDA EXECUTE] op_type: " << op.op_type << " | input: " << op.input_id << " | param: " << op.param_id << " | output: " << op.output_id << " ===\n";
 
         for (int b = 0; b < batch_size; ++b) {
             float* input_b = input + b * in_shape.rows * in_shape.cols;
@@ -112,20 +109,26 @@ void run_graph_cuda(
                     int PW = op.extra_params.padding_w;
                     int IH = op.extra_params.input_h;
                     int IW = op.extra_params.input_w;
-                    int OH = (IH + 2 * PH - KH) / SH + 1;
-                    int OW = (IW + 2 * PW - KW) / SW + 1;
+                    int IC = op.extra_params.input_c;
+                    int OC = op.extra_params.output_c;
+                    int OH = shapes[op.output_id].rows;
+                    int OW = shapes[op.output_id].cols / OC;
 
                     dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
                     dim3 gridDim((OW + TILE_WIDTH - 1) / TILE_WIDTH,
                                 (OH + TILE_WIDTH - 1) / TILE_WIDTH,
-                                batch_size);
+                                batch_size * OC);
 
                     conv2d_forward_kernel<<<gridDim, blockDim>>>(
                         input, param, output,
                         batch_size, IH, IW,
-                        KH, KW, OH, OW);
+                        IC, OC,
+                        KH, KW,
+                        OH, OW
+                    );
                     break;
                 }
+
 
 
                 default:
