@@ -1,130 +1,191 @@
 import cupy as cp
 from dev.layers.layer import Layer
+import numpy as np
+
+import sys
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor")
+import graph_executor as ge
+
+Shape = ge.Shape
 
 class Conv2D(Layer):
-    def __init__(self, filters, kernel_size, activation=None, input_shape=None, name=None,
-                 initializer='he', use_backend_init=False, **kwargs):
-        super().__init__(name=name, **kwargs)
+    def __init__(self, filters, kernel_size, strides=(1, 1), padding='valid',
+                 activation=None, input_shape=None, name=None, initializer='he', **kwargs):
+        super().__init__(name, **kwargs)
+        self.layer_name = "conv2d"
         self.filters = filters
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.kernel_size = kernel_size  # (kh, kw)
+        self.strides = strides          # (sh, sw)
+        self.padding = padding.lower()
         self.activation = activation
         self.initializer = initializer
-        self.use_backend_init = use_backend_init
+        self.input_shape = input_shape  # (batch, h, w, c)
 
-        self.input_shape = input_shape
-        self.output_shape = None
+        self.name = name or f"conv2d_{id(self)}"
+        self.input_var = None
+        self.weight_var = f"{self.name}_W"
+        self.bias_var = f"{self.name}_b"
+        self.output_var = f"{self.name}_out"
 
         self.weights = None
         self.bias = None
-        self.last_input = None
-        self.last_z = None
-        self.dW = None
-        self.db = None
-
-        # ✅ GraphCompiler용 인덱스
-        self.name = name or f"conv2d_{id(self)}"
-        self.input_idx = None
-        self.output_idx = None
 
     def build(self, input_shape):
+
         if len(input_shape) == 3:
-            in_h, in_w, in_channels = input_shape
-        elif len(input_shape) == 4:
-            _, in_h, in_w, in_channels = input_shape
-        else:
-            raise ValueError(f"Conv2D input_shape 오류: {input_shape}")
+            input_shape = (*input_shape, 1)  # (b, h, w) → (b, h, w, 1)
+        
+        if len(input_shape) != 4:
+            raise ValueError(f"[Conv2D] build: expected input shape (b, h, w, c), got {input_shape}")
 
+
+
+        self.input_shape = input_shape  # (batch, h, w, c)
+        if len(input_shape) != 4:
+            raise ValueError(f"[Conv2D] build: expected input shape (b, h, w, c), got {input_shape}")
+
+        b, in_h, in_w, in_c = input_shape
         kh, kw = self.kernel_size
-        out_channels = self.filters
+        sh, sw = self.strides
 
-        self.output_shape = (None, in_h - kh + 1, in_w - kw + 1, out_channels)
-
-        if self.use_backend_init:
-            return  # ✅ backend에서 초기화
-
-        fan_in = kh * kw * in_channels
-        if self.initializer == 'he':
-            stddev = cp.sqrt(2. / fan_in)
-            self.weights = cp.random.randn(kh, kw, in_channels, out_channels).astype(cp.float32) * stddev
-        elif self.initializer == 'xavier':
-            stddev = cp.sqrt(1. / fan_in)
-            self.weights = cp.random.randn(kh, kw, in_channels, out_channels).astype(cp.float32) * stddev
-        elif self.initializer == 'zeros':
-            self.weights = cp.zeros((kh, kw, in_channels, out_channels), dtype=cp.float32)
-        elif self.initializer == 'ones':
-            self.weights = cp.ones((kh, kw, in_channels, out_channels), dtype=cp.float32)
+        if self.padding == 'valid':
+            self.out_h = (in_h - kh) // sh + 1
+            self.out_w = (in_w - kw) // sw + 1
+        elif self.padding == 'same':
+            self.out_h = in_h // sh
+            self.out_w = in_w // sw
         else:
-            raise ValueError(f"Unknown initializer: {self.initializer}")
+            raise ValueError(f"Unsupported padding: {self.padding}")
 
-        self.bias = cp.zeros((out_channels,), dtype=cp.float32)
+        # 체크
+        if self.out_h <= 0 or self.out_w <= 0:
+            raise ValueError(f"[Conv2D] Invalid output shape: out_h={self.out_h}, out_w={self.out_w}")
 
-    def call(self, input_data):
-        input_data = cp.asarray(input_data, dtype=cp.float32)
-        if self.weights is None:
-            self.build(input_data.shape)
+        self.output_shape = (b, self.out_h, self.out_w, self.filters)
 
-        self.last_input = input_data
-        batch, in_h, in_w, in_channels = input_data.shape
-        kh, kw, _, out_channels = self.weights.shape
-        out_h = in_h - kh + 1
-        out_w = in_w - kw + 1
+        # 가중치 초기화
+        if self.initializer == 'ones':
+            self.weights = cp.ones((self.filters, in_c, kh, kw), dtype=cp.float32)
+        elif self.initializer == 'zeros':
+            self.weights = cp.zeros((self.filters, in_c, kh, kw), dtype=cp.float32)
+        else:
+            fan_in = in_c * kh * kw
+            limit = cp.sqrt(2 / fan_in)
+            self.weights = cp.random.randn(self.filters, in_c, kh, kw).astype(cp.float32) * limit
 
-        output = cp.zeros((batch, out_h, out_w, out_channels), dtype=cp.float32)
+        self.bias = cp.zeros((self.filters,), dtype=cp.float32)
 
-        for b in range(batch):
-            for h in range(out_h):
-                for w in range(out_w):
-                    for c in range(out_channels):
-                        region = input_data[b, h:h+kh, w:w+kw, :]
-                        output[b, h, w, c] = cp.sum(region * self.weights[:, :, :, c]) + self.bias[c]
 
-        self.last_z = output
-
-        if self.activation:
-            output = self._apply_activation(output)
-
-        return output
+    def call(self, x):
+        raise NotImplementedError("Forward pass is done by CUDA backend")
 
     def backward(self, grad_output):
-        raise NotImplementedError("Conv2D.backward()는 아직 구현되지 않았습니다.")
+        raise NotImplementedError("Backward pass is handled by CUDA backend")
 
     def update(self, optimizer):
-        if self.dW is not None and self.db is not None:
-            optimizer.update(self.weights, self.dW, self.bias, self.db)
+        optimizer.update(self.weights, self.dW, self.bias, self.db)
 
-    def _apply_activation(self, z):
-        if self.activation is None:
-            return z
-        return self.activation(z)
-
-    # ✅ GraphCompiler용 forward_matrix 정의
-    def forward_matrix(self, input_name="input"):
-        if self.use_backend_init:
-            # Conv2D weights shape: (kh, kw, in_channels, out_channels)
-            _, in_h, in_w, in_channels = self.input_shape
-            kh, kw = self.kernel_size
-            return {
-                "input_idx": self.input_idx,
-                "output_idx": self.output_idx,
-                "op_type": 20,  # Conv2D 연산 코드
-                "W_shape": (kh, kw, in_channels, self.filters),
-                "b_shape": (self.filters,),
-                "W": None,
-                "b": None
-            }
-        else:
-            return {
-                "input_idx": self.input_idx,
-                "output_idx": self.output_idx,
-                "op_type": 20,  # Conv2D 연산 코드
-                "W": self.weights,
-                "b": self.bias
-            }
-        
     def compute_output_shape(self, input_shape):
-        _, in_h, in_w, in_channels = input_shape
+        """
+        입력 shape: (batch, height, width, channels)
+        출력 shape: (batch, out_h, out_w, filters)
+        """
+        batch, in_h, in_w, in_c = input_shape
         kh, kw = self.kernel_size
-        out_channels = self.filters
-        out_h = in_h - kh + 1
-        out_w = in_w - kw + 1
-        return (None, out_h, out_w, out_channels)
+        sh, sw = self.strides
+
+        if self.padding == 'valid':
+            out_h = (in_h - kh) // sh + 1
+            out_w = (in_w - kw) // sw + 1
+        elif self.padding == 'same':
+            out_h = int(np.ceil(in_h / sh))
+            out_w = int(np.ceil(in_w / sw))
+        else:
+            raise ValueError(f"Unsupported padding: {self.padding}")
+
+        return (batch, out_h, out_w, self.filters)
+
+    def to_e_matrix(self, input_id):
+        weight_id = f"{self.name}_W"
+        bias_id = f"{self.name}_b"
+        conv_out_id = f"{self.name}_conv"
+        output_id = f"{self.name}_out"
+        preact_id = f"{self.name}_preact"
+
+        extra = ge.OpExtraParams()
+        extra.batch_size = self.input_shape[0]
+        extra.input_h = self.input_shape[1]
+        extra.input_w = self.input_shape[2]
+        extra.kernel_h = self.kernel_size[0]
+        extra.kernel_w = self.kernel_size[1]
+        extra.input_c = self.input_shape[3]       # ✅ 추가
+        extra.output_c = self.filters    
+
+        # ✅ 연산 정의
+        e_block = [
+            {
+                "op_type": 6,  # conv2d
+                "input_id": input_id,
+                "param_id": weight_id,
+                "output_id": conv_out_id,
+                "extra_params": extra
+            },
+            {
+                "op_type": 1,  # bias add
+                "input_id": conv_out_id,
+                "param_id": bias_id,
+                "output_id": preact_id if self.activation else output_id
+            }
+        ]
+
+        # ✅ 활성화 함수 (선택적)
+        if self.activation:
+            activation_name = getattr(self.activation, "__name__", str(self.activation)).lower()
+            activation_map = {"relu": 2, "sigmoid": 3, "tanh": 4}
+            if activation_name not in activation_map:
+                raise ValueError(f"Unsupported activation: {activation_name}")
+            e_block.append({
+                "op_type": activation_map[activation_name],
+                "input_id": preact_id,
+                "param_id": "",
+                "output_id": output_id
+            })
+
+        # ✅ Shape 변환 (4D → 2D)
+        b, in_h, in_w, in_c = self.input_shape
+        kh, kw = self.kernel_size
+        out_h = self.out_h
+        out_w = self.out_w
+
+        shape_map = {
+            input_id: Shape(b, in_c * in_h * in_w),
+            weight_id: Shape(self.filters, in_c * kh * kw),
+            bias_id: Shape(1, self.filters),
+            conv_out_id: Shape(b, self.filters * out_h * out_w)
+        }
+
+        if self.activation:
+            shape_map[preact_id] = Shape(b, self.filters * out_h * out_w)
+
+        shape_map[output_id] = Shape(b, self.filters * out_h * out_w)
+
+        weights = {weight_id: self.weights.reshape(self.filters, -1)}
+        biases = {bias_id: self.bias.reshape(1, -1)}
+
+        return e_block, weights, biases, output_id, shape_map
+
+    def compute_output_shape(self, input_shape):
+        b, in_h, in_w, in_c = input_shape
+        kh, kw = self.kernel_size
+        sh, sw = self.strides
+
+        if self.padding == 'valid':
+            out_h = (in_h - kh) // sh + 1
+            out_w = (in_w - kw) // sw + 1
+        elif self.padding == 'same':
+            out_h = in_h // sh
+            out_w = in_w // sw
+        else:
+            raise ValueError(f"[Conv2D] Unknown padding: {self.padding}")
+
+        return (b, out_h, out_w, self.filters)

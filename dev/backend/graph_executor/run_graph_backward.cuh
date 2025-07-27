@@ -10,4 +10,5 @@ void run_graph_backward(
     std::unordered_map<std::string, float*>& tensors,
     std::unordered_map<std::string, Shape>& shapes,
     std::unordered_map<std::string, float*>& gradients,
-    const std::string& final_output_id);
+    const std::string& final_output_id,
+    int batch_size);  // ✅ 이 줄도 반드시 추가

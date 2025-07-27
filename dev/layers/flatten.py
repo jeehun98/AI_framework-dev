@@ -2,6 +2,13 @@ import numpy as np
 import cupy as cp
 from dev.layers.layer import Layer
 
+import sys
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
+import graph_executor as ge  # Pybind11 모듈
+
+# graph_executor에서 정의된 Shape 사용
+Shape = ge.Shape
+
 class Flatten(Layer):
     def __init__(self, input_shape=None, name=None, use_backend_init=False, **kwargs):
         super().__init__(name=name, **kwargs)
@@ -42,13 +49,9 @@ class Flatten(Layer):
         self.output_shape = inputs.shape
         return inputs
 
-    def compute_output_shape(self, input_shape):
-        return (input_shape[0], int(np.prod(input_shape[1:])))
-
     def build(self, input_shape):
-        flattened_dim = int(np.prod(input_shape[1:])) if len(input_shape) > 1 else input_shape[0]
         self.input_shape = input_shape
-        self.output_shape = (1, flattened_dim)
+        self.output_shape = self.compute_output_shape(input_shape)
         super().build(input_shape)
 
     def get_weights(self):
@@ -57,17 +60,37 @@ class Flatten(Layer):
     def backward(self, grad_output):
         return grad_output.reshape(self.input_shape)
 
-    # ✅ Sequential 내부 E 행렬용 연산 정의
     def to_e_matrix(self, input_id):
-        """
-        Flatten 연산: 차원만 변형하므로 W, b는 없음
-        """
-        output_id = f"{self.name}_out"
+        if self.input_shape is None:
+            raise ValueError("[Flatten] input_shape is None. Did you forget to call build()?")
+
+        # ⛑ output_shape이 None이면 compute_output_shape로 계산
+        if self.output_shape is None:
+            self.output_shape = self.compute_output_shape(self.input_shape)
+
+        output_id = self.output_var
+        extra = ge.OpExtraParams()
+
         e_block = [{
             "op_type": 5,  # Flatten
             "input_id": input_id,
             "param_id": None,
-            "output_id": output_id
+            "output_id": output_id,
+            "extra_params": extra
         }]
 
-        return e_block, {}, {}, output_id
+        input_rows = self.input_shape[0]
+        input_cols = int(np.prod(self.input_shape[1:]))
+        output_rows, output_cols = self.output_shape
+
+        shape_map = {
+            input_id: ge.Shape(input_rows, input_cols),
+            output_id: ge.Shape(output_rows, output_cols)
+        }
+
+        return e_block, {}, {}, output_id, shape_map
+
+
+    def compute_output_shape(self, input_shape):
+        b, h, w, c = input_shape
+        return (b, h * w * c)

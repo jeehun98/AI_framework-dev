@@ -1,162 +1,179 @@
-#include "run_graph_backward.cuh"
-#include "backward_kernels.cuh"
-#include "activation_backward.cuh"
-#include <cuda_runtime.h>
 #include <iostream>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <cuda_runtime.h>
+#include <unordered_map>
+
+#include "run_graph.cuh"
+#include "backward_kernels_optimized.cuh"
+#include "activation_backward.cuh"
+#include "cnn_kernels.cuh"
+#include "op_structs.cuh"
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,
     std::unordered_map<std::string, float*>& tensors,
     std::unordered_map<std::string, Shape>& shapes,
     std::unordered_map<std::string, float*>& gradients,
-    const std::string& final_output_id)
+    const std::string& final_output_id,
+    int batch_size)
 {
-    float* grad_output = gradients[final_output_id];
+    std::cout << "=== [DEBUG] All backward ops ===\n";
+    for (const auto& op : E) {
+        std::cout << "op_type=" << op.op_type << " input=" << op.input_id
+                << " param=" << op.param_id << " output=" << op.output_id << "\n";
+    }
 
-    for (int i = static_cast<int>(E.size()) - 1; i >= 0; --i) {
-        const OpStruct& op = E[i];
 
-        std::cout << "[BACKWARD] op_type=" << op.op_type
-                  << ", input=" << op.input_id
-                  << ", param=" << op.param_id
-                  << ", output=" << op.output_id << std::endl;
+    int total_size = shapes[final_output_id].rows * shapes[final_output_id].cols;
+    float* grad_output = nullptr;
+    cudaMalloc(&grad_output, total_size * sizeof(float));
 
-        float* input  = tensors[op.input_id];
-        float* output = tensors[op.output_id];
-        float* grad_out = nullptr;
+    if (grad_output == nullptr) {
+        std::cerr << "[ERROR] grad_output is nullptr for final_output_id = " << final_output_id << std::endl;
+        return;
+    }
 
-        if (gradients.find(op.output_id) != gradients.end()) {
-            grad_out = gradients[op.output_id];
-        } else if (op.output_id == final_output_id) {
-            grad_out = grad_output;
-            gradients[op.output_id] = grad_output;
-        } else {
-            std::cerr << "[Backward] Missing gradient for " << op.output_id << std::endl;
+    int threads = 256;
+    int blocks = (total_size + threads - 1) / threads;
+    fill_gradient<<<blocks, threads>>>(grad_output, total_size, 1.0f);
+    cudaDeviceSynchronize();
+
+    if (gradients.count(final_output_id) == 0 || gradients[final_output_id] == nullptr) {
+        gradients[final_output_id] = grad_output;
+        // std::cout << "[INFO] Manually inserted grad_output to gradients[" << final_output_id << "]\n";
+    }
+
+    for (auto it = E.rbegin(); it != E.rend(); ++it) {
+        const OpStruct& op = *it;
+        // std::cout << "[BACKWARD] op_type=" << op.op_type << ", input=" << op.input_id << ", param=" << op.param_id << ", output=" << op.output_id << std::endl;
+
+        float* input = tensors[op.input_id];
+        float* param = (!op.param_id.empty() && tensors.count(op.param_id)) ? tensors[op.param_id] : nullptr;
+        float* grad_out = gradients[op.output_id];
+
+        if (input == nullptr || grad_out == nullptr) {
+            std::cerr << "[NULL PTR] input/output/grad_out is nullptr at op_type " << op.op_type << std::endl;
             continue;
         }
 
-        if (!input || !output || !grad_out) {
-            std::cerr << "[NULL PTR] input/output/grad_out is nullptr at op_type " << op.op_type << std::endl;
+        Shape in_shape = shapes[op.input_id];
+        Shape out_shape = shapes[op.output_id];
+        int in_rows = in_shape.rows;
+        int in_cols = in_shape.cols;
+        int out_rows = out_shape.rows;
+        int out_cols = out_shape.cols;
+
+        float* grad_input = nullptr;
+        cudaError_t err = cudaMalloc(&grad_input, in_rows * in_cols * sizeof(float));
+        if (err != cudaSuccess) {
+            std::cerr << "[ERROR] cudaMalloc failed for grad_input: " << cudaGetErrorString(err) << std::endl;
+            continue;
         }
-
-        int rows = shapes[op.output_id].rows;
-        int cols = shapes[op.output_id].cols;
-
-        if (gradients.find(op.input_id) == gradients.end() || gradients[op.input_id] == nullptr) {
-            float* grad_in = nullptr;
-            cudaError_t err = cudaMalloc(&grad_in, rows * cols * sizeof(float));
-            if (err != cudaSuccess) {
-                std::cerr << "[ERROR] cudaMalloc failed for grad_input: " << cudaGetErrorString(err) << std::endl;
-                continue;
-            }
-            cudaMemset(grad_in, 0, rows * cols * sizeof(float));
-            gradients[op.input_id] = grad_in;
-        }
-
-        float* grad_input = gradients[op.input_id];
-        float* param = (!op.param_id.empty() && tensors.find(op.param_id) != tensors.end()) ? tensors[op.param_id] : nullptr;
 
         switch (op.op_type) {
             case MATMUL: {
-                Shape in_shape = shapes[op.input_id];
-                Shape w_shape  = shapes[op.param_id];
+                dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
+                dim3 gridDimInput((out_cols + TILE_WIDTH - 1) / TILE_WIDTH,
+                                  (out_rows + TILE_WIDTH - 1) / TILE_WIDTH);
 
-                std::cout << "[BACKWARD-MATMUL] Checking param_id: " << op.param_id << std::endl;
+                matmul_backward_input_shared<<<gridDimInput, blockDim>>>(
+                    grad_out, param, grad_input, out_rows, in_cols, out_cols);
 
-                if (param == nullptr) {
-                    std::cerr << "[ERROR] param (" << op.param_id << ") is nullptr!" << std::endl;
-                }
+                float* grad_weight = nullptr;
+                cudaMalloc(&grad_weight, in_cols * out_cols * sizeof(float));
 
-                if (gradients.find(op.param_id) == gradients.end() || gradients[op.param_id] == nullptr) {
-                    float* grad_W;
-                    cudaError_t err = cudaMalloc(&grad_W, w_shape.rows * w_shape.cols * sizeof(float));
-                    if (err != cudaSuccess) {
-                        std::cerr << "[ERROR] cudaMalloc failed for grad_W: " << cudaGetErrorString(err) << std::endl;
-                        continue;
-                    }
-                    cudaMemset(grad_W, 0, w_shape.rows * w_shape.cols * sizeof(float));
-                    gradients[op.param_id] = grad_W;
-                    std::cout << "[ALLOC] gradients[" << op.param_id << "] allocated." << std::endl;
-                }
+                dim3 gridDimWeight((out_cols + TILE_WIDTH - 1) / TILE_WIDTH,
+                                   (in_cols + TILE_WIDTH - 1) / TILE_WIDTH);
 
-                float* grad_W = gradients[op.param_id];
+                matmul_backward_weight_shared<<<gridDimWeight, blockDim>>>(
+                    input, grad_out, grad_weight, out_rows, out_cols, in_cols);
 
-                dim3 threads(16, 16);
-                dim3 grid1((in_shape.cols + 15) / 16, (in_shape.rows + 15) / 16);
-                dim3 grid2((w_shape.cols + 15) / 16, (w_shape.rows + 15) / 16);
-
-                matmul_backward_input<<<grid1, threads>>>(grad_out, param, grad_input, in_shape.rows, w_shape.cols, w_shape.rows);
-                cudaError_t err1 = cudaGetLastError();
-                if (err1 != cudaSuccess) {
-                    std::cerr << "[KERNEL ERROR] matmul_backward_input failed: " << cudaGetErrorString(err1) << std::endl;
-                }
-
-                matmul_backward_weight<<<grid2, threads>>>(input, grad_out, grad_W, in_shape.rows, in_shape.cols, w_shape.cols);
-                cudaError_t err2 = cudaGetLastError();
-                if (err2 != cudaSuccess) {
-                    std::cerr << "[KERNEL ERROR] matmul_backward_weight failed: " << cudaGetErrorString(err2) << std::endl;
-                }
-
+                gradients[op.param_id] = grad_weight;
                 break;
             }
 
             case ADD: {
-                cudaMemcpy(grad_input, grad_out, rows * cols * sizeof(float), cudaMemcpyDeviceToDevice);
-                cudaError_t err = cudaGetLastError();
-                if (err != cudaSuccess) {
-                    std::cerr << "[KERNEL ERROR] cudaMemcpy for ADD failed: " << cudaGetErrorString(err) << std::endl;
-                }
+                add_backward_input<<<blocks, threads>>>(grad_out, grad_input, out_rows * out_cols);
 
-                if (gradients.find(op.param_id) == gradients.end() || gradients[op.param_id] == nullptr) {
-                    Shape b_shape = shapes[op.param_id];
-                    float* grad_b;
-                    cudaError_t err = cudaMalloc(&grad_b, b_shape.rows * b_shape.cols * sizeof(float));
-                    if (err != cudaSuccess) {
-                        std::cerr << "[ERROR] cudaMalloc failed for grad_b: " << cudaGetErrorString(err) << std::endl;
-                        continue;
-                    }
-                    cudaMemset(grad_b, 0, b_shape.rows * b_shape.cols * sizeof(float));
-                    gradients[op.param_id] = grad_b;
-                }
-
-                float* grad_b = gradients[op.param_id];
-
-                int threads = 256;
-                int blocks = (cols + threads - 1) / threads;
-                add_backward_bias<<<blocks, threads>>>(grad_out, grad_b, rows, cols);
-                cudaError_t err2 = cudaGetLastError();
-                if (err2 != cudaSuccess) {
-                    std::cerr << "[KERNEL ERROR] add_backward_bias failed: " << cudaGetErrorString(err2) << std::endl;
-                }
-
+                float* grad_bias = nullptr;
+                cudaMalloc(&grad_bias, out_cols * sizeof(float));
+                add_backward_bias<<<(out_cols + threads - 1) / threads, threads>>>(
+                    grad_out, grad_bias, out_rows, out_cols);
+                gradients[op.param_id] = grad_bias;
                 break;
             }
 
             case SIGMOID:
             case RELU:
-            case TANH: {
-                int threads = 256;
-                int blocks = (rows * cols + threads - 1) / threads;
-                activation_backward<<<blocks, threads>>>(grad_out, output, grad_input, rows, cols, op.op_type);
-                cudaError_t err = cudaGetLastError();
-                if (err != cudaSuccess) {
-                    std::cerr << "[KERNEL ERROR] activation_backward failed: " << cudaGetErrorString(err) << std::endl;
-                }
+            case TANH:
+                activation_backward<<<blocks, threads>>>(
+                    grad_out,
+                    tensors[op.output_id],
+                    grad_input,
+                    out_rows,
+                    out_cols,
+                    op.op_type
+                );
+                break;
+            
+            case FLATTEN: {
+                // Flatten의 역전파는 reshape만 하므로 grad_out 그대로 사용
+                gradients[op.input_id] = grad_out;
+
+                // grad_input에 따로 메모리 할당할 필요 없음
+                cudaFree(grad_input);  // 메모리 누수 방지 (이미 할당된 grad_input은 필요 없음)
                 break;
             }
 
+
+            case CONV2D: {
+                std::cout << "[DEBUG] Entering CONV2D backward for param: " << op.param_id << std::endl;
+
+                int B = op.extra_params.batch_size;
+                int H = op.extra_params.input_h;
+                int W = op.extra_params.input_w;
+                int KH = op.extra_params.kernel_h;
+                int KW = op.extra_params.kernel_w;
+                int IC = op.extra_params.input_c;
+                int OC = op.extra_params.output_c;
+                int OH = out_rows;
+                int OW = out_cols;
+
+                float* d_input = grad_input;
+
+                // ✅ 커널 메모리 크기 확장
+                float* d_kernel = nullptr;
+                cudaMalloc(&d_kernel, OC * IC * KH * KW * sizeof(float));
+
+                // ✅ backward input 커널
+                dim3 blockDim(16, 16);
+                dim3 gridDimInput((W + 15) / 16, (H + 15) / 16, B);
+                conv2d_backward_input_kernel<<<gridDimInput, blockDim>>>(
+                    grad_out, param, d_input, B, H, W, IC, OC, KH, KW, OH, OW
+                );
+
+                // ✅ backward weight 커널
+                dim3 gridDimWeight((KW + 15) / 16, (KH + 15) / 16);
+                conv2d_backward_kernel_kernel<<<gridDimWeight, blockDim>>>(
+                    input, grad_out, d_kernel, B, H, W, IC, OC, KH, KW, OH, OW
+                );
+
+                // ✅ 결과 저장
+                gradients[op.param_id] = d_kernel;
+                break;
+            }
+
+
             default:
-                std::cerr << "[Backward] Unsupported op_type: " << op.op_type << std::endl;
+                std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;
                 break;
         }
 
-        float debug[2];
-        cudaMemcpy(debug, grad_input, sizeof(float) * 2, cudaMemcpyDeviceToHost);
-        std::cout << "Grad[" << op.input_id << "] = " << debug[0] << ", " << debug[1] << std::endl;
-
         cudaDeviceSynchronize();
+        gradients[op.input_id] = grad_input;
     }
 
-    if (gradients.find("W") != gradients.end())
-        std::cout << "[CHECK] gradients[\"W\"] exists.";
+    std::cout << "✅ run_graph_backward finished.\n";
 }
