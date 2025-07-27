@@ -1,5 +1,5 @@
 // matmul_shared_optimized_kernel.cu
-#include "matmul_shared_optimized.cuh"
+#include "matmul_shared_optimized_kernel.cuh"
 
 __global__ void matmul_shared_kernel_coalesced(const float* __restrict__ A,
                                                const float* __restrict__ B,
