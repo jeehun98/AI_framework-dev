@@ -16,7 +16,7 @@ sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_execu
 
 import numpy as np
 from dev.models.sequential import Sequential
-from dev.layers.conv2d import Conv2D
+from dev.layers.Conv2D import Conv2D
 from dev.layers.flatten import Flatten
 from dev.layers.dense import Dense
 from dev.layers.activation_layer import Activation
