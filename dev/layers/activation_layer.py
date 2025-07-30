@@ -6,10 +6,9 @@ import sys
 sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor")
 import graph_executor as ge  # Pybind11 모듈
 
-# graph_executor에서 정의된 Shape 사용
 Shape = ge.Shape
+OpExtraParams = ge.OpExtraParams
 
-# 연산 코드 매핑
 ACTIVATION_OP_TYPES = {
     'sigmoid': 2,
     'relu': 3,
@@ -20,6 +19,9 @@ class Activation(Layer):
     def __init__(self, activation, name=None, use_backend_init=True, **kwargs):
         super().__init__(name=name, **kwargs)
         self.activation_name = activation.lower()
+        if self.activation_name not in ACTIVATION_OP_TYPES:
+            raise ValueError(f"[Activation] Unsupported activation: {self.activation_name}")
+        
         self.trainable = False
         self.layer_name = "activation"
         self.last_z = None
@@ -30,14 +32,20 @@ class Activation(Layer):
         self.output_var = f"{self.name}_out"
         self.activations_cuda = load_activations_cuda()
 
-    def call(self, inputs):
-        if not isinstance(inputs, cp.ndarray):
-            inputs = cp.asarray(inputs, dtype=cp.float32)
-        else:
-            inputs = inputs.astype(cp.float32, copy=False)
+    def __call__(self, x):
+        if not self.built:
+            self.build(x.shape)
+        return self.call(x)
 
-        self.input_shape = inputs.shape
+    def build(self, input_shape):
+        self.input_shape = input_shape
+        self.output_shape = self.compute_output_shape(input_shape)
+        self.built = True
+
+    def call(self, inputs):
+        inputs = cp.asarray(inputs, dtype=cp.float32)
         self.last_z = inputs
+        self.input_shape = inputs.shape
 
         if cp.isnan(inputs).any() or cp.isinf(inputs).any():
             print("[WARNING] 입력에 NaN 또는 inf 포함됨")
@@ -45,62 +53,43 @@ class Activation(Layer):
         try:
             self.activations_cuda.apply_activation(inputs, self.activation_name)
         except Exception as e:
-            raise RuntimeError(f"[ERROR] CUDA 활성화 실패: {e}")
+            raise RuntimeError(f"[Activation] CUDA forward 실패: {e}")
         return inputs
 
     def backward(self, grad_output):
         if isinstance(grad_output, tuple):
             grad_output = grad_output[0]
 
-        if not isinstance(grad_output, cp.ndarray):
-            grad_output = cp.asarray(grad_output, dtype=cp.float32)
-        else:
-            grad_output = grad_output.astype(cp.float32, copy=False)
+        grad_output = cp.asarray(grad_output, dtype=cp.float32)
 
         try:
             self.activations_cuda.apply_activation_grad(self.last_z, grad_output, self.activation_name)
         except Exception as e:
-            raise RuntimeError(f"[ERROR] CUDA backward 실패: {e}")
+            raise RuntimeError(f"[Activation] CUDA backward 실패: {e}")
         return grad_output
 
     def compute_output_shape(self, input_shape):
         return input_shape
 
-    def build(self, input_shape):
-        self.input_shape = input_shape
-        self.output_shape = input_shape
-        super().build(input_shape)
-
     def to_e_matrix(self, input_id):
-        output_id = f"{self.name}_out"
+        if not self.input_shape or len(self.input_shape) != 2:
+            raise ValueError(f"[Activation] input_shape must be 2D (batch, features), got {self.input_shape}")
 
-        extra = ge.OpExtraParams()
-
-        if self.activation_name not in ACTIVATION_OP_TYPES:
-            raise ValueError(f"[ERROR] Unsupported activation: {self.activation_name}")
-
+        output_id = self.output_var
         op_type = ACTIVATION_OP_TYPES[self.activation_name]
+        extra = OpExtraParams()
 
         e_block = [{
             "op_type": op_type,
             "input_id": input_id,
-            "param_id": "",  # ❗️ Pybind11은 str 타입만 받음
+            "param_id": "",  # ❗ Pybind11 expects string
             "output_id": output_id,
             "extra_params": extra
         }]
 
-        # ✅ input_shape 검증
-        if (
-            not self.input_shape
-            or not isinstance(self.input_shape, (tuple, list))
-            or len(self.input_shape) != 2
-            or not all(isinstance(v, int) for v in self.input_shape)
-        ):
-            raise ValueError(f"[ERROR] input_shape가 잘못되었습니다: {self.input_shape}")
-
         shape_map = {
-            input_id: Shape(int(self.input_shape[0]), int(self.input_shape[1])),
-            output_id: Shape(int(self.input_shape[0]), int(self.input_shape[1]))
+            input_id: Shape(*map(int, self.input_shape)),
+            output_id: Shape(*map(int, self.input_shape))
         }
 
         return e_block, {}, {}, output_id, shape_map
