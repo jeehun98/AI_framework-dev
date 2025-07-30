@@ -9,6 +9,7 @@ import logging
 from dev.layers.layer import Layer
 from dev.backend.backend_ops.losses import losses as cuda_losses
 from dev.backend.backend_ops.optimizers import optimizers
+from dev.backend.backend_ops.metrics import metrics
 
 sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
 
@@ -83,7 +84,7 @@ class Sequential:
         self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
         self.loss_fn = cuda_losses.get(loss)
         self.loss_grad_fn = cuda_losses.get_grad(loss)
-        #self.metric_fn = metrics.get(p_metrics)
+        self.metric_fn = metrics.get(p_metrics)
 
         self.built = True
 

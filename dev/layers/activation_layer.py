@@ -30,7 +30,6 @@ class Activation(Layer):
 
         self.name = name or f"activation_{id(self)}"
         self.output_var = f"{self.name}_out"
-        self.activations_cuda = load_activations_cuda()
 
     def __call__(self, x):
         if not self.built:
