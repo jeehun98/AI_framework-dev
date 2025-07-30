@@ -1,5 +1,4 @@
 from dev.layers.layer import Layer
-from dev.decorators import check_layer_type
 
 
 class Model():
