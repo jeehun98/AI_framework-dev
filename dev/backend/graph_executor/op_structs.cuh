@@ -8,7 +8,14 @@ enum OpType {
     SIGMOID = 3,
     TANH = 4,
     FLATTEN = 5,
-    CONV2D = 6
+    CONV2D = 6,
+    LOSS = 7
+};
+
+enum OptimizerType {
+    SGD = 0,
+    MOMENTUM = 1,
+    ADAM = 2
 };
 
 struct Shape {

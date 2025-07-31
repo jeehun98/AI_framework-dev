@@ -22,16 +22,21 @@ void run_graph_backward(
     std::cout << "=== [DEBUG] All backward ops ===\n";
     for (const auto& op : E) {
         std::cout << "op_type=" << op.op_type << " input=" << op.input_id
-                << " param=" << op.param_id << " output=" << op.output_id << "\n";
+                  << " param=" << op.param_id << " output=" << op.output_id << "\n";
     }
 
+    // ✅ LOSS 노드가 있는 경우, 그 output_id를 grad 시작점으로 설정
+    std::string grad_start_id = final_output_id;
+    if (!E.empty() && E.back().op_type == LOSS) {
+        grad_start_id = E.back().output_id;
+    }
 
-    int total_size = shapes[final_output_id].rows * shapes[final_output_id].cols;
+    int total_size = shapes[grad_start_id].rows * shapes[grad_start_id].cols;
     float* grad_output = nullptr;
     cudaMalloc(&grad_output, total_size * sizeof(float));
 
     if (grad_output == nullptr) {
-        std::cerr << "[ERROR] grad_output is nullptr for final_output_id = " << final_output_id << std::endl;
+        std::cerr << "[ERROR] grad_output is nullptr for final_output_id = " << grad_start_id << std::endl;
         return;
     }
 
@@ -40,14 +45,13 @@ void run_graph_backward(
     fill_gradient<<<blocks, threads>>>(grad_output, total_size, 1.0f);
     cudaDeviceSynchronize();
 
-    if (gradients.count(final_output_id) == 0 || gradients[final_output_id] == nullptr) {
-        gradients[final_output_id] = grad_output;
-        // std::cout << "[INFO] Manually inserted grad_output to gradients[" << final_output_id << "]\n";
+    if (gradients.count(grad_start_id) == 0 || gradients[grad_start_id] == nullptr) {
+        gradients[grad_start_id] = grad_output;
     }
 
+    // ✅ 역방향 루프
     for (auto it = E.rbegin(); it != E.rend(); ++it) {
         const OpStruct& op = *it;
-        // std::cout << "[BACKWARD] op_type=" << op.op_type << ", input=" << op.input_id << ", param=" << op.param_id << ", output=" << op.output_id << std::endl;
 
         float* input = tensors[op.input_id];
         float* param = (!op.param_id.empty() && tensors.count(op.param_id)) ? tensors[op.param_id] : nullptr;
@@ -117,16 +121,13 @@ void run_graph_backward(
                     op.op_type
                 );
                 break;
-            
-            case FLATTEN: {
-                // Flatten의 역전파는 reshape만 하므로 grad_out 그대로 사용
-                gradients[op.input_id] = grad_out;
 
-                // grad_input에 따로 메모리 할당할 필요 없음
-                cudaFree(grad_input);  // 메모리 누수 방지 (이미 할당된 grad_input은 필요 없음)
+            case FLATTEN: {
+                // Flatten은 reshape일 뿐 → grad_out을 그대로 input에 전달
+                gradients[op.input_id] = grad_out;
+                cudaFree(grad_input);
                 break;
             }
-
 
             case CONV2D: {
                 std::cout << "[DEBUG] Entering CONV2D backward for param: " << op.param_id << std::endl;
@@ -143,36 +144,39 @@ void run_graph_backward(
 
                 float* d_input = grad_input;
 
-                // ✅ 커널 메모리 크기 확장
                 float* d_kernel = nullptr;
                 cudaMalloc(&d_kernel, OC * IC * KH * KW * sizeof(float));
 
-                // ✅ backward input 커널
                 dim3 blockDim(16, 16);
                 dim3 gridDimInput((W + 15) / 16, (H + 15) / 16, B);
                 conv2d_backward_input_kernel<<<gridDimInput, blockDim>>>(
-                    grad_out, param, d_input, B, H, W, IC, OC, KH, KW, OH, OW
-                );
+                    grad_out, param, d_input, B, H, W, IC, OC, KH, KW, OH, OW);
 
-                // ✅ backward weight 커널
                 dim3 gridDimWeight((KW + 15) / 16, (KH + 15) / 16);
                 conv2d_backward_kernel_kernel<<<gridDimWeight, blockDim>>>(
-                    input, grad_out, d_kernel, B, H, W, IC, OC, KH, KW, OH, OW
-                );
+                    input, grad_out, d_kernel, B, H, W, IC, OC, KH, KW, OH, OW);
 
-                // ✅ 결과 저장
                 gradients[op.param_id] = d_kernel;
                 break;
             }
 
+            case LOSS: {
+                // loss는 dL/dy_pred = 1.0f가 이미 grad_out으로 들어옴
+                gradients[op.input_id] = grad_out;
+                cudaFree(grad_input);  // grad_input은 불필요
+                break;
+            }
 
             default:
                 std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;
-                break;
+                cudaFree(grad_input);
+                continue;
         }
 
         cudaDeviceSynchronize();
-        gradients[op.input_id] = grad_input;
+        if (op.op_type != FLATTEN && op.op_type != LOSS) {
+            gradients[op.input_id] = grad_input;
+        }
     }
 
     std::cout << "✅ run_graph_backward finished.\n";

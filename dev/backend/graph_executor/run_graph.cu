@@ -129,7 +129,10 @@ void run_graph_cuda(
                     break;
                 }
 
-
+                case LOSS:
+                    // ✅ forward에서는 loss는 계산하지 않음
+                    // LOSS 연산은 run_graph_with_loss_cuda()에서 별도로 처리됨
+                    break;
 
                 default:
                     std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;

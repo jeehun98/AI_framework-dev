@@ -10,7 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "build", "lib.win-amd64-
 
 import cupy as cp
 import numpy as np
-from graph_executor import OpStruct, Shape, run_graph_cuda, run_graph_backward
+from graph_executor import OpStruct, Shape, run_graph_forward_entry, run_graph_backward_entry
 
 cp.cuda.Device(0).use()  # ✅ CUDA 디바이스 명시
 
