@@ -8,12 +8,13 @@
 
 #include "run_graph.cuh"
 #include "run_graph_backward.cuh"
-#include "op_structs.cuh"  // ✅ OpStruct, Shape, OpExtraParams 포함
+#include "run_graph_with_loss.cuh"  // ✅ loss 포함 forward
+#include "op_structs.cuh"           // ✅ OpStruct, Shape, OpExtraParams 포함
 
 namespace py = pybind11;
 
-// ✅ Forward 실행 함수
-void run_graph_entry(
+// ✅ Forward-only 실행 함수
+void run_graph_forward_entry(
     const std::vector<OpStruct>& E,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     const std::unordered_map<std::string, Shape>& shapes,
@@ -28,6 +29,32 @@ void run_graph_entry(
 
     float* out_ptr = out_host.mutable_data();
     run_graph_cuda(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), out_ptr, final_output_id, batch_size);
+}
+
+// ✅ Forward + Loss 계산 함수
+float run_graph_with_loss_entry(
+    const std::vector<OpStruct>& E,
+    const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
+    const std::unordered_map<std::string, Shape>& shapes,
+    const std::string& final_output_id,
+    const std::string& label_tensor_id,
+    const std::string& loss_type,
+    int batch_size)
+{
+    std::unordered_map<std::string, float*> tensors;
+    for (const auto& kv : tensor_ptrs) {
+        tensors[kv.first] = reinterpret_cast<float*>(kv.second);
+    }
+
+    return run_graph_with_loss_cuda(
+        E,
+        tensors,
+        const_cast<std::unordered_map<std::string, Shape>&>(shapes),
+        final_output_id,
+        label_tensor_id,
+        loss_type,
+        batch_size
+    );
 }
 
 // ✅ Backward 실행 함수
@@ -48,7 +75,6 @@ py::dict run_graph_backward_entry(
 
     for (const auto& kv : gradient_ptrs) {
         gradients[kv.first] = reinterpret_cast<float*>(kv.second);
-        //std::cout << "[DEBUG] gradients[" << kv.first << "] = " << kv.second << std::endl;
     }
 
     run_graph_backward(E, tensors, const_cast<std::unordered_map<std::string, Shape>&>(shapes), gradients, final_output_id, batch_size);
@@ -63,6 +89,7 @@ py::dict run_graph_backward_entry(
 
 // ✅ Pybind11 모듈 정의
 PYBIND11_MODULE(graph_executor, m) {
+    // 🔷 구조체 바인딩
     py::class_<OpExtraParams>(m, "OpExtraParams")
         .def(py::init<>())
         .def_readwrite("kernel_h", &OpExtraParams::kernel_h)
@@ -88,10 +115,11 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("SIGMOID", OpType::SIGMOID)
         .value("TANH", OpType::TANH)
         .value("FLATTEN", OpType::FLATTEN)
-        .value("CONV2D", OpType::CONV2D);
+        .value("CONV2D", OpType::CONV2D)
+        .value("LOSS", OpType::LOSS);  // ✅ 추가된 Loss
 
     py::class_<OpStruct>(m, "OpStruct")
-        .def(py::init<>())  // 기본 생성자
+        .def(py::init<>())
         .def(py::init<int, std::string, std::string, std::string, OpExtraParams>(),
              py::arg("op_type"),
              py::arg("input_id"),
@@ -109,19 +137,29 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("rows", &Shape::rows)
         .def_readwrite("cols", &Shape::cols);
 
-    m.def("run_graph_cuda", &run_graph_entry,
-          py::arg("E"),
-          py::arg("tensors"),
-          py::arg("shapes"),
-          py::arg("out_host"),
-          py::arg("final_output_id"),
-          py::arg("batch_size"));
+    // 🔷 함수 바인딩
+    m.def("run_graph_forward_entry", &run_graph_forward_entry,
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("out_host"),
+        py::arg("final_output_id"),
+        py::arg("batch_size"));
 
-    m.def("run_graph_backward", &run_graph_backward_entry,
-          py::arg("E"),
-          py::arg("tensors"),
-          py::arg("shapes"),
-          py::arg("gradients"),
-          py::arg("final_output_id"),
-          py::arg("batch_size"));
+    m.def("run_graph_with_loss_entry", &run_graph_with_loss_entry,
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("final_output_id"),
+        py::arg("label_tensor_id"),
+        py::arg("loss_type"),
+        py::arg("batch_size"));
+
+    m.def("run_graph_backward_entry", &run_graph_backward_entry,
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("gradients"),
+        py::arg("final_output_id"),
+        py::arg("batch_size"));
 }
