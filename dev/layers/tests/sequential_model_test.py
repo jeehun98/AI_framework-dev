@@ -18,7 +18,7 @@ import graph_executor as ge  # Pybind11 모듈
 
 
 # Graph Executor 모듈 임포트
-from graph_executor import OpStruct, Shape, run_graph_cuda
+from graph_executor import run_graph_forward_entry, run_graph_with_loss_entry, run_graph_backward_entry, OpStruct
 
 # Sequential 모델 관련 임포트
 from dev.models.sequential import Sequential
@@ -27,36 +27,39 @@ from dev.layers.activation_layer import Activation
 from dev.layers.flatten import Flatten
 
 
-def test_sequential_model_fit():
-    print("\n=== [TEST] Sequential 모델 학습 테스트 ===")
+def test_sequential_model_with_metrics():
+    print("\n=== [TEST] Sequential 모델 학습 + 평가 (metrics 포함) ===")
 
-    # 3. 입력 / 타겟 데이터 정의
-    x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)  # shape: (1, 2, 2)
-    y = np.array([[0.7, 0.1]], dtype=np.float32)  # shape: (1, 2)
+    # 1. 입력 / 타겟 데이터 정의 (1개 샘플, shape: (1, 1, 2, 2))
+    x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
+    y = np.array([[0.7, 0.1]], dtype=np.float32)
 
-    # 1. 모델 구성
+    # 2. 모델 구성
     model = Sequential(input_shape=(1, 2, 2))
     model.add(Flatten(input_shape=(1, 2, 2)))
     model.add(Dense(units=2, activation=None))
     model.add(Activation("sigmoid"))
 
-    # ✅ Dense 강제 초기화 (여기에 삽입)
+    # 3. Dense 초기화 강제 설정 (weight=0.5, bias=0.1)
     for layer in model._layers:
         if isinstance(layer, Dense):
             layer.weights = cp.ones_like(layer.weights) * 0.5
             layer.bias = cp.ones_like(layer.bias) * 0.1
-            layer.weights = cp.asarray(layer.weights)
-            layer.bias = cp.asarray(layer.bias)
-            print(f"[INFO] Dense layer `{layer.name}` 초기화 완료: weight=0.5, bias=0.1")
+            print(f"[INFO] Dense 초기화 완료: weights=0.5, bias=0.1")
 
-    # 2. 모델 컴파일
-    model.compile(optimizer="sgd", loss="mse")
+    # 4. 컴파일 (MSE 손실, metric도 MSE)
+    model.compile(optimizer="sgd", loss="mse", p_metrics="mse", learning_rate=0.01)
 
-    # 4. 학습
-    model.fit(x, y, epochs=3)
+    # 5. 학습
+    model.fit(x, y, epochs=10)
 
-    print("\n✅ 학습 완료")
+    # 6. 평가 (손실 + metric)
+    final_metric = model.evaluate(x, y)
+    print(f"\n📊 최종 평가 메트릭 (MSE): {final_metric:.6f}")
 
+    # 7. 예측 결과 확인
+    y_pred = model.predict(x)
+    print("🔍 예측 출력:\n", y_pred)
 
 if __name__ == "__main__":
-    test_sequential_model_fit()
+    test_sequential_model_with_metrics()

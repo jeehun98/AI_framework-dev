@@ -56,6 +56,7 @@ class Sequential:
         self.E_raw = []
         self.weights = {}
         self.biases = {}
+        self.metric_type = p_metrics
         self.shapes = {}
 
         input_id = INPUT_ID
@@ -81,12 +82,27 @@ class Sequential:
 
         self.output_var = input_id
 
-        self.optimizer = optimizers.get(optimizer, learning_rate=learning_rate)
-        self.loss_fn = cuda_losses.get(loss)
-        self.loss_grad_fn = cuda_losses.get_grad(loss)
-        self.metric_fn = metrics.get(p_metrics)
+        # ✅ CUDA 기반으로 전달된 문자열 저장 (실제 연산은 CUDA에서 처리)
+        self.loss_type = loss
+        self.optimizer_type = optimizer
+        self.learning_rate = learning_rate
 
         self.built = True
+
+        # compile() 끝부분에서 E_raw → E 변환 추가
+        self.E = []
+        for op in self.E_raw:
+            extra = op.get("extra_params", ge.OpExtraParams())
+            param_id = op.get("param_id", "") or ""
+            node = ge.OpStruct(
+                int(op["op_type"]),
+                str(op["input_id"]),
+                str(param_id),
+                str(op["output_id"]),
+                extra
+            )
+            self.E.append(node)
+
 
     def run_forward(self, input_data: np.ndarray):
 
@@ -133,7 +149,7 @@ class Sequential:
         out_host = np.zeros(out_shape, dtype=np.float32)
 
         try:
-            ge.run_graph_cuda(
+            ge.run_graph_forward_entry(
                 E,
                 tensor_ptrs,
                 self.shapes,
@@ -166,7 +182,7 @@ class Sequential:
                 self.grad_buffers[out_id] = grad_buf
 
         try:
-            grad_map = ge.run_graph_backward(
+            grad_map = ge.run_graph_backward_entry(
             self.E,
             tensor_ptrs,
             self.shapes,
@@ -192,9 +208,52 @@ class Sequential:
 
         return grads
 
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        if not self.built:
+            raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
+
+        x_cp = cp.asarray(x, dtype=cp.float32)
+        batch_size = x_cp.shape[0]
+
+        tensor_ptrs = {"input": x_cp.data.ptr}
+        self.tensor_map = {"input": x_cp.copy()}
+
+        for name, arr in self.weights.items():
+            cp_arr = cp.asarray(arr, dtype=cp.float32)
+            tensor_ptrs[name] = cp_arr.data.ptr
+            self.tensor_map[name] = cp_arr.copy()
+
+        for name, arr in self.biases.items():
+            cp_arr = cp.asarray(arr, dtype=cp.float32)
+            tensor_ptrs[name] = cp_arr.data.ptr
+            self.tensor_map[name] = cp_arr.copy()
+
+        for var, shape in self.shapes.items():
+            if var not in tensor_ptrs:
+                buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
+                tensor_ptrs[var] = buf.data.ptr
+                self.tensor_map[var] = buf
+
+        output_host = np.zeros((self.shapes[self.output_var].rows, self.shapes[self.output_var].cols), dtype=np.float32)
+
+        ge.run_graph_forward_entry(
+            E=self.E,
+            tensors=tensor_ptrs,
+            shapes=self.shapes,
+            out_host=output_host,
+            final_output_id=self.output_var,
+            batch_size=batch_size
+        )
+
+        return output_host
+
+
+
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
             batch_size = x.shape[0]
+
+        self.global_step = 1  # Adam 등에서 필요한 timestep
 
         for epoch in range(epochs):
             logger.info(f"\n=== [Epoch {epoch + 1}] 시작 ===")
@@ -202,42 +261,174 @@ class Sequential:
             x = x[indices]
             y = y[indices]
 
-            x = cp.asarray(x, dtype=cp.float32)
-            y = cp.asarray(y, dtype=cp.float32)
+            x_cp = cp.asarray(x, dtype=cp.float32)
+            y_cp = cp.asarray(y, dtype=cp.float32)
 
-            for i in range(0, x.shape[0], batch_size):
-                batch_x = x[i:i+batch_size]
-                batch_y = y[i:i+batch_size]
-                batch_loss_sum = 0
+            for i in range(0, x_cp.shape[0], batch_size):
+                batch_x = x_cp[i:i+batch_size]
+                batch_y = y_cp[i:i+batch_size]
+                batch_size_actual = batch_x.shape[0]
 
-                for j in range(batch_x.shape[0]):
-                    input_data = batch_x[j:j+1]
-                    target = batch_y[j:j+1]
+                tensor_ptrs = {"input": batch_x.data.ptr, "y_true": batch_y.data.ptr}
+                self.tensor_map = {"input": batch_x.copy(), "y_true": batch_y.copy()}
 
-                    y_pred = self.run_forward(input_data)
-                    loss = self.loss_fn(target, y_pred)
-                    #metric_value = self.metric_fn(target, y_pred)
-                    #logger.info(f"[INFO] 손실: {loss:.6f}, 메트릭: {metric_value:.6f}")
+                for name, arr in self.weights.items():
+                    cp_arr = cp.asarray(arr, dtype=cp.float32)
+                    tensor_ptrs[name] = cp_arr.data.ptr
+                    self.tensor_map[name] = cp_arr.copy()
 
-                    grad_y = self.loss_grad_fn(target, y_pred)
-                    grad_map = self.run_backward(input_data, grad_y)
+                for name, arr in self.biases.items():
+                    cp_arr = cp.asarray(arr, dtype=cp.float32)
+                    tensor_ptrs[name] = cp_arr.data.ptr
+                    self.tensor_map[name] = cp_arr.copy()
 
-                    for name in self.weights:
-                        if name in grad_map:
-                            self.weights[name] -= self.optimizer.lr * grad_map[name]
-                    for name in self.biases:
-                        if name in grad_map:
-                            self.biases[name] -= self.optimizer.lr * grad_map[name]
+                for var, shape in self.shapes.items():
+                    if var not in tensor_ptrs:
+                        buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
+                        tensor_ptrs[var] = buf.data.ptr
+                        self.tensor_map[var] = buf
 
-                    batch_loss_sum += loss
+                # ✅ 손실 및 forward 실행
+                loss_val = ge.run_graph_with_loss_entry(
+                    E=self.E,
+                    tensors=tensor_ptrs,
+                    shapes=self.shapes,
+                    final_output_id=self.output_var,
+                    label_tensor_id="y_true",
+                    loss_type=self.loss_type,
+                    batch_size=batch_size_actual
+                )
 
-                avg_loss = batch_loss_sum / batch_x.shape[0]
-                logger.info(f"[Batch 완료] 평균 손실: {avg_loss:.6f}")
+                # ✅ 역전파 실행
+                grad_ptrs = {self.output_var: 0}  # 시작점 (자동 초기화됨)
+                grad_map = ge.run_graph_backward_entry(
+                    E=self.E,
+                    tensors=tensor_ptrs,
+                    shapes=self.shapes,
+                    gradients=grad_ptrs,
+                    final_output_id=self.output_var,
+                    batch_size=batch_size_actual
+                )
 
-    def predict(self, x: np.ndarray) -> np.ndarray:
+                # ✅ CUDA 기반 Optimizer 적용
+                for name in list(self.weights.keys()) + list(self.biases.keys()):
+                    param = self.tensor_map[name]
+                    grad_ptr = grad_map.get(name, 0)
+                    if grad_ptr == 0:
+                        continue
+
+                    grad = cp.ndarray(param.shape, dtype=cp.float32,
+                                    memptr=cp.cuda.MemoryPointer(
+                                        cp.cuda.UnownedMemory(grad_ptr, param.nbytes, None), 0))
+
+                    # 옵티마이저 상태 버퍼 준비
+                    if not hasattr(self, "opt_buffers"):
+                        self.opt_buffers = {}
+
+                    if name not in self.opt_buffers:
+                        self.opt_buffers[name] = {
+                            "velocity": cp.zeros_like(param),
+                            "m": cp.zeros_like(param),
+                            "v": cp.zeros_like(param)
+                        }
+
+                    velocity = self.opt_buffers[name]["velocity"]
+                    m = self.opt_buffers[name]["m"]
+                    v = self.opt_buffers[name]["v"]
+
+
+                    # 1. 먼저 optimizer_type 문자열을 소문자로 정리
+                    opt_type_str = self.optimizer_type.lower()
+
+                    # 2. 문자열에 따라 올바른 enum 값 선택
+                    if opt_type_str == "sgd":
+                        opt_type_enum = ge.OptimizerType.SGD
+                    elif opt_type_str == "momentum":
+                        opt_type_enum = ge.OptimizerType.MOMENTUM
+                    elif opt_type_str == "adam":
+                        opt_type_enum = ge.OptimizerType.ADAM
+                    else:
+                        raise ValueError(f"Unsupported optimizer type: {self.optimizer_type}")
+
+                    ge.optimizer_update(
+                        param_ptr=param.data.ptr,
+                        grad_ptr=grad.data.ptr,
+                        velocity_ptr=velocity.data.ptr,
+                        m_ptr=m.data.ptr,
+                        v_ptr=v.data.ptr,
+                        lr=self.learning_rate,
+                        beta1=0.9,
+                        beta2=0.999,
+                        eps=1e-8,
+                        size=param.size,
+                        opt_type=opt_type_enum,
+                        timestep=self.global_step
+                    )
+
+                    # 업데이트된 파라미터 반영
+                    self.weights[name] = param
+                    self.biases[name] = param if name in self.biases else self.biases.get(name)
+
+                self.global_step += 1
+
+                logger.info(f"[Batch 완료] 손실: {loss_val:.6f}")
+
+    def evaluate(self, x: np.ndarray, y: np.ndarray) -> float:
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
 
         x_cp = cp.asarray(x, dtype=cp.float32)
-        output = self.run_forward(x_cp)
-        return output
+        y_cp = cp.asarray(y, dtype=cp.float32)
+        batch_size = x_cp.shape[0]
+
+        tensor_ptrs = {
+            "input": x_cp.data.ptr,
+            "y_true": y_cp.data.ptr
+        }
+
+        self.tensor_map = {
+            "input": x_cp.copy(),
+            "y_true": y_cp.copy()
+        }
+
+        for name, arr in self.weights.items():
+            cp_arr = cp.asarray(arr, dtype=cp.float32)
+            tensor_ptrs[name] = cp_arr.data.ptr
+            self.tensor_map[name] = cp_arr.copy()
+
+        for name, arr in self.biases.items():
+            cp_arr = cp.asarray(arr, dtype=cp.float32)
+            tensor_ptrs[name] = cp_arr.data.ptr
+            self.tensor_map[name] = cp_arr.copy()
+
+        for var, shape in self.shapes.items():
+            if var not in tensor_ptrs:
+                buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
+                tensor_ptrs[var] = buf.data.ptr
+                self.tensor_map[var] = buf
+
+        loss_val = ge.run_graph_with_loss_entry(
+            E=self.E,
+            tensors=tensor_ptrs,
+            shapes=self.shapes,
+            final_output_id=self.output_var,
+            label_tensor_id="y_true",
+            loss_type=self.loss_type,
+            batch_size=batch_size
+        )
+
+            # ✅ Metric 계산
+        output_arr = cp.asarray(self.tensor_map[self.output_var])
+        y_true_arr = cp.asarray(self.tensor_map["y_true"])
+
+        if self.metric_type.lower() == "mse":
+            metric_result = metrics.mse(output_arr, y_true_arr)
+        elif self.metric_type.lower() == "mae":
+            metric_result = metrics.mae(output_arr, y_true_arr)
+        elif self.metric_type.lower() == "accuracy":
+            metric_result = metrics.accuracy(output_arr, y_true_arr)
+        else:
+            raise ValueError(f"Unsupported metric type: {self.metric_type}")
+
+        logger.info(f"📊 평가 손실: {loss_val:.6f}, 메트릭({self.metric_type}): {metric_result:.6f}")
+        return float(metric_result)

@@ -1,4 +1,4 @@
-#include "op_structs.cuh"
+#include "optimizer_types.cuh"
 #include <cuda_runtime.h>
 
 __global__ void sgd_kernel(float* param, float* grad, float lr, int size) {
