@@ -48,7 +48,7 @@ def test_sequential_model_with_metrics():
             print(f"[INFO] Dense 초기화 완료: weights=0.5, bias=0.1")
 
     # 4. 컴파일 (MSE 손실, metric도 MSE)
-    model.compile(optimizer="sgd", loss="mse", p_metrics="mse", learning_rate=0.01)
+    model.compile(optimizer="adam", loss="mse", p_metrics="mse", learning_rate=0.0001)
 
     # 5. 학습
     model.fit(x, y, epochs=10)
