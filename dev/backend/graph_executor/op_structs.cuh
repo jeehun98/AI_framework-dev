@@ -12,12 +12,6 @@ enum OpType {
     LOSS = 7
 };
 
-enum OptimizerType {
-    SGD = 0,
-    MOMENTUM = 1,
-    ADAM = 2
-};
-
 struct Shape {
     int rows;
     int cols;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "op_structs.cuh"
+#include "optimizer_types.cuh"
 
 void optimizer_update_cuda(
     float* param, float* grad,
