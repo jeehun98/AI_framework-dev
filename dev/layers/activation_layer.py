@@ -10,8 +10,8 @@ Shape = ge.Shape
 OpExtraParams = ge.OpExtraParams
 
 ACTIVATION_OP_TYPES = {
-    'sigmoid': 2,
-    'relu': 3,
+    'relu': 2,
+    'sigmoid': 3,
     'tanh': 4
 }
 
