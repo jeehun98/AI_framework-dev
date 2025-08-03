@@ -1,4 +1,5 @@
 #include "backward_kernels_optimized.cuh"
+#include <stdio.h>
 
 __global__ void matmul_backward_input_shared(const float* __restrict__ d_out,
                                              const float* __restrict__ W_T,
@@ -22,7 +23,7 @@ __global__ void matmul_backward_input_shared(const float* __restrict__ d_out,
             d_out_tile[threadIdx.y][threadIdx.x] = 0.0f;
 
         if (col < K && tiled_row < N)
-            W_T_tile[threadIdx.x][threadIdx.y] = W_T[tiled_row * K + col];  // transposed access
+            W_T_tile[threadIdx.x][threadIdx.y] = W_T[tiled_row * K + col];
         else
             W_T_tile[threadIdx.x][threadIdx.y] = 0.0f;
 
@@ -34,8 +35,14 @@ __global__ void matmul_backward_input_shared(const float* __restrict__ d_out,
         __syncthreads();
     }
 
-    if (row < M && col < K)
+    if (row < M && col < K) {
         d_input[row * K + col] = sum;
+
+        // ✅ 디버깅 출력
+        if (row == 0 && col == 0 && (isnan(sum) || isinf(sum))) {
+            printf("[matmul_backward_input] d_input[0] = %f (NaN/Inf) -> row=%d col=%d\n", sum, row, col);
+        }
+    }
 }
 
 __global__ void matmul_backward_weight_shared(const float* __restrict__ input,
@@ -55,7 +62,7 @@ __global__ void matmul_backward_weight_shared(const float* __restrict__ input,
         int tiled_col = ph * TILE_WIDTH + threadIdx.x;
 
         if (tiled_row < M && row < K)
-            input_tile[threadIdx.y][threadIdx.x] = input[tiled_row * K + row];  // inputᵗ access
+            input_tile[threadIdx.y][threadIdx.x] = input[tiled_row * K + row];
         else
             input_tile[threadIdx.y][threadIdx.x] = 0.0f;
 
@@ -72,9 +79,17 @@ __global__ void matmul_backward_weight_shared(const float* __restrict__ input,
         __syncthreads();
     }
 
-    if (row < K && col < N)
+    if (row < K && col < N) {
         d_weight[row * N + col] = sum;
+
+        // ✅ 디버깅 출력
+        if (row == 0 && col == 0 && (isnan(sum) || isinf(sum))) {
+            printf("[matmul_backward_weight] d_weight[0] = %f (NaN/Inf) -> row=%d col=%d\n", sum, row, col);
+        }
+    }
 }
+
+
 
 // 그대로 유지 (Shared memory 없이도 효율적)
 __global__ void add_backward_bias(const float* d_out, float* d_bias, int rows, int cols) {

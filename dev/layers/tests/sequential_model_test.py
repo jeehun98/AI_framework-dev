@@ -26,9 +26,8 @@ from dev.layers.dense import Dense
 from dev.layers.activation_layer import Activation
 from dev.layers.flatten import Flatten
 
-
 def test_sequential_model_with_metrics():
-    print("\n=== [TEST] Sequential 모델 학습 + 평가 (metrics 포함) ===")
+    print("\n=== [TEST] Sequential 모델 학습 + 평가 (metrics + learning_rate 확인) ===")
 
     # 1. 입력 / 타겟 데이터 정의 (1개 샘플, shape: (1, 1, 2, 2))
     x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
@@ -48,18 +47,31 @@ def test_sequential_model_with_metrics():
             print(f"[INFO] Dense 초기화 완료: weights=0.5, bias=0.1")
 
     # 4. 컴파일 (MSE 손실, metric도 MSE)
-    model.compile(optimizer="adam", loss="mse", p_metrics="mse", learning_rate=0.0001)
+    learning_rate = 0.001
+    model.compile(optimizer="adam", loss="mse", p_metrics="mse", learning_rate=learning_rate)
+    print(f"[DEBUG] compile() 후 learning_rate: {model.learning_rate}")
 
-    # 5. 학습
-    model.fit(x, y, epochs=10)
+    # 5. fit() 내부에서 learning_rate 확인을 위해 monkey patch 삽입
+    original_fit = model.fit
 
-    # 6. 평가 (손실 + metric)
+    def fit_with_lr_check(*args, **kwargs):
+        print(f"[DEBUG] fit() 진입 시 learning_rate: {model.learning_rate}")
+        return original_fit(*args, **kwargs)
+
+    model.fit = fit_with_lr_check
+
+    # 6. 학습
+    model.fit(x, y, epochs=3)
+
+    # 7. 평가 (손실 + metric)
     final_metric = model.evaluate(x, y)
     print(f"\n📊 최종 평가 메트릭 (MSE): {final_metric:.6f}")
 
-    # 7. 예측 결과 확인
+    # 8. 예측 결과 확인
     y_pred = model.predict(x)
     print("🔍 예측 출력:\n", y_pred)
+
+
 
 if __name__ == "__main__":
     test_sequential_model_with_metrics()
