@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <string>
 #include <iostream>
+#include <stdio.h>  // ✅ CUDA printf 사용을 위해 필요
+
 
 #include "run_graph.cuh"
 #include "run_graph_backward.cuh"
@@ -150,6 +152,11 @@ PYBIND11_MODULE(graph_executor, m) {
                                  uintptr_t velocity_ptr, uintptr_t m_ptr, uintptr_t v_ptr,
                                  float lr, float beta1, float beta2, float eps,
                                  int size, OptimizerType opt_type, int timestep) {
+
+        // ✅ 여기에 디버깅 로그 추가
+        // printf("[PYBIND] Optimizer Update → lr=%.6f, beta1=%.4f, beta2=%.4f, eps=%.1e, size=%d, timestep=%d, opt=%d\n", lr, beta1, beta2, eps, size, timestep, static_cast<int>(opt_type));
+
+
         optimizer_update_cuda(
             reinterpret_cast<float*>(param_ptr),
             reinterpret_cast<float*>(grad_ptr),

@@ -373,6 +373,8 @@ class Sequential:
 
                 logger.info(f"[Batch 완료] 손실: {loss_val:.6f}")
 
+
+
     def evaluate(self, x: np.ndarray, y: np.ndarray) -> float:
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")

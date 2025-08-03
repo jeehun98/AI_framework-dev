@@ -37,18 +37,34 @@ class Dense(Layer):
         self.input_shape = input_shape
         input_dim = input_shape[1]
 
-        if self.initializer == 'ones':
-            self.weights = cp.ones((input_dim, self.units), dtype=cp.float32)
-        elif self.initializer == 'zeros':
+        if self.initializer == 'zeros':
             self.weights = cp.zeros((input_dim, self.units), dtype=cp.float32)
+        elif self.initializer == 'ones':
+            self.weights = cp.ones((input_dim, self.units), dtype=cp.float32)
+        elif self.initializer == 'uniform':
+            limit = 0.05
+            self.weights = cp.random.uniform(-limit, limit, (input_dim, self.units)).astype(cp.float32)
+        elif self.initializer == 'normal':
+            self.weights = cp.random.normal(0.0, 0.05, (input_dim, self.units)).astype(cp.float32)
+        elif self.initializer == 'xavier':
+            limit = cp.sqrt(6.0 / (input_dim + self.units))
+            self.weights = cp.random.uniform(-limit, limit, (input_dim, self.units)).astype(cp.float32)
+        elif self.initializer == 'he':
+            std = cp.sqrt(2.0 / input_dim)
+            self.weights = cp.random.normal(0.0, std, (input_dim, self.units)).astype(cp.float32)
+        elif self.initializer == 'lecun':
+            std = cp.sqrt(1.0 / input_dim)
+            self.weights = cp.random.normal(0.0, std, (input_dim, self.units)).astype(cp.float32)
+        elif self.initializer == 'small_uniform':
+            self.weights = cp.random.uniform(-1e-3, 1e-3, (input_dim, self.units)).astype(cp.float32)
         else:
-            limit = cp.sqrt(2 / input_dim)
-            self.weights = cp.random.randn(input_dim, self.units).astype(cp.float32) * limit
+            raise ValueError(f"[Dense] Unknown initializer: {self.initializer}")
 
         self.bias = cp.zeros((1, self.units), dtype=cp.float32)
-        self.built = True  # ✅ 중요
-
+        self.built = True
         self.output_shape = self.compute_output_shape(input_shape)
+
+
 
     def __call__(self, x):
         if not self.built:
