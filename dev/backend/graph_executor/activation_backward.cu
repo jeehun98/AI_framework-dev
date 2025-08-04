@@ -12,12 +12,13 @@ __global__ void activation_backward(const float* grad_out, const float* out, flo
         float o = out[idx];        // y = activation(x)
         float gi = 0.0f;           // dL/dx 초기값
 
-        if (isnan(go) || isnan(o)) {
+        // NaN 또는 Inf 방어
+        if (!isfinite(go) || !isfinite(o)) {
             if (idx < 2) {
-                printf("[activation_backward][NaN] grad_out[%d]=%.6f, out=%.6f, act_type=%d\n",
+                printf("[activation_backward][NaN/Inf] grad_out[%d]=%.6f, out=%.6f, act_type=%d\n",
                        idx, go, o, act_type);
             }
-            gi = 0.0f;  // 방어적 처리
+            gi = 0.0f;  // 방어적 초기화
         } else {
             switch (act_type) {
                 case 2:  // ReLU
@@ -32,7 +33,7 @@ __global__ void activation_backward(const float* grad_out, const float* out, flo
                     gi = go * (1.0f - o * o);
                     break;
 
-                case 5:  // GELU (approximate) – 정확한 x 필요하므로 우선 패스
+                case 5:  // GELU (approximate) – 추후 정확한 x 입력 시 개선 가능
                     gi = go * 1.0f;
                     break;
 
@@ -55,7 +56,7 @@ __global__ void activation_backward(const float* grad_out, const float* out, flo
 
         grad_in[idx] = gi;
 
-        // ✅ 디버그 출력
+        // 디버그 출력
         if (idx < 2) {
             printf("[activation_backward] grad_out[%d]=%.6f, out=%.6f, grad_in=%.6f, act_type=%d\n",
                    idx, go, o, gi, act_type);

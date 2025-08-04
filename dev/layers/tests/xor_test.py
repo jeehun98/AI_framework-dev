@@ -54,7 +54,7 @@ def test_xor_classification():
     model.add(Activation("sigmoid"))
 
     # 3. 컴파일
-    model.compile(optimizer="adam", loss="mse", p_metrics="mse", learning_rate=0.0001)
+    model.compile(optimizer="adam", loss="mse", p_metrics="mse", learning_rate=0.00001)
     print(f"[DEBUG] learning_rate = {model.learning_rate}")
 
     # 4. 학습

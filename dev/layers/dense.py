@@ -60,6 +60,10 @@ class Dense(Layer):
         else:
             raise ValueError(f"[Dense] Unknown initializer: {self.initializer}")
 
+        # NaN 방어
+        if cp.isnan(self.weights).any() or cp.isinf(self.weights).any():
+            raise RuntimeError("[Init] Weight contains NaN or Inf")
+
         self.bias = cp.zeros((1, self.units), dtype=cp.float32)
         self.built = True
         self.output_shape = self.compute_output_shape(input_shape)
