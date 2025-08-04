@@ -17,11 +17,12 @@ class BuildExtWithNvcc(build_ext):
         output_file = os.path.abspath(self.get_ext_fullpath(ext.name))
         build_dir = os.path.dirname(output_file)
 
-        pybind_include = r"C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include"
-        python_include = r"C:\Users\owner\AppData\Local\Programs\Python\Python312\include"
-        python_lib = r"C:\Users\owner\AppData\Local\Programs\Python\Python312\libs"
+        pybind_include = r"C:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include"
+        python_include = r"C:\Users\as042\AppData\Local\Programs\Python\Python312\include"
+        python_lib = r"C:\Users\as042\AppData\Local\Programs\Python\Python312\libs"
         cuda_lib_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64"
         cuda_bin_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
+
 
         os.makedirs(build_dir, exist_ok=True)
 
@@ -34,7 +35,16 @@ class BuildExtWithNvcc(build_ext):
         ] + sources
 
         os.environ["PATH"] += os.pathsep + cuda_bin_path
-        subprocess.check_call(" ".join(nvcc_cmd), shell=True)
+        try:
+            subprocess.check_call(" ".join(nvcc_cmd), shell=True)
+        except subprocess.CalledProcessError as e:
+            print("\n❌ NVCC command failed with exit code:", e.returncode)
+            print("Command was:\n", " ".join(nvcc_cmd))
+            print("\n--- NVCC output begins ---")
+            subprocess.run(" ".join(nvcc_cmd), shell=True)
+            print("--- NVCC output ends ---\n")
+            raise
+
 
 class CUDAExtension(Extension):
     def __init__(self, name, sources): super().__init__(name, sources)

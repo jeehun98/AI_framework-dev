@@ -5,6 +5,9 @@
       "includePath": [
         "${workspaceFolder}/**",
         "C:/CUDA/include",
+        "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include",
+        "C:/Users/as042/AppData/Local/Programs/Python/Python312/include",
+        "C:/Users/as042/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include",
         "C:/Users/owner/AppData/Local/Programs/Python/Python312/include",
         "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include"
       ],
