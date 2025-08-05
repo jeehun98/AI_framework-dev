@@ -15,8 +15,7 @@ __global__ void activation_backward(const float* grad_out, const float* out, flo
         // NaN 또는 Inf 방어
         if (!isfinite(go) || !isfinite(o)) {
             if (idx < 2) {
-                printf("[activation_backward][NaN/Inf] grad_out[%d]=%.6f, out=%.6f, act_type=%d\n",
-                       idx, go, o, act_type);
+                // printf("[activation_backward][NaN/Inf] grad_out[%d]=%.6f, out=%.6f, act_type=%d\n", idx, go, o, act_type);
             }
             gi = 0.0f;  // 방어적 초기화
         } else {
@@ -58,8 +57,7 @@ __global__ void activation_backward(const float* grad_out, const float* out, flo
 
         // 디버그 출력
         if (idx < 2) {
-            printf("[activation_backward] grad_out[%d]=%.6f, out=%.6f, grad_in=%.6f, act_type=%d\n",
-                   idx, go, o, gi, act_type);
+            // printf("[activation_backward] grad_out[%d]=%.6f, out=%.6f, grad_in=%.6f, act_type=%d\n", idx, go, o, gi, act_type);
         }
     }
 }

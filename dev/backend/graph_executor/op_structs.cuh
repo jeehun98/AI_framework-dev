@@ -17,8 +17,8 @@ struct Shape {
     int cols;
 };
 
-// ✅ CNN, RNN, Generic 연산에 공통적으로 사용할 확장 가능한 구조체
 struct OpExtraParams {
+    // 기존 CNN/RNN 관련 필드들
     int kernel_h = 0;
     int kernel_w = 0;
     int stride_h = 1;
@@ -36,6 +36,10 @@ struct OpExtraParams {
     int num_layers = 1;
 
     bool use_bias = true;
+
+    // ✅ 손실 함수용 필드 추가
+    std::string label_id = "";   // y_true tensor ID
+    std::string loss_type = "";  // "mse", "bce", "cce"
 };
 
 // ✅ 수정: extra_params 멤버 포함

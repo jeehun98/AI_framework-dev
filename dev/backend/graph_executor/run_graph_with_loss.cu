@@ -28,8 +28,11 @@ float run_graph_with_loss_cuda(
 
     if (loss_type == "mse") {
         loss_value = compute_mse_loss_cuda(y_true, y_pred, total_elements);
-    } else if (loss_type == "binary_crossentropy") {
+    } else if (loss_type == "binary_crossentropy" || loss_type == "bce") {
         loss_value = compute_bce_loss_cuda(y_true, y_pred, total_elements);
+    } else if (loss_type == "categorical_crossentropy" || loss_type == "cce") {
+        // 필요 시 여기에 추가
+        // loss_value = compute_cce_loss_cuda(...);
     } else {
         std::cerr << "[ERROR] Unsupported loss type: " << loss_type << std::endl;
     }
