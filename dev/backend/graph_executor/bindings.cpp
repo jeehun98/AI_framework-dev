@@ -126,7 +126,9 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("time_steps", &OpExtraParams::time_steps)
         .def_readwrite("hidden_size", &OpExtraParams::hidden_size)
         .def_readwrite("num_layers", &OpExtraParams::num_layers)
-        .def_readwrite("use_bias", &OpExtraParams::use_bias);
+        .def_readwrite("use_bias", &OpExtraParams::use_bias)
+        .def_readwrite("label_id", &OpExtraParams::label_id)
+        .def_readwrite("loss_type", &OpExtraParams::loss_type);
 
     py::class_<Shape>(m, "Shape")
         .def(py::init<int, int>())

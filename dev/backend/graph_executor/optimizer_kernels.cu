@@ -32,7 +32,7 @@ __global__ void adam_kernel(float* param, float* grad, float* m, float* v,
     g = fminf(fmaxf(g, -1e2f), 1e2f);
 
     if (isnan(g) || isinf(g)) {
-        printf("[adam] grad[%d] = %f (NaN or Inf)\n", i, g);
+        // printf("[adam] grad[%d] = %f (NaN or Inf)\n", i, g);
         return;
     }
 
@@ -48,31 +48,30 @@ __global__ void adam_kernel(float* param, float* grad, float* m, float* v,
     float denom = sqrtf(fmaxf(v_hat, 1e-12f)) + epsilon;
 
     if (isnan(denom) || isinf(denom)) {
-        printf("[adam] denom unstable \u2192 denom=%f, v_hat=%f\n", denom, v_hat);
+        // printf("[adam] denom unstable \u2192 denom=%f, v_hat=%f\n", denom, v_hat);
         return;
     }
 
     float update = lr * m_hat / denom;
 
     if (isnan(update) || isinf(update)) {
-        printf("[adam] update[%d] = %f (NaN or Inf)\n", i, update);
+        // printf("[adam] update[%d] = %f (NaN or Inf)\n", i, update);
         return;
     }
 
     if (isnan(m[i]) || isnan(v[i]) || isnan(param[i])) {
-        printf("[adam][NaN] i=%d: update=%f, param=%f, m=%f, v=%f\n", i, update, param[i], m[i], v[i]);
+        // printf("[adam][NaN] i=%d: update=%f, param=%f, m=%f, v=%f\n", i, update, param[i], m[i], v[i]);
         return;
     }
 
     param[i] -= update;
 
     if (isnan(param[i]) || isinf(param[i])) {
-        printf("[adam] param[%d] became NaN or Inf after update=%f\n", i, update);
+        // printf("[adam] param[%d] became NaN or Inf after update=%f\n", i, update);
     }
 
     if (i == 0 && t % 100 == 0) {
-        printf("[adam][t=%d i=%d] grad=%f m=%f v=%f m_hat=%f v_hat=%f update=%f param=%f\n",
-               t, i, g, m[i], v[i], m_hat, v_hat, update, param[i]);
+        // printf("[adam][t=%d i=%d] grad=%f m=%f v=%f m_hat=%f v_hat=%f update=%f param=%f\n", t, i, g, m[i], v[i], m_hat, v_hat, update, param[i]);
     }
 }
 

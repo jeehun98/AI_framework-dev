@@ -35,7 +35,7 @@ __global__ void matmul_backward_input_shared(const float* __restrict__ d_out,
             float b = W_T_tile[threadIdx.x][k];
             if (isnan(a) || isnan(b) || isinf(a) || isinf(b)) {
                 if (row == 0 && col == 0) {
-                    printf("[matmul_backward_input][NaN] tile input NaN/Inf at k=%d \u2192 a=%f, b=%f\n", k, a, b);
+                    // printf("[matmul_backward_input][NaN] tile input NaN/Inf at k=%d \u2192 a=%f, b=%f\n", k, a, b);
                 }
                 continue;
             }
@@ -52,7 +52,7 @@ __global__ void matmul_backward_input_shared(const float* __restrict__ d_out,
         d_input[row * K + col] = sum;
 
         if (row == 0 && col == 0 && (isnan(sum) || isinf(sum))) {
-            printf("[matmul_backward_input] d_input[0] = %f (NaN/Inf) -> row=%d col=%d\n", sum, row, col);
+            // printf("[matmul_backward_input] d_input[0] = %f (NaN/Inf) -> row=%d col=%d\n", sum, row, col);
         }
     }
 }
@@ -85,7 +85,7 @@ __global__ void matmul_backward_weight_shared(const float* __restrict__ input,
             float b = d_out_tile[k][threadIdx.x];
             if (isnan(a) || isnan(b) || isinf(a) || isinf(b)) {
                 if (row == 0 && col == 0) {
-                    printf("[matmul_backward_weight][NaN] a=%f, b=%f, k=%d\n", a, b, k);
+                    // printf("[matmul_backward_weight][NaN] a=%f, b=%f, k=%d\n", a, b, k);
                 }
                 continue;
             }
@@ -102,7 +102,7 @@ __global__ void matmul_backward_weight_shared(const float* __restrict__ input,
         d_weight[row * N + col] = sum;
 
         if (row == 0 && col == 0 && (isnan(sum) || isinf(sum))) {
-            printf("[matmul_backward_weight] d_weight[0] = %f (NaN/Inf) -> row=%d col=%d\n", sum, row, col);
+            // printf("[matmul_backward_weight] d_weight[0] = %f (NaN/Inf) -> row=%d col=%d\n", sum, row, col);
         }
     }
 }

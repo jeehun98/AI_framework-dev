@@ -15,7 +15,7 @@ class XORModel(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(2, 4),
-            nn.Sigmoid(),
+            nn.Tanh(),
             nn.Linear(4, 1),
             nn.Sigmoid()
         )
@@ -29,7 +29,7 @@ criterion = nn.BCELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.1)
 
 # 학습 루프
-for epoch in range(10000):
+for epoch in range(1000):
     optimizer.zero_grad()
     output = model(x)
     loss = criterion(output, y)

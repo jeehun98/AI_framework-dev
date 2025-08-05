@@ -10,6 +10,7 @@
 #include "activation_backward.cuh"
 #include "cnn_kernels.cuh"
 #include "op_structs.cuh"
+#include "loss_kernels.cuh"
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,
@@ -55,7 +56,7 @@ void run_graph_backward(
 
         float host_debug_val = 0.0f;
         cudaMemcpy(&host_debug_val, grad_out, sizeof(float), cudaMemcpyDeviceToHost);
-        std::cout << "[DEBUG] grad_out[0] for " << op.output_id << " = " << host_debug_val << "\n";
+        // std::cout << "[DEBUG] grad_out[0] for " << op.output_id << " = " << host_debug_val << "\n";
 
         Shape in_shape = shapes[op.input_id];
         Shape out_shape = shapes[op.output_id];
@@ -164,10 +165,70 @@ void run_graph_backward(
                 break;
             }
 
-            case LOSS:
-                gradients[op.input_id] = grad_out;
-                cudaFree(grad_input);
+            case LOSS: {
+                std::string loss_type = op.extra_params.loss_type;
+                std::string label_id = op.extra_params.label_id;
+
+                if (!tensors.count(op.input_id) || !tensors.count(label_id)) {
+                    std::cerr << "[ERROR] Missing tensor(s) for LOSS backward.\n";
+                    break;
+                }
+
+                float* y_pred = tensors[op.input_id];
+                float* y_true = tensors[label_id];
+                float* dL_dy = nullptr;
+
+                Shape shape = shapes[op.input_id];
+                int total_size = shape.rows * shape.cols;
+                if (total_size <= 0) {
+                    std::cerr << "[ERROR] total_size == 0 in LOSS backward\n";
+                    break;
+                }
+
+                int threads = 256;
+                int blocks = (total_size + threads - 1) / threads;
+
+                cudaError_t alloc_status = cudaMalloc(&dL_dy, total_size * sizeof(float));
+                if (alloc_status != cudaSuccess) {
+                    std::cerr << "[ERROR] cudaMalloc failed in LOSS backward: " << cudaGetErrorString(alloc_status) << std::endl;
+                    break;
+                }
+
+                if (loss_type == "mse") {
+                    mse_loss_backward<<<blocks, threads>>>(y_true, y_pred, dL_dy, total_size);
+                } else if (loss_type == "bce") {
+                    bce_loss_backward<<<blocks, threads>>>(y_true, y_pred, dL_dy, total_size);
+                } else if (loss_type == "cce") {
+                    int batch_size = shape.rows;
+                    int num_classes = shape.cols;
+                    cce_loss_backward<<<blocks, threads>>>(y_true, y_pred, dL_dy, batch_size, num_classes);
+                } else {
+                    std::cerr << "[ERROR] Unknown loss type for backward: " << loss_type << std::endl;
+                    cudaFree(dL_dy);
+                    break;
+                }
+
+                cudaError_t kernel_status = cudaDeviceSynchronize();
+                if (kernel_status != cudaSuccess) {
+                    std::cerr << "[ERROR] Kernel launch failed in LOSS backward: " << cudaGetErrorString(kernel_status) << std::endl;
+                    cudaFree(dL_dy);
+                    break;
+                }
+
+                // ✅ NaN 체크
+                float debug_val = 0.0f;
+                cudaMemcpy(&debug_val, dL_dy, sizeof(float), cudaMemcpyDeviceToHost);
+                if (isnan(debug_val) || isinf(debug_val)) {
+                    std::cerr << "[NaN/Inf] Detected in LOSS backward gradient!\n";
+                }
+
+                // ✅ gradient 연결 보완
+                gradients[op.input_id] = dL_dy;
+                gradients[op.output_id] = dL_dy;  // 🔥 핵심: 다음 op에서 grad_out으로 사용됨
+
                 break;
+            }
+
 
             default:
                 std::cerr << "[ERROR] Unsupported op_type: " << op.op_type << std::endl;
@@ -180,6 +241,12 @@ void run_graph_backward(
             gradients[op.input_id] = grad_input;
         }
     }
+    std::cerr << "[DEBUG] Final gradients keys: ";
+    for (const auto& kv : gradients) {
+        std::cerr << kv.first << " ";
+    }
+    std::cerr << std::endl;
+
 
     std::cout << "run_graph_backward finished.\n";
 }

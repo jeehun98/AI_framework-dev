@@ -82,14 +82,28 @@ class Sequential:
 
         self.output_var = input_id
 
-        # ✅ CUDA 기반으로 전달된 문자열 저장 (실제 연산은 CUDA에서 처리)
+        # ✅ CUDA 런타임용 학습 설정 저장
         self.loss_type = loss
         self.optimizer_type = optimizer
         self.learning_rate = learning_rate
 
+        # ✅ 마지막에 손실 노드 추가 (label은 param_id에 담아줌)
+        extra = ge.OpExtraParams()
+        extra.label_id = "y_true"  # ✅ 🔥 핵심 추가
+        extra.loss_type = self.loss_type
+
+        self.E_raw.append({
+            "op_type": ge.OpType.LOSS,
+            "input_id": self.output_var,
+            "param_id": "y_true",
+            "output_id": "loss",
+            "extra_params": extra     # 🔑 이걸 같이 넣어야 Pybind11을 통해 전달됨
+        })
+
+
         self.built = True
 
-        # compile() 끝부분에서 E_raw → E 변환 추가
+        # ✅ OpStruct 변환
         self.E = []
         for op in self.E_raw:
             extra = op.get("extra_params", ge.OpExtraParams())
@@ -102,111 +116,6 @@ class Sequential:
                 extra
             )
             self.E.append(node)
-
-
-    def run_forward(self, input_data: np.ndarray):
-
-        try:
-            E = []
-            for op in self.E_raw:
-                extra = op.get("extra_params", ge.OpExtraParams())
-                param_id = op.get("param_id", "")
-                if param_id is None:
-                    param_id = ""
-                node = OpStruct(
-                    int(op["op_type"]),
-                    str(op["input_id"]),
-                    str(param_id),
-                    str(op["output_id"]),
-                    extra
-                )
-                E.append(node)
-
-        except Exception as e:
-            raise RuntimeError(f"연산 구조 생성 실패: {e}")
-
-        cp_input = cp.asarray(input_data, dtype=cp.float32)
-        tensor_ptrs = {INPUT_ID: cp_input.data.ptr}
-        self.tensor_map = {INPUT_ID: cp_input.copy()}
-
-        for name, arr in self.weights.items():
-            cp_arr = cp.asarray(arr, dtype=cp.float32)
-            tensor_ptrs[name] = cp_arr.data.ptr
-            self.tensor_map[name] = cp_arr.copy()
-
-        for name, arr in self.biases.items():
-            cp_arr = cp.asarray(arr, dtype=cp.float32)
-            tensor_ptrs[name] = cp_arr.data.ptr
-            self.tensor_map[name] = cp_arr.copy()
-
-        for var, shape in self.shapes.items():
-            if var not in tensor_ptrs:
-                cp_arr = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
-                tensor_ptrs[var] = cp_arr.data.ptr
-                self.tensor_map[var] = cp_arr
-
-        out_shape = (self.shapes[self.output_var].rows, self.shapes[self.output_var].cols)
-        out_host = np.zeros(out_shape, dtype=np.float32)
-
-        try:
-            ge.run_graph_forward_entry(
-                E,
-                tensor_ptrs,
-                self.shapes,
-                out_host,
-                final_output_id=self.output_var,
-                batch_size=input_data.shape[0]  # ✅ 여기 추가
-            )
-        except Exception as e:
-            raise RuntimeError(f"CUDA forward execution failed: {e}")
-
-        self.E = E
-        return out_host
-
-    def run_backward(self, x, grad_y):
-        from cupy.cuda import MemoryPointer, UnownedMemory
-
-        if not hasattr(self, "tensor_map"):
-            raise RuntimeError("tensor_map is not initialized. run_forward() must be called first.")
-
-        tensor_ptrs = {name: arr.data.ptr for name, arr in self.tensor_map.items()}
-        grad_ptrs = {self.output_var: grad_y.data.ptr}
-        self.grad_buffers = {}
-
-        for op in reversed(self.E):
-            out_id = op.output_id
-            if out_id not in grad_ptrs:
-                shape = self.shapes[out_id]
-                grad_buf = cp.zeros((shape.rows, shape.cols), dtype=cp.float32)
-                grad_ptrs[out_id] = grad_buf.data.ptr
-                self.grad_buffers[out_id] = grad_buf
-
-        try:
-            grad_map = ge.run_graph_backward_entry(
-            self.E,
-            tensor_ptrs,
-            self.shapes,
-            grad_ptrs,
-            self.output_var,
-            batch_size=x.shape[0]   # ✅ 이 줄 추가
-        )
-
-        except Exception as e:
-            raise RuntimeError(f"CUDA backward execution failed: {e}")
-
-        grads = {}
-        for name in list(self.weights.keys()) + list(self.biases.keys()):
-            ptr = grad_map.get(name, 0)
-            if ptr != 0:
-                shape = (self.shapes[name].rows, self.shapes[name].cols)
-                size_bytes = shape[0] * shape[1] * 4
-                mem = UnownedMemory(ptr, size_bytes, owner=None)
-                memptr = MemoryPointer(mem, 0)
-                grads[name] = cp.ndarray(shape, dtype=cp.float32, memptr=memptr).copy()
-            else:
-                logger.warning(f"⚠️ Gradient ptr for {name} is NULL")
-
-        return grads
 
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
@@ -259,20 +168,27 @@ class Sequential:
                     E=self.E,
                     tensors=tensor_ptrs,
                     shapes=self.shapes,
-                    final_output_id=self.output_var,
+                    final_output_id="loss",        # 🔵 손실 노드 ID 명시
                     label_tensor_id="y_true",
                     loss_type=self.loss_type,
                     batch_size=batch_size_actual
                 )
 
-                # ✅ Backward
-                grad_ptrs = {self.output_var: 0}
+                # ✅ 1. 손실 노드에 대한 초기 gradient (dL/dL = 1)
+                loss_grad = cp.array([1.0], dtype=cp.float32)
+
+                # ✅ 2. 역전파 시작은 "loss" 노드로부터
+                grad_ptrs = {
+                    "loss": loss_grad.data.ptr
+                }
+
+                # ✅ 3. Backward 실행 (output_id = "loss")
                 grad_map = ge.run_graph_backward_entry(
                     E=self.E,
                     tensors=tensor_ptrs,
                     shapes=self.shapes,
                     gradients=grad_ptrs,
-                    final_output_id=self.output_var,
+                    final_output_id="loss",
                     batch_size=batch_size_actual
                 )
 
@@ -336,8 +252,13 @@ class Sequential:
                     elif name in self.biases:
                         self.biases[name] = param
 
+                    # 🔍 업데이트 후 weight 평균 로그
+                    if "w" in name:
+                        logger.debug(f"[Epoch {epoch+1}] {name} mean: {cp.mean(param):.6f}")
+
+
                 self.global_step += 1
-                logger.info(f"[Batch 완료] 손실: {loss_val:.6f}")
+                logger.info(f"[Batch 완료] 손실: {loss_val:.10f}")
 
             # Epoch 마무리 weight 로그 (선택적)
             for name, param in self.weights.items():
@@ -428,6 +349,12 @@ class Sequential:
                 tensor_ptrs[var] = buf.data.ptr
                 self.tensor_map[var] = buf
 
+        # 손실 계산 전
+        if "loss" in self.tensor_map:
+            loss_check = self.tensor_map["loss"]
+            cp.cuda.runtime.deviceSynchronize()
+            logger.debug(f"[Before Loss] loss buffer: {cp.asnumpy(loss_check.ravel()[:4])}")
+
         # 4. 손실 계산
         loss_val = ge.run_graph_with_loss_entry(
             E=self.E,
@@ -438,6 +365,13 @@ class Sequential:
             loss_type=self.loss_type,
             batch_size=batch_size
         )
+
+        # 손실 계산 후
+        if "loss" in self.tensor_map:
+            loss_check = self.tensor_map["loss"]
+            cp.cuda.runtime.deviceSynchronize()
+            logger.debug(f"[After Loss] loss buffer: {cp.asnumpy(loss_check.ravel()[:4])}")
+
 
         # 5. 출력 및 메트릭 계산
         output_arr = self.tensor_map[self.output_var]
@@ -452,5 +386,5 @@ class Sequential:
         else:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
 
-        logger.info(f"📊 평가 손실: {loss_val:.6f}, 메트릭({self.metric_type}): {metric_result:.6f}")
+        logger.info(f"📊 평가 손실: {loss_val:.10f}, 메트릭({self.metric_type}): {metric_result:.6f}")
         return float(metric_result)
