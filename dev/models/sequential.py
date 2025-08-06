@@ -1,3 +1,7 @@
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 import typing
 import json
 import numpy as np
@@ -127,6 +131,9 @@ class Sequential:
             self.opt_buffers = {}
 
         for epoch in range(epochs):
+            epoch_loss = 0.0
+            batch_count = 0
+
             indices = np.random.permutation(x.shape[0])
             x = x[indices]
             y = y[indices]
@@ -248,6 +255,19 @@ class Sequential:
                     # logger.debug(f"[Epoch {epoch+1}][Step {self.global_step}] {name} "f"mean: {mean_before:.6f} → {mean_after:.6f} (Δ={delta:.6f})")
 
                 self.global_step += 1
+                epoch_loss += float(loss_val)
+                batch_count += 1
+        
+
+            if batch_count > 0 and (epoch + 1) % 100 == 0:
+                avg_loss = epoch_loss / batch_count
+                logger.info(f"[Epoch {epoch + 1}] 평균 손실: {avg_loss:.6f}")
+                
+                # ✅ 예측값 직접 계산
+                y_pred = self.predict(x)
+                print(f"[Epoch {epoch + 1}] 예측값: {y_pred.ravel()}")
+                print(f"[Epoch {epoch + 1}] 정답: {y.ravel()}")
+
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         if not self.built:

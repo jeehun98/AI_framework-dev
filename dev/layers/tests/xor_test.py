@@ -52,12 +52,12 @@ def test_xor_classification_equivalent_to_pytorch():
     model = Sequential(input_shape=(1, 1, 2))
     model.add(Flatten(input_shape=(1, 1, 2)))
     model.add(Dense(units=4, activation=None, initializer="xavier"))             # Linear(2, 4)
-    model.add(Activation("sigmoid"))                       # Sigmoid
+    model.add(Activation("tanh")) 
     model.add(Dense(units=1, activation=None, initializer="xavier"))             # Linear(4, 1)
     model.add(Activation("sigmoid"))                       # Sigmoid
 
     # 손실함수 및 옵티마이저: BCE + SGD(lr=0.1)
-    model.compile(optimizer="sgd", loss="bce", learning_rate=0.5)
+    model.compile(optimizer="sgd", loss="bce", learning_rate=0.001)
 
     print("\n=== [Graph E] 계산 그래프 ===")
     for i, op in enumerate(model.E):
@@ -65,7 +65,7 @@ def test_xor_classification_equivalent_to_pytorch():
 
 
     # 학습
-    model.fit(x, y, epochs=10000, batch_size=1)  # 전체 배치 학습
+    model.fit(x, y, epochs=3, batch_size=1)  # 전체 배치 학습
 
     # 평가
     metric = model.evaluate(x, y)
