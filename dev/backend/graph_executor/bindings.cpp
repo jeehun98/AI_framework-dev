@@ -135,6 +135,8 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("rows", &Shape::rows)
         .def_readwrite("cols", &Shape::cols);
 
+    
+
     // 🔷 그래프 관련 함수
     m.def("run_graph_forward_entry", &run_graph_forward_entry,
         py::arg("E"), py::arg("tensors"), py::arg("shapes"),

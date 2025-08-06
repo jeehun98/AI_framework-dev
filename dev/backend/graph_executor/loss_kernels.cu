@@ -82,13 +82,17 @@ __global__ void bce_loss_backward(
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid < size) {
         float yt = y_true[tid];
-        float yp = y_pred[tid];  // sigmoid 후의 출력값
+        float yp = y_pred[tid];  // ⚠️ sigmoid(z)
+        
+        // ∂L/∂ŷ = (ŷ - y) / size
         float grad = (yp - yt) / size;
+
+        if (tid == 0) {
+            // printf("[BCE_BACKWARD] tid=%d, y_pred=%.6f, y_true=%.6f, grad=%.6f\n", tid, yp, yt, grad);
+        }   
+        
         grad_out[tid] = grad;
 
-        if (tid < 4) {
-            printf("[BCE_BACKWARD_FIXED] tid=%d: y_true=%.5f, y_pred=%.5f, grad=%.5f\n", tid, yt, yp, grad);
-        }
     }
 }
 
@@ -172,12 +176,6 @@ float compute_bce_loss_cuda(float* y_true, float* y_pred, int size) {
     float debug_y_pred[4];
     cudaMemcpy(debug_y_true, y_true, 4 * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(debug_y_pred, y_pred, 4 * sizeof(float), cudaMemcpyDeviceToHost);
-
-    printf("[DEBUG BCE_LOSS] y_true[0:4] = %.5f %.5f %.5f %.5f\n",
-        debug_y_true[0], debug_y_true[1], debug_y_true[2], debug_y_true[3]);
-
-    printf("[DEBUG BCE_LOSS] y_pred[0:4] = %.5f %.5f %.5f %.5f\n",
-        debug_y_pred[0], debug_y_pred[1], debug_y_pred[2], debug_y_pred[3]);
 
     cudaMalloc(&d_loss, sizeof(float));
     cudaMemset(d_loss, 0, sizeof(float));

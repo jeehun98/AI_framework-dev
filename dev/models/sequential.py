@@ -123,13 +123,10 @@ class Sequential:
 
         self.global_step = 1  # Adam 등에서 필요한 timestep
 
-        # 옵티마이저 상태 버퍼 초기화
         if not hasattr(self, "opt_buffers"):
             self.opt_buffers = {}
 
         for epoch in range(epochs):
-            logger.info(f"\n=== [Epoch {epoch + 1}] 시작 ===")
-
             indices = np.random.permutation(x.shape[0])
             x = x[indices]
             y = y[indices]
@@ -145,7 +142,6 @@ class Sequential:
                 tensor_ptrs = {"input": batch_x.data.ptr, "y_true": batch_y.data.ptr}
                 self.tensor_map = {"input": batch_x.copy(), "y_true": batch_y.copy()}
 
-                # 가중치 및 편향 포인터 등록
                 for name, arr in self.weights.items():
                     cp_arr = cp.asarray(arr, dtype=cp.float32)
                     tensor_ptrs[name] = cp_arr.data.ptr
@@ -156,7 +152,6 @@ class Sequential:
                     tensor_ptrs[name] = cp_arr.data.ptr
                     self.tensor_map[name] = cp_arr.copy()
 
-                # 중간 변수용 메모리 확보
                 for var, shape in self.shapes.items():
                     if var not in tensor_ptrs:
                         buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
@@ -168,21 +163,16 @@ class Sequential:
                     E=self.E,
                     tensors=tensor_ptrs,
                     shapes=self.shapes,
-                    final_output_id="loss",        # 🔵 손실 노드 ID 명시
+                    final_output_id="loss",
                     label_tensor_id="y_true",
                     loss_type=self.loss_type,
                     batch_size=batch_size_actual
                 )
 
-                # ✅ 1. 손실 노드에 대한 초기 gradient (dL/dL = 1)
                 loss_grad = cp.array([1.0], dtype=cp.float32)
 
-                # ✅ 2. 역전파 시작은 "loss" 노드로부터
-                grad_ptrs = {
-                    "loss": loss_grad.data.ptr
-                }
+                grad_ptrs = {"loss": loss_grad.data.ptr}
 
-                # ✅ 3. Backward 실행 (output_id = "loss")
                 grad_map = ge.run_graph_backward_entry(
                     E=self.E,
                     tensors=tensor_ptrs,
@@ -192,7 +182,6 @@ class Sequential:
                     batch_size=batch_size_actual
                 )
 
-                # ✅ Optimizer 적용
                 for name in list(self.weights.keys()) + list(self.biases.keys()):
                     param = self.tensor_map[name]
                     grad_ptr = grad_map.get(name, 0)
@@ -203,7 +192,9 @@ class Sequential:
                                     memptr=cp.cuda.MemoryPointer(
                                         cp.cuda.UnownedMemory(grad_ptr, param.nbytes, None), 0))
 
-                    # 옵티마이저 버퍼 확보
+                    # ✅ 업데이트 전 평균 기록
+                    mean_before = cp.mean(param).item()
+
                     if name not in self.opt_buffers:
                         self.opt_buffers[name] = {
                             "velocity": cp.zeros_like(param),
@@ -215,7 +206,6 @@ class Sequential:
                     m = self.opt_buffers[name]["m"]
                     v = self.opt_buffers[name]["v"]
 
-                    # 옵티마이저 타입 enum
                     opt_type_str = self.optimizer_type.lower()
                     if opt_type_str == "sgd":
                         opt_type_enum = ge.OptimizerType.SGD
@@ -226,7 +216,8 @@ class Sequential:
                     else:
                         raise ValueError(f"Unsupported optimizer type: {self.optimizer_type}")
 
-                    # CUDA Optimizer 실행
+                    # print(f"[DEBUG] grad min={cp.min(grad):.6f}, max={cp.max(grad):.6f}, mean={cp.mean(grad):.6f}")
+
                     ge.optimizer_update(
                         param_ptr=param.data.ptr,
                         grad_ptr=grad.data.ptr,
@@ -242,28 +233,21 @@ class Sequential:
                         timestep=self.global_step
                     )
 
-                    # NaN 체크 로그 (옵션)
+                    mean_after = cp.mean(param).item()
+                    delta = mean_after - mean_before
+
                     if cp.isnan(param).any():
                         logger.warning(f"[NaN] 발생: {name} 업데이트 후 NaN 포함")
 
-                    # 업데이트된 파라미터 저장
                     if name in self.weights:
                         self.weights[name] = param
                     elif name in self.biases:
                         self.biases[name] = param
 
-                    # 🔍 업데이트 후 weight 평균 로그
-                    if "w" in name:
-                        logger.debug(f"[Epoch {epoch+1}] {name} mean: {cp.mean(param):.6f}")
-
+                    # ✅ 변화량 로깅
+                    # logger.debug(f"[Epoch {epoch+1}][Step {self.global_step}] {name} "f"mean: {mean_before:.6f} → {mean_after:.6f} (Δ={delta:.6f})")
 
                 self.global_step += 1
-                logger.info(f"[Batch 완료] 손실: {loss_val:.10f}")
-
-            # Epoch 마무리 weight 로그 (선택적)
-            for name, param in self.weights.items():
-                logger.debug(f"[Epoch {epoch+1}] {name} 샘플: {param.ravel()[:5]}")
-
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         if not self.built:
@@ -386,5 +370,4 @@ class Sequential:
         else:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
 
-        logger.info(f"📊 평가 손실: {loss_val:.10f}, 메트릭({self.metric_type}): {metric_result:.6f}")
         return float(metric_result)
