@@ -3,6 +3,11 @@ import os
 import ctypes
 import numpy as np
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
 # CUDA DLL 명시적 로드
 ctypes.CDLL(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\cudart64_12.dll")
 
@@ -47,20 +52,20 @@ def test_xor_classification_equivalent_to_pytorch():
     model = Sequential(input_shape=(1, 1, 2))
     model.add(Flatten(input_shape=(1, 1, 2)))
     model.add(Dense(units=4, activation=None, initializer="xavier"))             # Linear(2, 4)
-    model.add(Activation("tanh"))                       # Sigmoid
+    model.add(Activation("sigmoid"))                       # Sigmoid
     model.add(Dense(units=1, activation=None, initializer="xavier"))             # Linear(4, 1)
     model.add(Activation("sigmoid"))                       # Sigmoid
 
     # 손실함수 및 옵티마이저: BCE + SGD(lr=0.1)
-    model.compile(optimizer="sgd", loss="bce", learning_rate=0.1)
+    model.compile(optimizer="sgd", loss="bce", learning_rate=0.5)
 
     print("\n=== [Graph E] 계산 그래프 ===")
     for i, op in enumerate(model.E):
-        print(f"[{i}] type={op.op_type}, input={op.input_id}, param={op.param_id}, output={op.output_id}")
+        print(f"[{i}] type={op.op_type}, input={op.input_id}, output={op.output_id}")
 
 
     # 학습
-    model.fit(x, y, epochs=3, batch_size=1)  # 전체 배치 학습
+    model.fit(x, y, epochs=10000, batch_size=1)  # 전체 배치 학습
 
     # 평가
     metric = model.evaluate(x, y)
