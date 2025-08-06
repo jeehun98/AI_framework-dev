@@ -179,6 +179,15 @@ void run_graph_backward(
                 cudaMalloc(&dL_dy, sz * sizeof(float));
                 if (loss_type == "bce") {
                     bce_loss_backward<<<(sz+255)/256, 256>>>(y_true, y_pred, dL_dy, sz);
+
+                    // 💡 Debug: print some loss gradient stats
+                    float* host_loss_grad = new float[sz];
+                    cudaMemcpy(host_loss_grad, dL_dy, sizeof(float) * sz, cudaMemcpyDeviceToHost);
+                    float loss_sum = 0.0f;
+                    for (int i = 0; i < sz; ++i) loss_sum += fabsf(host_loss_grad[i]);
+                    float avg_loss_grad = loss_sum / sz;
+                    std::cout << "[LOSS_GRAD] Average dL/dy: " << avg_loss_grad << std::endl;
+                    delete[] host_loss_grad;
                 }
                 gradients[op.input_id] = dL_dy;
                 gradients[op.output_id] = dL_dy;
@@ -203,7 +212,8 @@ void run_graph_backward(
                 sum += host_grad[i];
             }
             float mean = sum / size;
-            // std::cout << "[GRADIENT] " << op.param_id << " grad \u2192 min=" << min_val << ", max=" << max_val << ", mean=" << mean << std::endl;
+            // 가중치 기울기 통계 출력
+            std::cout << "[GRADIENT] " << op.param_id << " grad \u2192 min=" << min_val << ", max=" << max_val << ", mean=" << mean << std::endl;
             delete[] host_grad;
         }
     }

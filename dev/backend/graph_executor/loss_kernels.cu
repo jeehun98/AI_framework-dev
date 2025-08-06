@@ -82,7 +82,7 @@ __global__ void bce_loss_backward(
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid < size) {
         float yt = y_true[tid];
-        float yp = y_pred[tid];  // ⚠️ sigmoid(z)
+        float yp = fminf(fmaxf(y_pred[tid], 1e-7f), 1.0f - 1e-7f);
         
         // ∂L/∂ŷ = (ŷ - y) / size
         float grad = (yp - yt) / size;
