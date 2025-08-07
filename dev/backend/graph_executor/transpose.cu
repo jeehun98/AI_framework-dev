@@ -1,5 +1,3 @@
-// transpose.cu
-
 #include <cuda_runtime.h>
 #include <iostream>
 #include "transpose.cuh"
@@ -14,22 +12,20 @@ __global__ void transpose_kernel(const float* __restrict__ input, float* __restr
         float val = input[row * cols + col];
         output[col * rows + row] = val;
 
-        if (row == 0 && col == 0) {
-            // printf("[transpose] input[0] = %f, output[0] = %f\n", input[0], output[0]);
-        }
-
-        // 임의로 한 셀 더 출력
-        if (row == 1 && col == 0) {
-            // printf("[transpose] input[cols] = %f, output[rows] = %f\n", input[cols], output[rows]);
+        // 디버깅 출력: 앞부분 몇 개만 확인
+        if (row == 0 && col < 10) {
+            printf("[transpose] input[%d] = %.6f -> output[%d] = %.6f\n",
+                   row * cols + col,
+                   val,
+                   col * rows + row,
+                   output[col * rows + row]);  // 이 값은 실제로는 device memory에 있기 때문에 의미 없음
         }
     }
 }
 
-
 void launch_transpose(const float* input, float* output, int rows, int cols) {
     dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
     dim3 gridDim((cols + TILE_WIDTH - 1) / TILE_WIDTH, (rows + TILE_WIDTH - 1) / TILE_WIDTH);
-
     transpose_kernel<<<gridDim, blockDim>>>(input, output, rows, cols);
     cudaDeviceSynchronize();
 }
