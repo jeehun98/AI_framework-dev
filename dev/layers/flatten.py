@@ -37,6 +37,7 @@ class Flatten(Layer):
             inputs = inputs.reshape(batch_size, flattened_dim)
 
         self.output_shape = inputs.shape
+
         return inputs
 
     def __call__(self, x):
