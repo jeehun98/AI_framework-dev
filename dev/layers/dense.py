@@ -181,7 +181,4 @@ class Dense(Layer):
         if self.activation_name:
             shape_map[preact_id] = Shape(batch, units)
 
-        print(f"[Dense] bias_id={bias_id}, bias_shape={self.bias.shape}")
-
-
         return e_block, weights, biases, output_id, shape_map
