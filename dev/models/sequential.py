@@ -325,59 +325,42 @@ class Sequential:
         y_cp = cp.asarray(y, dtype=cp.float32)
         batch_size = x_cp.shape[0]
 
-        # 1. 입력 및 정답 텐서 포인터
-        tensor_ptrs = {
-            "input": x_cp.data.ptr,
-            "y_true": y_cp.data.ptr
-        }
-        self.tensor_map = {
-            "input": x_cp,
-            "y_true": y_cp
-        }
+        # 1) 입력/정답
+        tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
+        self.tensor_map = {"input": x_cp, "y_true": y_cp}
 
-        # 2. 가중치 및 편향 포인터
+        # 2) 가중치/편향
         for name, arr in self.weights.items():
             cp_arr = cp.asarray(arr, dtype=cp.float32)
             tensor_ptrs[name] = cp_arr.data.ptr
             self.tensor_map[name] = cp_arr
-
         for name, arr in self.biases.items():
             cp_arr = cp.asarray(arr, dtype=cp.float32)
             tensor_ptrs[name] = cp_arr.data.ptr
             self.tensor_map[name] = cp_arr
 
-        # 3. 중간 텐서 버퍼 준비
-        for var, shape in self.shapes.items():
-            if var not in tensor_ptrs:
-                buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
-                tensor_ptrs[var] = buf.data.ptr
-                self.tensor_map[var] = buf
+        # ✅ 3) 중간 텐서 사전 할당 제거 (중요!)
+        #    대신 output만 배치 크기에 맞게 미리 잡아 전달
+        out_shape = self.shapes[self.output_var]
+        out_buf = cp.empty((batch_size, out_shape.rows * out_shape.cols), dtype=cp.float32)
+        tensor_ptrs[self.output_var] = out_buf.data.ptr
+        # 보기 좋게 (B, rows, cols)로 reshape해서 저장
+        self.tensor_map[self.output_var] = out_buf.reshape(batch_size, out_shape.rows, out_shape.cols)
 
-        # 손실 계산 전
-        if "loss" in self.tensor_map:
-            loss_check = self.tensor_map["loss"]
-            cp.cuda.runtime.deviceSynchronize()
-            logger.debug(f"[Before Loss] loss buffer: {cp.asnumpy(loss_check.ravel()[:4])}")
+        # (선택) loss 버퍼는 만들지 않음. LOSS 노드는 forward에서 할당 안 함.
 
-        # 4. 손실 계산
+        # 4) 손실 계산
         loss_val = ge.run_graph_with_loss_entry(
             E=self.E,
             tensors=tensor_ptrs,
             shapes=self.shapes,
-            final_output_id=self.output_var,
+            final_output_id=self.output_var,   # 내부에서 LOSS면 자동 보정됨
             label_tensor_id="y_true",
             loss_type=self.loss_type,
             batch_size=batch_size
         )
 
-        # 손실 계산 후
-        if "loss" in self.tensor_map:
-            loss_check = self.tensor_map["loss"]
-            cp.cuda.runtime.deviceSynchronize()
-            logger.debug(f"[After Loss] loss buffer: {cp.asnumpy(loss_check.ravel()[:4])}")
-
-
-        # 5. 출력 및 메트릭 계산
+        # 5) 메트릭 계산
         output_arr = self.tensor_map[self.output_var]
         y_true_arr = self.tensor_map["y_true"]
 

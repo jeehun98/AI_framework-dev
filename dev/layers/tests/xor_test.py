@@ -45,12 +45,12 @@ def test_xor_classification_equivalent_to_pytorch():
     model = Sequential(input_shape=(1, 1, 2))
     model.add(Flatten(input_shape=(1, 1, 2)))
     model.add(Dense(units=4, activation=None, initializer="xavier"))   # Linear(2→4)
-    model.add(Activation("sigmoid"))
+    model.add(Activation("tanh"))
     model.add(Dense(units=1, activation=None, initializer="xavier"))   # Linear(4→1)
     model.add(Activation("sigmoid"))                                   # Sigmoid
 
     # 옵티마이저/러닝레이트: 배치 평균 스케일에 맞춰 0.1 권장
-    model.compile(optimizer="sgd", loss="bce", learning_rate=0.1)
+    model.compile(optimizer="sgd", loss="bce", learning_rate=0.3)
 
     # 그래프 확인 (디버그 필요 시)
     print("\n=== [Graph E] 계산 그래프 ===")
@@ -65,7 +65,7 @@ def test_xor_classification_equivalent_to_pytorch():
     print(f"  BCE(before): {metric_before:.6f}")
 
     # 학습 (배치 평균이 의도대로 적용되는지 확인: batch_size=4)
-    model.fit(x, y, epochs=2000, batch_size=4)
+    model.fit(x, y, epochs=5000, batch_size=4)
 
     print("\n[AFTER] evaluate on full batch")
     metric_after = model.evaluate(x, y)
