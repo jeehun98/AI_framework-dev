@@ -9,7 +9,10 @@ __global__ void adam_kernel(float* param, float* grad, float* m, float* v,
                             float lr, float beta1, float beta2, float epsilon, int t, int size);
 
 void optimizer_update_cuda(
-    float* param, float* grad,
-    float* velocity, float* m, float* v,
+    float* param,
+    const float* grad,   // ★ 반드시 const 유지
+    float* velocity,
+    float* m,
+    float* v,
     float lr, float beta1, float beta2, float epsilon,
     int size, OptimizerType opt_type, int t);

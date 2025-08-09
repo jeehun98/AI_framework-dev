@@ -4,6 +4,11 @@
 #include <cmath>
 #include <iostream>
 
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(x) do { cudaError_t err = (x); if (err != cudaSuccess) { \
+  printf("CUDA Error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); } } while(0)
+#endif
+
 // ================================
 // MSE Forward (Loss)
 // ================================
@@ -73,29 +78,32 @@ __global__ void bce_loss_kernel(const float* y_true, const float* y_pred, float*
         atomicAdd(loss, cache[0]);
 }
 
+// BCE (입력: Sigmoid 출력 a). 여기선 dL/da를 출력.
+// Sigmoid backward에서 a*(1-a)를 곱해 최종 dL/dz = (a - y)/batch_size가 됨.
 __global__ void bce_loss_backward(
-    const float* y_true,
-    const float* y_pred,
-    float* grad_out,
-    int size)
+    const float* __restrict__ y_true,
+    const float* __restrict__ y_pred,   // a = sigmoid(z)
+    float* __restrict__ grad_out,       // dL/da
+    int size,
+    int batch_size)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < size) {
-        float yt = y_true[tid];
-        float yp = fminf(fmaxf(y_pred[tid], 1e-7f), 1.0f - 1e-7f);
-        
-        // ∂L/∂ŷ = (ŷ - y) / size
-        float grad = (yp - yt) / size;
+    if (tid >= size) return;
 
-        if (tid == 0) {
-            // printf("[BCE_BACKWARD] tid=%d, y_pred=%.6f, y_true=%.6f, grad=%.6f\n", tid, yp, yt, grad);
-        }   
-        
-        grad_out[tid] = grad;
+    const float eps = 1e-7f;
 
-    }
+    float a = fminf(fmaxf(y_pred[tid], eps), 1.f - eps);  // clamp a∈(0,1)
+    float y = y_true[tid];
+
+    // L = -[ y*log(a) + (1-y)*log(1-a) ] (sample-wise), 여기선 배치 평균만 적용
+    // dL/da = (a - y) / (a*(1-a))
+    float denom = fmaxf(a * (1.f - a), eps);
+    float dL_da = (a - y) / denom;
+
+    // 배치 평균 (특징 차원 평균은 하지 않음)
+    float scale = (batch_size > 0) ? (1.f / (float)batch_size) : 1.f;
+    grad_out[tid] = dL_da * scale;
 }
-
 
 
 // ================================

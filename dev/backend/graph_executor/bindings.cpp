@@ -163,7 +163,7 @@ PYBIND11_MODULE(graph_executor, m) {
 
         optimizer_update_cuda(
             reinterpret_cast<float*>(param_ptr),
-            reinterpret_cast<float*>(grad_ptr),
+            reinterpret_cast<const float*>(grad_ptr),
             reinterpret_cast<float*>(velocity_ptr),
             reinterpret_cast<float*>(m_ptr),
             reinterpret_cast<float*>(v_ptr),
