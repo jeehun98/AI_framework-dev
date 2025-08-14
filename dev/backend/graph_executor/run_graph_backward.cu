@@ -10,7 +10,7 @@
 // ↓ 아래 3개는 더이상 필요 없음: backward matmul/transpose를 cuBLAS로 대체
 // #include "backward_kernels_optimized.cuh"
 // #include "transpose.cuh"
-#include "activation_backward.cuh"
+#include "activation_ops.cuh"
 #include "cnn_kernels.cuh"
 #include "op_structs.cuh"
 #include "loss_kernels.cuh"
@@ -260,17 +260,21 @@ void run_graph_backward(
         case SIGMOID:
         case RELU:
         case TANH: {
-            for (int b = 0; b < batch_size; ++b) {
-                float* grad_out_b   = grad_out_full   + b * out_stride;
-                float* grad_input_b = grad_input_full + b * in_stride;
-                const float* out_b  = tensors[op.output_id] + b * out_stride; // activation output
+            // rows' = batch_size * out_rows, cols' = out_cols
+            const int rowsB = batch_size * out_rows;
+            const int colsB = out_cols;
 
-                activation_backward<<<(out_size + 255)/256, 256>>>(
-                    grad_out_b, out_b, grad_input_b, out_rows, out_cols, op.op_type);
-                checkCudaLast("activation_backward");
-            }
+            // grad_out_full / grad_input_full / tensors[op.output_id] 는
+            // 배치가 연속 저장이므로 그대로 전달하면 OK
+            launch_activation_backward(
+                /*grad_out=*/grad_out_full,
+                /*out=*/tensors[op.output_id],
+                /*grad_in=*/grad_input_full,
+                rowsB, colsB, op.op_type);
+            checkCudaLast("activation_backward");
             break;
         }
+
 
         case FLATTEN: {
             // 단순 전달
