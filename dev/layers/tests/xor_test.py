@@ -17,6 +17,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "build", "lib.win-amd64-
 # AI framework 루트 경로 추가
 sys.path.insert(0, os.path.abspath("C:/Users/owner/Desktop/AI_framework-dev"))
 sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
+os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin")  # ⬅️ 중요
 
 # Pybind11 모듈
 import graph_executor as ge
