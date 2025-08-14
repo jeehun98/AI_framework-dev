@@ -65,7 +65,7 @@ def test_xor_classification_equivalent_to_pytorch():
     print(f"  BCE(before): {metric_before:.6f}")
 
     # 학습 (배치 평균이 의도대로 적용되는지 확인: batch_size=4)
-    model.fit(x, y, epochs=5000, batch_size=4)
+    model.fit(x, y, epochs=1000, batch_size=4)
 
     print("\n[AFTER] evaluate on full batch")
     metric_after = model.evaluate(x, y)
