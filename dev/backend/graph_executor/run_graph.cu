@@ -7,7 +7,7 @@
 
 #include "run_graph.cuh"
 #include "matmul_tiled.cuh"          // ✅ 새 GEMM
-#include "activation.cuh"
+#include "activation_ops.cuh"
 #include "add_bias_rowwise.cuh"      // ✅ 새 row-wise bias add
 #include "cnn_kernels.cuh"
 #include "op_structs.cuh"
@@ -164,14 +164,19 @@ void run_graph_cuda(
             }
             break;
         }
-
         case SIGMOID: {
             float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
             const size_t stride = (size_t)out_shape.rows * out_shape.cols;
+            const int rows = out_shape.rows;
+            const int cols = out_shape.cols;
+
             for (int b = 0; b < batch_size; ++b) {
-                float* in_b  = input  + b * stride;
-                float* out_b = output + b * stride;
-                activation_sigmoid<<<act_blocks, act_threads>>>(in_b, /*param=*/nullptr, out_b, out_shape.rows, out_shape.cols);
+                const float* in_b  = input  + b * stride;
+                float*       out_b = output + b * stride;
+
+                // bias가 별도 노드(ADD)로 이미 처리되므로 여기서는 nullptr
+                launch_activation_forward(in_b, /*bias=*/nullptr, out_b,
+                                          rows, cols, ACT_SIGMOID /*=3*/);
                 CUDA_CHECK(cudaGetLastError());
             }
             break;
@@ -180,10 +185,15 @@ void run_graph_cuda(
         case RELU: {
             float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
             const size_t stride = (size_t)out_shape.rows * out_shape.cols;
+            const int rows = out_shape.rows;
+            const int cols = out_shape.cols;
+
             for (int b = 0; b < batch_size; ++b) {
-                float* in_b  = input  + b * stride;
-                float* out_b = output + b * stride;
-                activation_relu<<<act_blocks, act_threads>>>(in_b, /*param=*/nullptr, out_b, out_shape.rows, out_shape.cols);
+                const float* in_b  = input  + b * stride;
+                float*       out_b = output + b * stride;
+
+                launch_activation_forward(in_b, /*bias=*/nullptr, out_b,
+                                          rows, cols, ACT_RELU /*=2*/);
                 CUDA_CHECK(cudaGetLastError());
             }
             break;
@@ -192,14 +202,20 @@ void run_graph_cuda(
         case TANH: {
             float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
             const size_t stride = (size_t)out_shape.rows * out_shape.cols;
+            const int rows = out_shape.rows;
+            const int cols = out_shape.cols;
+
             for (int b = 0; b < batch_size; ++b) {
-                float* in_b  = input  + b * stride;
-                float* out_b = output + b * stride;
-                activation_tanh<<<act_blocks, act_threads>>>(in_b, /*param=*/nullptr, out_b, out_shape.rows, out_shape.cols);
+                const float* in_b  = input  + b * stride;
+                float*       out_b = output + b * stride;
+
+                launch_activation_forward(in_b, /*bias=*/nullptr, out_b,
+                                          rows, cols, ACT_TANH /*=4*/);
                 CUDA_CHECK(cudaGetLastError());
             }
             break;
         }
+
 
         case FLATTEN: {
             // 단순 패스(메모리 레이아웃만 유지) – 필요 시 reshape 정도만
