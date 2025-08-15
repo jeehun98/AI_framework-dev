@@ -19,21 +19,14 @@
 #define TILE_WIDTH 16
 #endif
 
-__global__ void add_inplace(float* dst, const float* src, int size) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < size) dst[i] += src[i];
-}
+// === 전역 cuBLAS 핸들 재사용 ===
+static cublasHandle_t g_cublas = nullptr;
 
-static inline void checkCudaLast(const char* where) {
-    cudaError_t e = cudaGetLastError();
-    if (e != cudaSuccess) {
-        std::fprintf(stderr, "[CUDA][ERR] %s: %s\n", where, cudaGetErrorString(e));
-    }
-}
-static inline void checkCudaSync(const char* where) {
-    cudaError_t e = cudaDeviceSynchronize();
-    if (e != cudaSuccess) {
-        std::fprintf(stderr, "[CUDA][SYNC] %s: %s\n", where, cudaGetErrorString(e));
+static void ensure_cublas() {
+    if (!g_cublas) {
+        cublasCreate(&g_cublas);
+        // Ampere+면 TF32 활성화하고 싶다면:
+        // cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH);
     }
 }
 
@@ -43,6 +36,7 @@ static inline void CUBLAS_CHECK(cublasStatus_t s, const char* where) {
         std::fprintf(stderr, "[cuBLAS][ERR] %s: code=%d\n", where, int(s));
     }
 }
+
 
 /**
  * Row-major 행렬을 대상으로 하는 얇은 GEMM 래퍼.
@@ -74,6 +68,58 @@ static inline void gemm_rm(cublasHandle_t h,
                     C, ldc),
         "cublasSgemm");
 }
+
+
+// row-major + StridedBatched (A/B/C가 등간격 스트라이드로 배치 반복)
+static inline void gemm_rm_strided_batched(cublasHandle_t h,
+    bool transA, bool transB,
+    int M, int N, int K,
+    const float* A, int lda, long long strideA,
+    const float* B, int ldb, long long strideB,
+    float* C, int ldc, long long strideC,
+    int batch,
+    float alpha=1.f, float beta=0.f) {
+
+    cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
+    cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
+    // column-major 매핑: (opB,opA), (N,M,K)
+    cublasSgemmStridedBatched(
+        h, opB, opA, N, M, K,
+        &alpha,
+        B, ldb, strideB,
+        A, lda, strideA,
+        &beta,
+        C, ldc, strideC,
+        batch
+    );
+}
+
+// 간단 fill 커널(ones 벡터용)
+__global__ void fill_kernel(float* p, float v, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) p[i] = v;
+}
+
+
+__global__ void add_inplace(float* dst, const float* src, int size) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size) dst[i] += src[i];
+}
+
+static inline void checkCudaLast(const char* where) {
+    cudaError_t e = cudaGetLastError();
+    if (e != cudaSuccess) {
+        std::fprintf(stderr, "[CUDA][ERR] %s: %s\n", where, cudaGetErrorString(e));
+    }
+}
+static inline void checkCudaSync(const char* where) {
+    cudaError_t e = cudaDeviceSynchronize();
+    if (e != cudaSuccess) {
+        std::fprintf(stderr, "[CUDA][SYNC] %s: %s\n", where, cudaGetErrorString(e));
+    }
+}
+
+
 
 // ==== ADD backward: dX = dY, dB = sum_rows(dY) ===============================
 static __global__ void add_backward_input(const float* __restrict__ grad_out,
@@ -174,116 +220,154 @@ void run_graph_backward(
         }
 
         switch (op.op_type) {
-        case MATMUL: {
-            if (!param) break;
+            case MATMUL: {
+                if (!param) break; // W 없음
 
-            // Shapes (row-major):
-            // Forward:  Y[M,N] = X[M,K] * W[K,N]
-            // Backward:
-            //   dX[M,K] = dY[M,N] * W^T[N,K]
-            //   dW[K,N] = X^T[K,M] * dY[M,N]   (배치 전체 합)
-            const int M = in_rows;
-            const int K = in_cols;
-            const int N = out_cols;
+                ensure_cublas();
 
-            // dW 누적 버퍼
-            float* grad_weight = nullptr;
-            cudaMalloc(&grad_weight, (size_t)K * N * sizeof(float));
-            cudaMemset(grad_weight, 0, (size_t)K * N * sizeof(float));
+                // X: in_rows x in_cols (M x K)
+                // W: in_cols x out_cols (K x N)
+                // Y: out_rows x out_cols (M x N)
+                const int M = out_rows;          // == in_rows
+                const int K = in_cols;
+                const int N = out_cols;
 
-            // 배치 루프
-            for (int b = 0; b < batch_size; ++b) {
-                float* grad_out_b   = grad_out_full   + b * out_stride; // [M,N]
-                float* grad_input_b = grad_input_full + b * in_stride;  // [M,K]
-                float* input_b      = input           + b * in_stride;  // [M,K]
+                const long long strideX  = (long long)M * K;
+                const long long strideY  = (long long)M * N;
+                const long long strideDX = (long long)M * K;
 
-                // dX = dY * W^T
-                // lda/ldb/ldc는 row-major의 '열 개수'
-                gemm_rm(handle,
-                        /*transA=*/false, /*transB=*/true,
-                        /*M=*/M, /*N=*/K, /*K=*/N,
-                        /*A=*/grad_out_b, /*lda=*/N,
-                        /*B=*/param,      /*ldb=*/N,   // W[K,N], transB=True로 W^T 사용
-                        /*C=*/grad_input_b,/*ldc=*/K,
-                        /*alpha=*/1.f, /*beta=*/0.f);
+                // --- dX = dY · W^T  (StridedBatched, W는 배치 공용 → strideB=0) ---
+                // grad_input_full: [B, M*K]
+                // grad_input_full 크기 보장
+                if (!grad_input_full)
+                    cudaMalloc(&grad_input_full, (size_t)batch_size * M * K * sizeof(float));
 
-                // dW += X^T * dY
-                gemm_rm(handle,
-                        /*transA=*/true,  /*transB=*/false,
-                        /*M=*/K, /*N=*/N, /*K=*/M,
-                        /*A=*/input_b,    /*lda=*/K,   // X[M,K], transA=True로 X^T
-                        /*B=*/grad_out_b, /*ldb=*/N,   // dY[M,N]
-                        /*C=*/grad_weight,/*ldc=*/N,
-                        /*alpha=*/1.f, /*beta=*/1.f);  // 누적
+                gemm_rm_strided_batched(
+                    g_cublas,
+                    /*transA=*/false, /*transB=*/true,
+                    /*M=*/M, /*N=*/K, /*K=*/N,
+                    /*A =*/ grad_out_full,   /*lda =*/ N, /*strideA =*/ (long long)M * N,
+                    /*B =*/ param,           /*ldb =*/ N, /*strideB =*/ 0LL,
+                    /*C =*/ grad_input_full, /*ldc =*/ K, /*strideC =*/ (long long)M * K,
+                    /*batch=*/batch_size,
+                    /*alpha=*/1.f, /*beta=*/0.f
+                );
+
+                // --- dW = sum_b (X_b^T · dY_b) ---
+                // 1) 배치별 partial dW_b(K,N)을 StridedBatched 로 계산하여 tmp에 저장
+                // 1) partial dW_b 저장용
+                float* dW_tmp = nullptr;
+                cudaMalloc(&dW_tmp, (size_t)batch_size * K * N * sizeof(float));
+
+                gemm_rm_strided_batched(
+                    g_cublas,
+                    /*transA=*/true,  /*transB=*/false,
+                    /*M=*/K, /*N=*/N, /*K=*/M,
+                    /*A =*/ input,          /*lda =*/ K, /*strideA =*/ (long long)M * K,
+                    /*B =*/ grad_out_full,  /*ldb =*/ N, /*strideB =*/ (long long)M * N,
+                    /*C =*/ dW_tmp,         /*ldc =*/ N, /*strideC =*/ (long long)K * N,
+                    /*batch=*/batch_size,
+                    /*alpha=*/1.f, /*beta=*/0.f
+                );
+
+                // 2) 배치축 합산: ones(1,B) · [B x (K*N)] → [1 x (K*N)] = dW_accum
+                float* dW_accum = nullptr;
+                cudaMalloc(&dW_accum, (size_t)K * N * sizeof(float));
+
+                float* onesB = nullptr;
+                cudaMalloc(&onesB, (size_t)batch_size * sizeof(float));
+                int thr = 256, blk = (batch_size + thr - 1) / thr;
+                fill_kernel<<<blk, thr>>>(onesB, 1.0f, batch_size);
+
+                // C(1, K*N) = A(1, B) · B(B, K*N)
+                gemm_rm(
+                    g_cublas,
+                    /*transA=*/false, /*transB=*/false,
+                    /*M=*/1, /*N=*/(K * N), /*K=*/batch_size,
+                    /*A =*/ onesB,   /*lda =*/ batch_size,
+                    /*B =*/ dW_tmp,  /*ldb =*/ (K * N),
+                    /*C =*/ dW_accum,/*ldc =*/ (K * N),
+                    /*alpha=*/1.f, /*beta=*/0.f
+                );
+
+                gradients[op.param_id] = dW_accum;
+
+                cudaFree(dW_tmp);
+                cudaFree(onesB);
+
+                break;
             }
 
-            gradients[op.param_id] = grad_weight;  // dW
-            break;
-        }
+            case ADD: {
+                ensure_cublas();
 
-        case ADD: {
-            // y = x + b(row-wise), backward:
-            //   dX = dY
-            //   dB = sum_rows(dY), 배치 전체 합
-            float* grad_bias = nullptr;
-            cudaMalloc(&grad_bias, (size_t)out_cols * sizeof(float));
-            cudaMemset(grad_bias, 0, (size_t)out_cols * sizeof(float));
+                // grad_input = grad_out (B*M*N 원소를 한 번에 복사)
+                {
+                    const size_t bytes = (size_t)batch_size * out_size * sizeof(float);
+                    cudaMemcpy(grad_input_full, grad_out_full, bytes, cudaMemcpyDeviceToDevice);
+                }
 
-            // 임시 버퍼 1개만 재사용
-            float* grad_bias_b = nullptr;
-            cudaMalloc(&grad_bias_b, (size_t)out_cols * sizeof(float));
+                // grad_bias = sum over batch and rows (열방향 합산)
+                // 행 수 = rowsB = B * out_rows, 열 수 = out_cols
+                const int rowsB = batch_size * out_rows;
+                const int cols  = out_cols;
 
-            for (int b = 0; b < batch_size; ++b) {
-                float* grad_out_b   = grad_out_full   + b * out_stride;
-                float* grad_input_b = grad_input_full + b * in_stride;
+                float* grad_bias = nullptr;      // [cols]
+                cudaMalloc(&grad_bias, (size_t)cols * sizeof(float));
 
-                // dX = dY
-                add_backward_input<<<(out_size + 255)/256, 256>>>(grad_out_b, grad_input_b, out_size);
-                checkCudaLast("add_backward_input");
+                // ones(1, rowsB)
+                float* onesR = nullptr;
+                cudaMalloc(&onesR, (size_t)rowsB * sizeof(float));
+                {
+                    int thr = 256, blk = (rowsB + thr - 1) / thr;
+                    fill_kernel<<<blk, thr>>>(onesR, 1.0f, rowsB);
+                }
 
-                // dB_b = sum_rows(dY)
-                cudaMemset(grad_bias_b, 0, (size_t)out_cols * sizeof(float));
-                add_backward_bias<<<(out_cols + 255)/256, 256>>>(grad_out_b, grad_bias_b, out_rows, out_cols);
-                checkCudaLast("add_backward_bias");
+                // grad_bias(1, cols) = ones(1, rowsB) · G(rowsB, cols)
+                gemm_rm(
+                    g_cublas,
+                    /*transA=*/false, /*transB=*/false,
+                    /*M=*/1, /*N=*/cols, /*K=*/rowsB,
+                    /*A =*/ onesR,            /*lda =*/ rowsB,
+                    /*B =*/ grad_out_full,    /*ldb =*/ cols,
+                    /*C =*/ grad_bias,        /*ldc =*/ cols,
+                    1.f, 0.f
+                );
 
-                // 누적
-                int thr = 256, blk = (out_cols + thr - 1) / thr;
-                add_inplace<<<blk, thr>>>(grad_bias, grad_bias_b, out_cols);
-                checkCudaLast("add_inplace grad_bias");
+                gradients[op.param_id] = grad_bias;
+                cudaFree(onesR);
+                break;
             }
-            cudaFree(grad_bias_b);
-
-            gradients[op.param_id] = grad_bias;
-            break;
-        }
-
-        case SIGMOID:
-        case RELU:
-        case TANH: {
-            // rows' = batch_size * out_rows, cols' = out_cols
-            const int rowsB = batch_size * out_rows;
-            const int colsB = out_cols;
-
-            // grad_out_full / grad_input_full / tensors[op.output_id] 는
-            // 배치가 연속 저장이므로 그대로 전달하면 OK
-            launch_activation_backward(
-                /*grad_out=*/grad_out_full,
-                /*out=*/tensors[op.output_id],
-                /*grad_in=*/grad_input_full,
-                rowsB, colsB, op.op_type);
-            checkCudaLast("activation_backward");
-            break;
-        }
 
 
-        case FLATTEN: {
-            // 단순 전달
-            gradients[op.input_id] = grad_out_full;
-            continue;
-        }
+            case SIGMOID:
+            case RELU:
+            case TANH: {
+                // rows' = batch_size * out_rows, cols' = out_cols
+                const int rowsB = batch_size * out_rows;
+                const int colsB = out_cols;
 
-        default:
-            break;
+                // grad_out_full / grad_input_full / tensors[op.output_id] 는
+                // 배치가 연속 저장이므로 그대로 전달하면 OK
+                launch_activation_backward(
+                    /*grad_out=*/grad_out_full,
+                    /*out=*/tensors[op.output_id],
+                    /*grad_in=*/grad_input_full,
+                    rowsB, colsB, op.op_type
+                );
+                checkCudaLast("activation_backward");
+                break;
+            }
+
+
+            case FLATTEN: {
+                // 단순 전달
+                gradients[op.input_id] = grad_out_full;
+                continue;
+            }
+
+            default:
+                break;
         }
 
         if (op.op_type != FLATTEN) {

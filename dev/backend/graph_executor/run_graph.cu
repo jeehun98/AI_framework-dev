@@ -4,6 +4,7 @@
 #include <fstream>
 #include <cuda_runtime.h>
 #include <unordered_map>
+#include <cublas_v2.h>    
 
 #include "run_graph.cuh"
 #include "matmul_tiled.cuh"          // ✅ 새 GEMM
@@ -20,6 +21,41 @@
 #define CUDA_CHECK(x) do { cudaError_t _e=(x); if(_e!=cudaSuccess){ \
   fprintf(stderr,"[CUDA] %s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(_e)); } } while(0)
 #endif
+
+// === 전역 cuBLAS 핸들 재사용 ===
+static cublasHandle_t g_cublas = nullptr;
+
+static void ensure_cublas() {
+    if (!g_cublas) {
+        cublasCreate(&g_cublas);
+        // Ampere+면 TF32 활성화하고 싶다면:
+        // cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH);
+    }
+}
+
+// row-major + StridedBatched (A/B/C가 등간격 스트라이드로 배치 반복)
+static inline void gemm_rm_strided_batched(cublasHandle_t h,
+    bool transA, bool transB,
+    int M, int N, int K,
+    const float* A, int lda, long long strideA,
+    const float* B, int ldb, long long strideB,
+    float* C, int ldc, long long strideC,
+    int batch,
+    float alpha=1.f, float beta=0.f) {
+
+    cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
+    cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
+    // column-major 매핑: (opB,opA), (N,M,K)
+    cublasSgemmStridedBatched(
+        h, opB, opA, N, M, K,
+        &alpha,
+        B, ldb, strideB,
+        A, lda, strideA,
+        &beta,
+        C, ldc, strideC,
+        batch
+    );
+}
 
 static inline float* ensure_output(std::unordered_map<std::string, float*>& tensors,
                                    std::unordered_map<std::string, Shape>& shapes,
