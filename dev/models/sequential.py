@@ -40,6 +40,10 @@ class Sequential:
         self.name = name
         self.output_var = None
 
+        # 🔧 디바이스 상태
+        self._device_ready = False     # 파라미터/옵티마이저 버퍼 준비 여부
+        self.opt_buffers = {}          # {name: {"velocity": cp, "m": cp, "v": cp}}
+
     def add(self, layer):
         if not isinstance(layer, Layer):
             raise ValueError("Only instances of Layer can be added.")
@@ -121,14 +125,43 @@ class Sequential:
             )
             self.E.append(node)
 
+    # 🔧 내부 유틸: 디바이스 파라미터/옵티마이저 버퍼 1회 초기화
+    def _ensure_device_state(self):
+        if self._device_ready:
+            return
+
+        # 파라미터는 compile 에서 이미 CuPy로 만들어 두었으니 포인터만 쓰면 됨
+        # 옵티마이저 상태 버퍼 준비 (필요 시만 생성)
+        for name in list(self.weights.keys()) + list(self.biases.keys()):
+            param = self.weights.get(name) if name in self.weights else self.biases[name]
+            if name not in self.opt_buffers:
+                self.opt_buffers[name] = {
+                    "velocity": cp.zeros_like(param),
+                    "m": cp.zeros_like(param),
+                    "v": cp.zeros_like(param)
+                }
+
+        self._device_ready = True
+
+    # 🔧 OptimizerType 매핑
+    def _opt_type_enum(self):
+        s = (self.optimizer_type or "sgd").lower()
+        if s == "sgd":
+            return ge.OptimizerType.SGD
+        if s == "momentum":
+            return ge.OptimizerType.MOMENTUM
+        if s == "adam":
+            return ge.OptimizerType.ADAM
+        raise ValueError(f"Unsupported optimizer type: {self.optimizer_type}")
+
     def fit(self, x=None, y=None, epochs=1, batch_size=-1):
         if batch_size == -1 or batch_size < x.shape[0]:
             batch_size = x.shape[0]
 
-        self.global_step = 1  # Adam 등에서 필요한 timestep
+        self.global_step = 1
 
-        if not hasattr(self, "opt_buffers"):
-            self.opt_buffers = {}
+        # 🔧 디바이스 상태 보장
+        self._ensure_device_state()
 
         for epoch in range(epochs):
             epoch_loss = 0.0
@@ -146,165 +179,80 @@ class Sequential:
                 batch_y = y_cp[i:i + batch_size]
                 batch_size_actual = batch_x.shape[0]
 
-                tensor_ptrs = {"input": batch_x.data.ptr, "y_true": batch_y.data.ptr}
-                self.tensor_map = {"input": batch_x.copy(), "y_true": batch_y.copy()}
-
+                # 🔧 tensor_ptrs: 입력/라벨 + (디바이스 상주) 파라미터만 넣으면 됨
+                tensor_ptrs = {
+                    "input": batch_x.data.ptr,
+                    "y_true": batch_y.data.ptr,
+                }
+                # 파라미터 포인터 추가
                 for name, arr in self.weights.items():
-                    cp_arr = cp.asarray(arr, dtype=cp.float32)
-                    tensor_ptrs[name] = cp_arr.data.ptr
-                    self.tensor_map[name] = cp_arr.copy()
-
+                    tensor_ptrs[name] = arr.data.ptr
                 for name, arr in self.biases.items():
-                    cp_arr = cp.asarray(arr, dtype=cp.float32)
-                    tensor_ptrs[name] = cp_arr.data.ptr
-                    self.tensor_map[name] = cp_arr.copy()
+                    tensor_ptrs[name] = arr.data.ptr
 
-                for var, shape in self.shapes.items():
-                    if var not in tensor_ptrs:
-                        buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
-                        tensor_ptrs[var] = buf.data.ptr
-                        self.tensor_map[var] = buf
+                # 🔧 옵티마이저 상태 포인터 맵 준비(이름 → uintptr)
+                velocity_ptrs = {n: buf["velocity"].data.ptr for n, buf in self.opt_buffers.items()}
+                m_ptrs        = {n: buf["m"].data.ptr        for n, buf in self.opt_buffers.items()}
+                v_ptrs        = {n: buf["v"].data.ptr        for n, buf in self.opt_buffers.items()}
 
-                # ✅ Forward + Loss
-                loss_val = ge.run_graph_with_loss_entry(
+                # 🔧 한 번에 학습: fwd+loss → bwd → opt
+                loss_val = ge.train_step_entry(
                     E=self.E,
                     tensors=tensor_ptrs,
                     shapes=self.shapes,
-                    final_output_id="loss",
+                    # 주의: with_loss 엔트리와 동일하게 최종 출력 ID를 넘김
+                    # LOSS 노드가 그래프 끝에 있으므로 내부에서 적절히 처리됨
+                    final_output_id=self.output_var,
                     label_tensor_id="y_true",
                     loss_type=self.loss_type,
-                    batch_size=batch_size_actual
+                    batch_size=batch_size_actual,
+                    opt_type=self._opt_type_enum(),
+                    lr=self.learning_rate,
+                    beta1=0.9, beta2=0.999, eps=1e-8,
+                    timestep=self.global_step,
+                    velocity_ptrs=velocity_ptrs,
+                    m_ptrs=m_ptrs,
+                    v_ptrs=v_ptrs
                 )
 
-                loss_grad = cp.array([1.0], dtype=cp.float32)
-
-                grad_ptrs = {"loss": loss_grad.data.ptr}
-
-                grad_map = ge.run_graph_backward_entry(
-                    E=self.E,
-                    tensors=tensor_ptrs,
-                    shapes=self.shapes,
-                    gradients=grad_ptrs,
-                    final_output_id="loss",
-                    batch_size=batch_size_actual
-                )
-
-                for name in list(self.weights.keys()) + list(self.biases.keys()):
-                    param = self.tensor_map[name]
-                    grad_ptr = grad_map.get(name, 0)
-                    if grad_ptr == 0:
-                        continue
-
-                    grad = cp.ndarray(param.shape, dtype=cp.float32,
-                                    memptr=cp.cuda.MemoryPointer(
-                                        cp.cuda.UnownedMemory(grad_ptr, param.nbytes, None), 0))
-
-                    # ✅ 업데이트 전 평균 기록
-                    mean_before = cp.mean(param).item()
-
-                    if name not in self.opt_buffers:
-                        self.opt_buffers[name] = {
-                            "velocity": cp.zeros_like(param),
-                            "m": cp.zeros_like(param),
-                            "v": cp.zeros_like(param)
-                        }
-
-                    velocity = self.opt_buffers[name]["velocity"]
-                    m = self.opt_buffers[name]["m"]
-                    v = self.opt_buffers[name]["v"]
-
-                    opt_type_str = self.optimizer_type.lower()
-                    if opt_type_str == "sgd":
-                        opt_type_enum = ge.OptimizerType.SGD
-                    elif opt_type_str == "momentum":
-                        opt_type_enum = ge.OptimizerType.MOMENTUM
-                    elif opt_type_str == "adam":
-                        opt_type_enum = ge.OptimizerType.ADAM
-                    else:
-                        raise ValueError(f"Unsupported optimizer type: {self.optimizer_type}")
-
-                    # print(f"[DEBUG] grad min={cp.min(grad):.6f}, max={cp.max(grad):.6f}, mean={cp.mean(grad):.6f}")
-
-                    ge.optimizer_update(
-                        param_ptr=param.data.ptr,
-                        grad_ptr=grad.data.ptr,
-                        velocity_ptr=velocity.data.ptr,
-                        m_ptr=m.data.ptr,
-                        v_ptr=v.data.ptr,
-                        lr=self.learning_rate,
-                        beta1=0.9,
-                        beta2=0.999,
-                        eps=1e-8,
-                        size=param.size,
-                        opt_type=opt_type_enum,
-                        timestep=self.global_step
-                    )
-
-                    mean_after = cp.mean(param).item()
-                    delta = mean_after - mean_before
-
-                    if cp.isnan(param).any():
-                        logger.warning(f"[NaN] 발생: {name} 업데이트 후 NaN 포함")
-
-                    if name in self.weights:
-                        self.weights[name] = param
-                    elif name in self.biases:
-                        self.biases[name] = param
-
-                    # ✅ 변화량 로깅
-                    # logger.debug(f"[Epoch {epoch+1}][Step {self.global_step}] {name} "f"mean: {mean_before:.6f} → {mean_after:.6f} (Δ={delta:.6f})")
+                # 파라미터는 디바이스 상에서 **제자리(in-place)** 업데이트됨.
+                # self.weights / self.biases 는 CuPy 배열을 그대로 들고 있으므로
+                # 추가 동기화나 복사가 필요 없음.
 
                 self.global_step += 1
                 epoch_loss += float(loss_val)
                 batch_count += 1
-        
 
             if batch_count > 0 and (epoch + 1) % 100 == 0:
                 avg_loss = epoch_loss / batch_count
                 logger.info(f"[Epoch {epoch + 1}] 평균 손실: {avg_loss:.6f}")
-                
-                # ✅ 예측값 직접 계산
+
+                # (옵션) 디버그 예측
                 y_pred = self.predict(x)
                 print(f"[Epoch {epoch + 1}] 예측값: {y_pred.ravel()}")
                 print(f"[Epoch {epoch + 1}] 정답: {y.ravel()}")
-
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
 
+        # 🔧 디바이스 상태 보장 (파라미터 포인터 사용)
+        self._ensure_device_state()
+
         x_cp = cp.asarray(x, dtype=cp.float32)
         batch_size = x_cp.shape[0]
 
-        # 1. 입력 텐서 포인터 준비
+        # 입력 + 파라미터 포인터
         tensor_ptrs = {"input": x_cp.data.ptr}
-        self.tensor_map = {"input": x_cp}
-
-        # 2. 가중치 & 편향 준비
         for name, arr in self.weights.items():
-            cp_arr = cp.asarray(arr, dtype=cp.float32)
-            tensor_ptrs[name] = cp_arr.data.ptr
-            self.tensor_map[name] = cp_arr
-
+            tensor_ptrs[name] = arr.data.ptr
         for name, arr in self.biases.items():
-            cp_arr = cp.asarray(arr, dtype=cp.float32)
-            tensor_ptrs[name] = cp_arr.data.ptr
-            self.tensor_map[name] = cp_arr
+            tensor_ptrs[name] = arr.data.ptr
 
-        # 3. 나머지 중간 텐서들 초기화
-        for var, shape in self.shapes.items():
-            if var not in tensor_ptrs:
-                buf = cp.empty((shape.rows, shape.cols), dtype=cp.float32)
-                tensor_ptrs[var] = buf.data.ptr
-                self.tensor_map[var] = buf
-
-        # 4. 출력 shape 확인 및 초기화
+        # 중간 텐서는 run_graph 내부에서 필요시 할당
         out_shape = self.shapes[self.output_var]
-        
         output_host = np.zeros((batch_size, out_shape.cols), dtype=np.float32)
 
-
-        # 5. CUDA forward 실행
         ge.run_graph_forward_entry(
             E=self.E,
             tensors=tensor_ptrs,
@@ -313,64 +261,37 @@ class Sequential:
             final_output_id=self.output_var,
             batch_size=batch_size
         )
-
-        # 6. 결과 반환 (CPU ndarray)
         return output_host
 
     def evaluate(self, x: np.ndarray, y: np.ndarray) -> float:
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
 
+        # 🔧 디바이스 상태 보장
+        self._ensure_device_state()
+
         x_cp = cp.asarray(x, dtype=cp.float32)
         y_cp = cp.asarray(y, dtype=cp.float32)
         batch_size = x_cp.shape[0]
 
-        # 1) 입력/정답
         tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
-        self.tensor_map = {"input": x_cp, "y_true": y_cp}
-
-        # 2) 가중치/편향
         for name, arr in self.weights.items():
-            cp_arr = cp.asarray(arr, dtype=cp.float32)
-            tensor_ptrs[name] = cp_arr.data.ptr
-            self.tensor_map[name] = cp_arr
+            tensor_ptrs[name] = arr.data.ptr
         for name, arr in self.biases.items():
-            cp_arr = cp.asarray(arr, dtype=cp.float32)
-            tensor_ptrs[name] = cp_arr.data.ptr
-            self.tensor_map[name] = cp_arr
+            tensor_ptrs[name] = arr.data.ptr
 
-        # ✅ 3) 중간 텐서 사전 할당 제거 (중요!)
-        #    대신 output만 배치 크기에 맞게 미리 잡아 전달
-        out_shape = self.shapes[self.output_var]
-        out_buf = cp.empty((batch_size, out_shape.rows * out_shape.cols), dtype=cp.float32)
-        tensor_ptrs[self.output_var] = out_buf.data.ptr
-        # 보기 좋게 (B, rows, cols)로 reshape해서 저장
-        self.tensor_map[self.output_var] = out_buf.reshape(batch_size, out_shape.rows, out_shape.cols)
-
-        # (선택) loss 버퍼는 만들지 않음. LOSS 노드는 forward에서 할당 안 함.
-
-        # 4) 손실 계산
+        # 손실 계산만 수행 (CUDA에서 fwd+loss)
         loss_val = ge.run_graph_with_loss_entry(
             E=self.E,
             tensors=tensor_ptrs,
             shapes=self.shapes,
-            final_output_id=self.output_var,   # 내부에서 LOSS면 자동 보정됨
+            final_output_id=self.output_var,  # LOSS 노드가 있으면 내부에서 자동 처리
             label_tensor_id="y_true",
             loss_type=self.loss_type,
             batch_size=batch_size
         )
 
-        # 5) 메트릭 계산
-        output_arr = self.tensor_map[self.output_var]
-        y_true_arr = self.tensor_map["y_true"]
-
-        if self.metric_type.lower() == "mse":
-            metric_result = metrics.mse(output_arr, y_true_arr)
-        elif self.metric_type.lower() == "mae":
-            metric_result = metrics.mae(output_arr, y_true_arr)
-        elif self.metric_type.lower() == "accuracy":
-            metric_result = metrics.accuracy(output_arr, y_true_arr)
-        else:
-            raise ValueError(f"Unsupported metric type: {self.metric_type}")
-
-        return float(metric_result)
+        # 메트릭 계산(호스트/간단)
+        # 출력 텐서를 굳이 복사하지 않고, 간단히 loss를 반환해도 됨.
+        # 필요하면 predict()로 y_pred를 받아 metrics.* 에 넘겨 계산.
+        return float(loss_val)
