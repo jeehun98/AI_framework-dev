@@ -1,3 +1,4 @@
+// run_graph.cu (updated: cuBLAS Strided-Batched + bias fuse + single-launch activations)
 #include <iostream>
 #include <string>
 #include <vector>
@@ -7,8 +8,6 @@
 #include <cublas_v2.h>
 
 #include "run_graph.cuh"
-// (폴백/비교용으로 남겨두고 싶으면 유지, 아니면 제거 가능)
-#include "matmul_tiled.cuh"
 #include "activation_ops.cuh"
 #include "add_bias_rowwise.cuh"
 #include "cnn_kernels.cuh"
@@ -23,19 +22,31 @@
   fprintf(stderr,"[CUDA] %s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(_e)); } } while(0)
 #endif
 
+// === cuBLAS 에러 체크 ===
+#ifndef CUBLAS_CHECK
+#define CUBLAS_CHECK(call) do { \
+    cublasStatus_t _st = (call); \
+    if (_st != CUBLAS_STATUS_SUCCESS) { \
+        fprintf(stderr, "[cuBLAS] %s:%d status=%d\n", __FILE__, __LINE__, (int)_st); \
+    } \
+} while(0)
+#endif
+
 // === 전역 cuBLAS 핸들 재사용 ===
 static cublasHandle_t g_cublas = nullptr;
 
 static void ensure_cublas() {
     if (!g_cublas) {
-        cublasCreate(&g_cublas);
-        // Ampere+에서 TF32 쓰고 싶으면:
+        CUBLAS_CHECK(cublasCreate(&g_cublas));
+        // Ampere+에서 TF32 쓰고 싶으면 다음 줄 주석 해제
         // cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH);
     }
 }
 
-// row-major + StridedBatched (A/B/C가 등간격 스트라이드로 배치 반복)
-static inline void gemm_rm_strided_batched(cublasHandle_t h,
+// -----------------------------------------------------------------------------
+// row-major + StridedBatched (A/B/C가 등간격 스트라이드로 배치 반복) - FP32 기본
+static inline void gemm_rm_strided_batched(
+    cublasHandle_t h,
     bool transA, bool transB,
     int M, int N, int K,
     const float* A, int lda, long long strideA,
@@ -46,17 +57,49 @@ static inline void gemm_rm_strided_batched(cublasHandle_t h,
 {
     cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
     cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
-    // column-major 매핑: (opB,opA), (N,M,K)
-    cublasSgemmStridedBatched(
-        h, opB, opA, N, M, K,
-        &alpha,
-        B, ldb, strideB,
-        A, lda, strideA,
-        &beta,
-        C, ldc, strideC,
-        batch
+    CUBLAS_CHECK(
+        cublasSgemmStridedBatched(
+            h, opB, opA, N, M, K,
+            &alpha,
+            B, ldb, strideB,
+            A, lda, strideA,
+            &beta,
+            C, ldc, strideC,
+            batch
+        )
     );
 }
+
+// row-major + StridedBatched (TF32 fast) - 권장 경로
+static inline void gemm_rm_strided_batched_tf32(
+    cublasHandle_t h,
+    bool transA, bool transB,
+    int M, int N, int K,
+    const float* A, int lda, long long strideA,
+    const float* B, int ldb, long long strideB,
+    float* C, int ldc, long long strideC,
+    int batch,
+    float alpha=1.f, float beta=0.f)
+{
+    cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
+    cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
+    CUBLAS_CHECK(
+        cublasGemmStridedBatchedEx(
+            h,
+            /*opB,opA*/ opB, opA,
+            /*m,n,k*/   N,   M,   K,
+            &alpha,
+            /*B*/ B, CUDA_R_32F, ldb, strideB,
+            /*A*/ A, CUDA_R_32F, lda, strideA,
+            &beta,
+            /*C*/ C, CUDA_R_32F, ldc, strideC,
+            /*batch*/ batch,
+            /*computeType*/ CUBLAS_COMPUTE_32F_FAST_TF32,
+            /*algo*/ CUBLAS_GEMM_DEFAULT_TENSOR_OP
+        )
+    );
+}
+// -----------------------------------------------------------------------------
 
 static inline float* ensure_output(std::unordered_map<std::string, float*>& tensors,
                                    std::unordered_map<std::string, Shape>& shapes,
@@ -137,18 +180,22 @@ void run_graph_cuda(
             const long long strideA = (long long)M * K;
             const long long strideC = (long long)M * N;
 
-            gemm_rm_strided_batched(
+            // TF32 경로 (권장). 필요 시 아래 FP32 경로로 교체 가능
+            gemm_rm_strided_batched_tf32(
                 g_cublas,
                 /*transA=*/false, /*transB=*/false,
                 /*M=*/M, /*N=*/N, /*K=*/K,
-                /*A =*/ tensors[op.input_id], /*lda =*/ K, /*strideA =*/ strideA,
-                /*B =*/ param,                /*ldb =*/ N, /*strideB =*/ 0LL, // 공유 가중치
-                /*C =*/ Y,                    /*ldc =*/ N, /*strideC =*/ strideC,
+                /*A =*/ input,              /*lda =*/ K, /*strideA =*/ strideA,
+                /*B =*/ param,              /*ldb =*/ N, /*strideB =*/ 0LL, // 공유 가중치
+                /*C =*/ Y,                  /*ldc =*/ N, /*strideC =*/ strideC,
                 /*batch=*/batch_size,
                 /*alpha=*/1.f, /*beta=*/0.f
             );
+            // FP32 기본 경로:
+            // gemm_rm_strided_batched(g_cublas, false, false, M,N,K,
+            //     input, K, strideA, param, N, 0LL, Y, N, strideC, batch_size, 1.f, 0.f);
 
-            // bias를 한 번에 더함 (add_kernel 대신 launch_add_bias_rowwise 사용)
+            // bias를 한 번에 더함 (ADD fuse)
             if (fuse_bias) {
                 const int rowsB = batch_size * M;
                 const int cols  = N;
@@ -193,39 +240,34 @@ void run_graph_cuda(
         case SIGMOID:
         case RELU:
         case TANH: {
-            // (간단히) 배치 루프 — 필요하면 rowsB로 싱글 런치로 바꿀 수 있음
+            // 배치까지 펼쳐 단일 런치
             float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
-            const size_t stride = (size_t)out_shape.rows * out_shape.cols;
-            const int rows = out_shape.rows;
-            const int cols = out_shape.cols;
-
-            for (int b = 0; b < batch_size; ++b) {
-                const float* in_b  = input  + b * stride;
-                float*       out_b = output + b * stride;
-
-                int act = (op.op_type == SIGMOID) ? ACT_SIGMOID
-                        : (op.op_type == RELU)    ? ACT_RELU
-                        :                            ACT_TANH;
-                launch_activation_forward(in_b, /*bias=*/nullptr, out_b, rows, cols, act);
-                CUDA_CHECK(cudaGetLastError());
-            }
+            const int rowsB = batch_size * out_shape.rows;
+            const int cols  = out_shape.cols;
+            const int act = (op.op_type == SIGMOID) ? ACT_SIGMOID
+                         : (op.op_type == RELU)    ? ACT_RELU
+                         :                            ACT_TANH;
+            launch_activation_forward(
+                /*input=*/input,
+                /*bias =*/nullptr,
+                /*output=*/output,
+                /*rows=*/rowsB, /*cols=*/cols,
+                act
+            );
+            CUDA_CHECK(cudaGetLastError());
             break;
         }
 
         case FLATTEN: {
-            // 현재는 D2D 복사 (필요시 view/alias로 최적화 가능)
+            // 통짜 D2D 복사
             float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
-            const size_t per = (size_t)out_shape.rows * out_shape.cols;
-            const size_t bytes = per * sizeof(float);
-            for (int b = 0; b < batch_size; ++b) {
-                float* in_b  = input  + b * per;
-                float* out_b = output + b * per;
-                CUDA_CHECK(cudaMemcpy(out_b, in_b, bytes, cudaMemcpyDeviceToDevice));
-            }
+            const size_t bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
+            CUDA_CHECK(cudaMemcpy(output, input, bytes, cudaMemcpyDeviceToDevice));
             break;
         }
 
         case CONV2D: {
+            // 기존 구현 유지 (샘플 루프)
             int KH = op.extra_params.kernel_h;
             int KW = op.extra_params.kernel_w;
             int SH = op.extra_params.stride_h;
