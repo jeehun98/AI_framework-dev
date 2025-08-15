@@ -8,6 +8,7 @@
 
 #include "run_graph.cuh"
 #include "activation_ops.cuh"
+#include "softmax_kernels.cuh"
 #include "cnn_kernels.cuh"
 #include "op_structs.cuh"
 #include "loss_kernels.cuh"
@@ -39,6 +40,79 @@ static void ensure_cublas() {
         // cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH);
     }
 }
+
+// 텐서/그래디언트 헬퍼
+inline const float* get_tensor_ptr(
+    const std::unordered_map<std::string, uintptr_t>& tensors,
+    const std::string& id)
+{
+    auto it = tensors.find(id);
+    if (it == tensors.end()) {
+        fprintf(stderr, "[ERROR] Tensor ID '%s' not found (get_tensor_ptr)\n", id.c_str());
+        return nullptr;
+    }
+    return reinterpret_cast<const float*>(it->second);
+}
+
+inline float* get_tensor_ptr_rw(
+    std::unordered_map<std::string, uintptr_t>& tensors,
+    const std::string& id)
+{
+    auto it = tensors.find(id);
+    if (it == tensors.end()) {
+        fprintf(stderr, "[ERROR] Tensor ID '%s' not found (get_tensor_ptr_rw)\n", id.c_str());
+        return nullptr;
+    }
+    return reinterpret_cast<float*>(it->second);
+}
+
+inline const float* get_grad_ptr(
+    const std::unordered_map<std::string, uintptr_t>& grads,
+    const std::string& id)
+{
+    auto it = grads.find(id);
+    if (it == grads.end()) {
+        fprintf(stderr, "[ERROR] Grad ID '%s' not found (get_grad_ptr)\n", id.c_str());
+        return nullptr;
+    }
+    return reinterpret_cast<const float*>(it->second);
+}
+
+inline float* ensure_grad(std::unordered_map<std::string, uintptr_t>& grads,
+                          const std::unordered_map<std::string, Shape>& shapes,
+                          const std::string& id,
+                          const Shape& shape,
+                          int batch_size)
+{
+    auto it = grads.find(id);
+    if (it != grads.end()) {
+        return reinterpret_cast<float*>(it->second);
+    }
+    size_t elems = static_cast<size_t>(batch_size) * shape.rows * shape.cols;
+    float* dptr = nullptr;
+    CUDA_CHECK(cudaMalloc(&dptr, elems * sizeof(float)));
+    grads[id] = reinterpret_cast<uintptr_t>(dptr);
+    return dptr;
+}
+
+// 활성화 매핑
+static inline int map_act_type(int op_type) {
+    switch (op_type) {
+        case SIGMOID:    return ACT_SIGMOID;
+        case RELU:       return ACT_RELU;
+        case TANH:       return ACT_TANH;
+        case LEAKY_RELU: return ACT_LEAKY;
+        case ELU:        return ACT_ELU;
+        case GELU:       return ACT_GELU;
+        case SILU:       return ACT_SILU;
+        default:         return ACT_IDENTITY;
+    }
+}
+
+static inline cudaStream_t pick_stream(cudaStream_t user_stream) {
+    return user_stream;
+}
+
 
 // ---- GEMM 래퍼 (row-major 매핑) --------------------------------------------
 
@@ -122,6 +196,7 @@ __global__ void fill_kernel(float* p, float v, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) p[i] = v;
 }
+
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,
@@ -286,20 +361,69 @@ void run_graph_backward(
             break;
         }
 
+        // -------- 활성화 계열: launch_activation_backward 호출 --------
         case SIGMOID:
         case RELU:
-        case TANH: {
-            // 배치까지 펼쳐 단일 런치
-            const int rowsB = batch_size * M;
-            const int colsB = N;
+        case TANH:
+        case LEAKY_RELU:
+        case ELU:
+        case GELU:
+        case SILU:
+        {
+            const int rowsB = batch_size * out_shape.rows;
+            const int cols  = out_shape.cols;
+
+            const float* gout = grad_out_full;             // dL/dout
+            const float* out  = tensors[op.output_id];     // f(z)
+            const float* in   = tensors[op.input_id];      // z (pre-activation)
+            float* gin        = grad_input_full;           // dL/din
+
+            const int act = map_act_type(op.op_type);
+            const float alpha = op.extra_params.alpha;
+            const int gelu_tanh_flag = op.extra_params.gelu_tanh ? 1 : 0;
+
+            cudaStream_t stream = 0; // 기본 스트림
 
             launch_activation_backward(
-                /*grad_out=*/grad_out_full,
-                /*out=*/tensors[op.output_id],
-                /*grad_in=*/grad_input_full,
-                rowsB, colsB, op.op_type
+                /*grad_out*/ gout,
+                /*in      */ in,
+                /*out     */ out,
+                /*grad_in */ gin,
+                /*rows    */ rowsB,
+                /*cols    */ cols,
+                /*act     */ act,
+                /*alpha   */ alpha,
+                /*gelu    */ gelu_tanh_flag,
+                /*stream  */ stream
             );
-            checkCudaLast("activation_backward");
+            CUDA_CHECK(cudaGetLastError());
+            break;
+        }
+
+        // -------- Softmax: launch_softmax_backward 호출 --------
+        case SOFTMAX:
+        {
+            const int rowsB = batch_size * out_shape.rows;
+            const int cols  = out_shape.cols;
+
+            const float* gout = grad_out_full;           // dL/dY
+            const float* y    = tensors[op.output_id];   // Y = softmax(X)
+            float* gin        = grad_input_full;         // dL/dX
+
+            float temperature = (op.extra_params.temperature > 0.f)
+                              ? op.extra_params.temperature : 1.f;
+            cudaStream_t stream = 0;
+
+            launch_softmax_backward(
+                /*grad_out*/ gout,
+                /*out     */ y,
+                /*grad_in */ gin,
+                /*rows    */ rowsB,
+                /*cols    */ cols,
+                /*temperature*/ temperature,
+                /*stream  */ stream
+            );
+            CUDA_CHECK(cudaGetLastError());
             break;
         }
 
@@ -310,6 +434,7 @@ void run_graph_backward(
         }
 
         default:
+            // 다른 OpType들(MATMUL/ADD/CONV2D 등) 외 구현은 위에서 처리/유지
             break;
         }
 

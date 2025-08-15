@@ -9,6 +9,7 @@
 
 #include "run_graph.cuh"
 #include "activation_ops.cuh"
+#include "softmax_kernels.cuh"
 #include "add_bias_rowwise.cuh"
 #include "cnn_kernels.cuh"
 #include "op_structs.cuh"
@@ -41,6 +42,68 @@ static void ensure_cublas() {
         // Ampere+에서 TF32 쓰고 싶으면 다음 줄 주석 해제
         // cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH);
     }
+}
+
+// ------------------- 텐서/그래디언트 헬퍼 -------------------
+inline const float* get_tensor_ptr(
+    const std::unordered_map<std::string, uintptr_t>& tensors,
+    const std::string& id)
+{
+    auto it = tensors.find(id);
+    if (it == tensors.end()) {
+        fprintf(stderr, "[ERROR] Tensor ID '%s' not found (get_tensor_ptr)\n", id.c_str());
+        return nullptr;
+    }
+    return reinterpret_cast<const float*>(it->second);
+}
+
+inline float* get_tensor_ptr_rw(
+    std::unordered_map<std::string, uintptr_t>& tensors,
+    const std::string& id)
+{
+    auto it = tensors.find(id);
+    if (it == tensors.end()) {
+        fprintf(stderr, "[ERROR] Tensor ID '%s' not found (get_tensor_ptr_rw)\n", id.c_str());
+        return nullptr;
+    }
+    return reinterpret_cast<float*>(it->second);
+}
+
+// 필요 시 출력 텐서를 새로 할당해 등록
+inline float* ensure_output(std::unordered_map<std::string, uintptr_t>& tensors,
+                            const std::unordered_map<std::string, Shape>& shapes,
+                            const std::string& out_id,
+                            const Shape& out_shape,
+                            int batch_size)
+{
+    auto it = tensors.find(out_id);
+    if (it != tensors.end()) {
+        return reinterpret_cast<float*>(it->second);
+    }
+    size_t elems = static_cast<size_t>(batch_size) * out_shape.rows * out_shape.cols;
+    float* dptr = nullptr;
+    CUDA_CHECK(cudaMalloc(&dptr, elems * sizeof(float)));
+    tensors[out_id] = reinterpret_cast<uintptr_t>(dptr);
+    return dptr;
+}
+
+// ------------------- 활성화 매핑 -------------------
+static inline int map_act_type(int op_type) {
+    switch (op_type) {
+        case SIGMOID:    return ACT_SIGMOID;
+        case RELU:       return ACT_RELU;
+        case TANH:       return ACT_TANH;
+        case LEAKY_RELU: return ACT_LEAKY;
+        case ELU:        return ACT_ELU;
+        case GELU:       return ACT_GELU;
+        case SILU:       return ACT_SILU;
+        default:         return ACT_IDENTITY;
+    }
+}
+
+// 외부에서 스트림을 관리한다면 그대로 넘기고, 없다면 0 사용 가능
+static inline cudaStream_t pick_stream(cudaStream_t user_stream) {
+    return user_stream; // 필요 시 nullptr/0 허용
 }
 
 // -----------------------------------------------------------------------------
@@ -180,7 +243,7 @@ void run_graph_cuda(
             const long long strideA = (long long)M * K;
             const long long strideC = (long long)M * N;
 
-            // TF32 경로 (권장). 필요 시 아래 FP32 경로로 교체 가능
+            // TF32 경로
             gemm_rm_strided_batched_tf32(
                 g_cublas,
                 /*transA=*/false, /*transB=*/false,
@@ -191,9 +254,6 @@ void run_graph_cuda(
                 /*batch=*/batch_size,
                 /*alpha=*/1.f, /*beta=*/0.f
             );
-            // FP32 기본 경로:
-            // gemm_rm_strided_batched(g_cublas, false, false, M,N,K,
-            //     input, K, strideA, param, N, 0LL, Y, N, strideC, batch_size, 1.f, 0.f);
 
             // bias를 한 번에 더함 (ADD fuse)
             if (fuse_bias) {
@@ -237,22 +297,70 @@ void run_graph_cuda(
             break;
         }
 
+        // ---------- 활성화( bias 선택 지원 ) ----------
         case SIGMOID:
         case RELU:
-        case TANH: {
-            // 배치까지 펼쳐 단일 런치
-            float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
-            const int rowsB = batch_size * out_shape.rows;
-            const int cols  = out_shape.cols;
-            const int act = (op.op_type == SIGMOID) ? ACT_SIGMOID
-                         : (op.op_type == RELU)    ? ACT_RELU
-                         :                            ACT_TANH;
+        case TANH:
+        case LEAKY_RELU:
+        case ELU:
+        case GELU:
+        case SILU:
+        {
+            Shape act_shape = shapes[op.output_id];
+            float* output   = ensure_output(tensors, shapes, op.output_id, act_shape, batch_size);
+
+            const int rowsB = batch_size * act_shape.rows;
+            const int cols  = act_shape.cols;
+
+            const float* in_ptr   = input;      // pre-activation z
+            const float* bias_ptr = nullptr;    // 선택적 bias
+            if (!op.param_id.empty()) {
+                auto it = tensors.find(op.param_id);
+                if (it != tensors.end()) bias_ptr = it->second;
+            }
+
+            const int act = map_act_type(op.op_type);
+            const float alpha = op.extra_params.alpha;            // Leaky/ELU
+            const int gelu_tanh_flag = op.extra_params.gelu_tanh ? 1 : 0;
+
+            cudaStream_t stream = 0; // 이 함수 서명엔 stream이 없으므로 기본 스트림 사용
+
             launch_activation_forward(
-                /*input=*/input,
-                /*bias =*/nullptr,
-                /*output=*/output,
-                /*rows=*/rowsB, /*cols=*/cols,
-                act
+                /*in*/   in_ptr,
+                /*bias*/ bias_ptr,
+                /*out*/  output,
+                /*rows*/ rowsB,
+                /*cols*/ cols,
+                /*act*/  act,
+                /*alpha*/alpha,
+                /*gelu_tanh*/ gelu_tanh_flag,
+                /*stream*/ stream
+            );
+            CUDA_CHECK(cudaGetLastError());
+            break;
+        }
+
+        // ---------- Softmax(행 기준, temperature 지원) ----------
+        case SOFTMAX:
+        {
+            Shape sm_shape = shapes[op.output_id];
+            float* output  = ensure_output(tensors, shapes, op.output_id, sm_shape, batch_size);
+            const float* in_ptr = input;
+
+            const int rowsB = batch_size * sm_shape.rows;
+            const int cols  = sm_shape.cols;
+
+            float temperature = (op.extra_params.temperature > 0.f)
+                                  ? op.extra_params.temperature : 1.f;
+            cudaStream_t stream = 0;
+
+            launch_softmax_forward(
+                /*in*/   in_ptr,
+                /*out*/  output,
+                /*rows*/ rowsB,
+                /*cols*/ cols,
+                /*temperature*/ temperature,
+                /*stream*/ stream
             );
             CUDA_CHECK(cudaGetLastError());
             break;
@@ -267,7 +375,7 @@ void run_graph_cuda(
         }
 
         case CONV2D: {
-            // 기존 구현 유지 (샘플 루프)
+            // (기존 구현 유지)
             int KH = op.extra_params.kernel_h;
             int KW = op.extra_params.kernel_w;
             int SH = op.extra_params.stride_h;
@@ -313,5 +421,9 @@ void run_graph_cuda(
     // 최종 출력 호스트로 복사
     const Shape out_shape = shapes[final_output_id];
     const size_t out_bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
-    CUDA_CHECK(cudaMemcpy(out_host, tensors[final_output_id], out_bytes, cudaMemcpyDeviceToHost));
+    
+    // 변경
+    if (out_host != nullptr) {
+        CUDA_CHECK(cudaMemcpy(out_host, tensors[final_output_id], out_bytes, cudaMemcpyDeviceToHost));
+    }
 }

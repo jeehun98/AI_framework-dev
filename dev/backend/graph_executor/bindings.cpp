@@ -192,7 +192,13 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("TANH", OpType::TANH)
         .value("FLATTEN", OpType::FLATTEN)
         .value("CONV2D", OpType::CONV2D)
-        .value("LOSS", OpType::LOSS);
+        .value("LOSS", OpType::LOSS)
+        // ✅ 신규 활성화
+        .value("LEAKY_RELU", OpType::LEAKY_RELU)
+        .value("ELU", OpType::ELU)
+        .value("GELU", OpType::GELU)
+        .value("SILU", OpType::SILU)
+        .value("SOFTMAX", OpType::SOFTMAX);
 
     py::enum_<OptimizerType>(m, "OptimizerType")
         .value("SGD", OptimizerType::SGD)
@@ -200,19 +206,18 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("ADAM", OptimizerType::ADAM);
 
     // 🔷 구조체 바인딩
-    py::class_<OpStruct>(m, "OpStruct")
-        .def(py::init<>())
-        .def(py::init<int, std::string, std::string, std::string, OpExtraParams>(),
-             py::arg("op_type"), py::arg("input_id"), py::arg("param_id"),
-             py::arg("output_id"), py::arg("extra_params"))
-        .def_readwrite("op_type", &OpStruct::op_type)
-        .def_readwrite("input_id", &OpStruct::input_id)
-        .def_readwrite("param_id", &OpStruct::param_id)
-        .def_readwrite("output_id", &OpStruct::output_id)
-        .def_readwrite("extra_params", &OpStruct::extra_params);
-
     py::class_<OpExtraParams>(m, "OpExtraParams")
-        .def(py::init<>())
+        // ✅ 기본값을 C++ 쪽과 일치시키고 싶다면 커스텀 init 사용(선택)
+        .def(py::init([](){
+            OpExtraParams e;
+            // 활성화/softmax 관련 기본값
+            e.alpha = 0.01f;     // Leaky 기본
+            e.gelu_tanh = 1;     // tanh 근사 사용
+            e.temperature = 1.f; // softmax 온도
+            e.axis = 1;          // (batch, features)에서 features 축
+            return e;
+        }))
+        // 기존 CNN/RNN 필드
         .def_readwrite("kernel_h", &OpExtraParams::kernel_h)
         .def_readwrite("kernel_w", &OpExtraParams::kernel_w)
         .def_readwrite("stride_h", &OpExtraParams::stride_h)
@@ -228,40 +233,72 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("hidden_size", &OpExtraParams::hidden_size)
         .def_readwrite("num_layers", &OpExtraParams::num_layers)
         .def_readwrite("use_bias", &OpExtraParams::use_bias)
+        // 손실 관련
         .def_readwrite("label_id", &OpExtraParams::label_id)
-        .def_readwrite("loss_type", &OpExtraParams::loss_type);
+        .def_readwrite("loss_type", &OpExtraParams::loss_type)
+        // ✅ 추가된 활성화/softmax 파라미터
+        .def_readwrite("alpha", &OpExtraParams::alpha)
+        .def_readwrite("gelu_tanh", &OpExtraParams::gelu_tanh)
+        .def_readwrite("temperature", &OpExtraParams::temperature)
+        .def_readwrite("axis", &OpExtraParams::axis);
+
+    py::class_<OpStruct>(m, "OpStruct")
+        .def(py::init<>())
+        .def(py::init<int, std::string, std::string, std::string, OpExtraParams>(),
+             py::arg("op_type"), py::arg("input_id"), py::arg("param_id"),
+             py::arg("output_id"), py::arg("extra_params"))
+        .def_readwrite("op_type", &OpStruct::op_type)
+        .def_readwrite("input_id", &OpStruct::input_id)
+        .def_readwrite("param_id", &OpStruct::param_id)
+        .def_readwrite("output_id", &OpStruct::output_id)
+        .def_readwrite("extra_params", &OpStruct::extra_params);
 
     py::class_<Shape>(m, "Shape")
         .def(py::init<int, int>())
         .def_readwrite("rows", &Shape::rows)
         .def_readwrite("cols", &Shape::cols);
 
-    
-
     // 🔷 그래프 관련 함수
     m.def("run_graph_forward_entry", &run_graph_forward_entry,
         py::arg("E"), py::arg("tensors"), py::arg("shapes"),
         py::arg("out_host"), py::arg("final_output_id"), py::arg("batch_size"));
 
-    m.def("run_graph_with_loss_entry", &run_graph_with_loss_entry,
+    m.def("run_graph_with_loss_entry",
+        [](const std::vector<OpStruct>& E,
+        const std::unordered_map<std::string, uintptr_t>& tensor_ints,
+        std::unordered_map<std::string, Shape>& shapes,
+        const std::string& final_output_id,
+        const std::string& label_tensor_id,
+        const std::string& loss_type,
+        int batch_size) -> float
+        {
+            // 변환: uintptr_t → float*
+            std::unordered_map<std::string, float*> tensors;
+            tensors.reserve(tensor_ints.size());
+            for (auto& kv : tensor_ints) {
+                tensors[kv.first] = reinterpret_cast<float*>(kv.second);
+            }
+
+            return run_graph_with_loss_cuda(
+                E, tensors, shapes,
+                final_output_id, label_tensor_id,
+                loss_type, batch_size
+            );
+        },
         py::arg("E"), py::arg("tensors"), py::arg("shapes"),
         py::arg("final_output_id"), py::arg("label_tensor_id"),
-        py::arg("loss_type"), py::arg("batch_size"));
-
+        py::arg("loss_type"), py::arg("batch_size")
+    );
+    
     m.def("run_graph_backward_entry", &run_graph_backward_entry,
         py::arg("E"), py::arg("tensors"), py::arg("shapes"),
         py::arg("gradients"), py::arg("final_output_id"), py::arg("batch_size"));
 
-    // 🔷 Optimizer 함수 바인딩
+    // 🔷 Optimizer
     m.def("optimizer_update", [](uintptr_t param_ptr, uintptr_t grad_ptr,
                                  uintptr_t velocity_ptr, uintptr_t m_ptr, uintptr_t v_ptr,
                                  float lr, float beta1, float beta2, float eps,
                                  int size, OptimizerType opt_type, int timestep) {
-
-        // ✅ 여기에 디버깅 로그 추가
-        // printf("[PYBIND] Optimizer Update → lr=%.6f, beta1=%.4f, beta2=%.4f, eps=%.1e, size=%d, timestep=%d, opt=%d\n", lr, beta1, beta2, eps, size, timestep, static_cast<int>(opt_type));
-
-
         optimizer_update_cuda(
             reinterpret_cast<float*>(param_ptr),
             reinterpret_cast<const float*>(grad_ptr),
@@ -275,7 +312,7 @@ PYBIND11_MODULE(graph_executor, m) {
        py::arg("eps") = 1e-8, py::arg("size"), py::arg("opt_type"),
        py::arg("timestep") = 1);
 
-    // ✅ 한 번에 학습 엔트리 바인딩
+    // ✅ 한 번에 학습 엔트리
     m.def("train_step_entry", &train_step_entry,
         py::arg("E"),
         py::arg("tensors"),
@@ -295,3 +332,4 @@ PYBIND11_MODULE(graph_executor, m) {
         py::arg("v_ptrs") = std::unordered_map<std::string, uintptr_t>{}
     );
 }
+
