@@ -1,3 +1,4 @@
+// op_struct.h (또는 동일 헤더)
 #pragma once
 #include <string>
 
@@ -9,7 +10,13 @@ enum OpType {
     TANH = 4,
     FLATTEN = 5,
     CONV2D = 6,
-    LOSS = 7
+    LOSS = 7,
+    // ✅ 신규 활성화
+    LEAKY_RELU = 8,
+    ELU = 9,
+    GELU = 10,
+    SILU = 11,
+    SOFTMAX = 12
 };
 
 struct Shape {
@@ -18,7 +25,7 @@ struct Shape {
 };
 
 struct OpExtraParams {
-    // 기존 CNN/RNN 관련 필드들
+    // 기존 CNN/RNN 관련 필드들...
     int kernel_h = 0;
     int kernel_w = 0;
     int stride_h = 1;
@@ -37,12 +44,17 @@ struct OpExtraParams {
 
     bool use_bias = true;
 
-    // ✅ 손실 함수용 필드 추가
-    std::string label_id = "";   // y_true tensor ID
-    std::string loss_type = "";  // "mse", "bce", "cce"
+    // ✅ 손실
+    std::string label_id = "";
+    std::string loss_type = "";  // "mse","bce","cce" 등
+
+    // ✅ 활성화 파라미터
+    float alpha = 0.01f;     // LeakyReLU/ELU 계수
+    int   gelu_tanh = 1;     // 1=tanh 근사, 0=정규 CDF(선택사항, 여기선 tanh)
+    float temperature = 1.f; // Softmax 온도(τ)
+    int   axis = 1;          // Softmax 축(행렬 기준 1=열방향 class)
 };
 
-// ✅ 수정: extra_params 멤버 포함
 struct OpStruct {
     int op_type;
     std::string input_id;
@@ -50,10 +62,7 @@ struct OpStruct {
     std::string output_id;
     OpExtraParams extra_params;
 
-    // 기본 생성자
     OpStruct() = default;
-
-    // 확장 생성자 (extra_params 포함)
     OpStruct(int type, std::string in, std::string param, std::string out, OpExtraParams extra = {})
         : op_type(type), input_id(std::move(in)), param_id(std::move(param)), output_id(std::move(out)), extra_params(std::move(extra)) {}
 };

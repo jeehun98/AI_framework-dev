@@ -1,11 +1,16 @@
 #pragma once
 #include <cuda_runtime.h>
 
-// run_graph의 OpType을 그대로 쓰는 경우 (RELU=2, SIGMOID=3, TANH=4)
-enum ActivationType {
-    ACT_RELU    = 2,
-    ACT_SIGMOID = 3,
-    ACT_TANH    = 4
+// ✅ 내부 act_type 식별자
+enum {
+  ACT_IDENTITY = 0,
+  ACT_RELU     = 1,
+  ACT_SIGMOID  = 2,
+  ACT_TANH     = 3,
+  ACT_LEAKY    = 4,
+  ACT_ELU      = 5,
+  ACT_GELU     = 6,
+  ACT_SILU     = 7
 };
 
 // 블록 구성 (x축이 warp 방향 → coalesced)
@@ -16,13 +21,16 @@ enum ActivationType {
 #define ACT_BLOCK_Y 8
 #endif
 
-// Forward: out = act(input + (bias ? bias[col] : 0))
+// 확장된 런처 시그니처(추천)
 void launch_activation_forward(const float* in, const float* bias, float* out,
                                int rows, int cols, int act_type,
-                               cudaStream_t stream = 0);
+                               float alpha, int gelu_tanh_flag,
+                               cudaStream_t stream);
 
-// Backward: grad_in = grad_out * act'(out)
-//           (주의: out은 forward 결과값)
-void launch_activation_backward(const float* grad_out, const float* out, float* grad_in,
+void launch_activation_backward(const float* grad_out,
+                                const float* in,      // pre-activation z
+                                const float* out,     // f(z)
+                                float* grad_in,
                                 int rows, int cols, int act_type,
-                                cudaStream_t stream = 0);
+                                float alpha, int gelu_tanh_flag,
+                                cudaStream_t stream);

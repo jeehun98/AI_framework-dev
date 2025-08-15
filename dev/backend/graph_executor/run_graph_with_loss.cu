@@ -73,7 +73,7 @@ float run_graph_with_loss_cuda(
     // 1) Forward (pred_id를 최종 출력으로 사용)
     {
         float dummy = 0.0f; // run_graph_cuda가 out_host에 결과를 복사하지만 여기선 사용 안 함
-        run_graph_cuda(E, tensors, shapes, &dummy, pred_id, batch_size);
+        run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         cuda_check_last_and_sync("run_graph_cuda");
     }
 
