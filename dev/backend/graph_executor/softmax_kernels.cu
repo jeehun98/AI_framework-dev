@@ -7,86 +7,54 @@
 #define SOFTMAX_BLOCK_X 128
 #endif
 
-// 각 block이 한 row 처리 (cols가 크면 루프)
-__global__ void softmax_forward_kernel(const float* __restrict__ in,
-                                       float* __restrict__ out,
-                                       int rows, int cols, float inv_temp)
+// softmax_kernels.cu
+__global__ void softmax_forward_rowwise(
+    const float* __restrict__ in, float* __restrict__ out,
+    int rows, int cols, float temperature)
 {
-    int row = blockIdx.x;
-    if (row >= rows) return;
+    int r = blockIdx.x;            // 한 블록이 한 행 처리
+    if (r >= rows) return;
 
     // 1) row max
     float m = -FLT_MAX;
     for (int c = threadIdx.x; c < cols; c += blockDim.x) {
-        float v = in[row * cols + c] * inv_temp;
+        float v = in[r*cols + c] / temperature;
         m = fmaxf(m, v);
     }
     // warp/block reduce
     __shared__ float smax;
-    // 간단 공유메모리 reduce
-    __shared__ float buf[SOFTMAX_BLOCK_X];
-    buf[threadIdx.x] = m;
-    __syncthreads();
-    // reduce
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s) buf[threadIdx.x] = fmaxf(buf[threadIdx.x], buf[threadIdx.x + s]);
-        __syncthreads();
+    // (간단 버전) thread 0 이 for-loop로 다시 스캔해도 OK
+    if (threadIdx.x == 0) {
+        m = -FLT_MAX;
+        for (int c = 0; c < cols; ++c) {
+            float v = in[r*cols + c] / temperature;
+            m = fmaxf(m, v);
+        }
+        smax = m;
     }
-    if (threadIdx.x == 0) smax = buf[0];
     __syncthreads();
 
-    // 2) exp(x-m) & sum
+    // 2) exp(x - max), sum
     float sum = 0.f;
     for (int c = threadIdx.x; c < cols; c += blockDim.x) {
-        float v = in[row * cols + c] * inv_temp;
-        float e = expf(v - smax);
-        out[row * cols + c] = e; // 임시 저장
+        float z = (in[r*cols + c] / temperature) - smax;
+        float e = __expf(z);
+        out[r*cols + c] = e;      // 임시 저장
         sum += e;
     }
-    // sum reduce
-    buf[threadIdx.x] = sum;
+    // (간단 버전) thread 0 이 다시 합산
+    __shared__ float ssum;
     __syncthreads();
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s) buf[threadIdx.x] += buf[threadIdx.x + s];
-        __syncthreads();
+    if (threadIdx.x == 0) {
+        float s = 0.f;
+        for (int c = 0; c < cols; ++c) s += out[r*cols + c];
+        ssum = s;
     }
-    float rsum = buf[0] + 1e-12f; // 안정성
+    __syncthreads();
 
     // 3) normalize
     for (int c = threadIdx.x; c < cols; c += blockDim.x) {
-        out[row * cols + c] = out[row * cols + c] / rsum;
-    }
-}
-
-__global__ void softmax_backward_kernel(const float* __restrict__ grad_out,
-                                        const float* __restrict__ out,
-                                        float* __restrict__ grad_in,
-                                        int rows, int cols, float inv_temp)
-{
-    int row = blockIdx.x;
-    if (row >= rows) return;
-
-    // s = sum_j (dY_j * Y_j)
-    float s = 0.f;
-    __shared__ float buf[SOFTMAX_BLOCK_X];
-    for (int c = threadIdx.x; c < cols; c += blockDim.x) {
-        float gy = grad_out[row * cols + c];
-        float y  = out[row * cols + c];
-        s += gy * y;
-    }
-    buf[threadIdx.x] = s;
-    __syncthreads();
-    for (int r = blockDim.x / 2; r > 0; r >>= 1) {
-        if (threadIdx.x < r) buf[threadIdx.x] += buf[threadIdx.x + r];
-        __syncthreads();
-    }
-    float S = buf[0];
-
-    // dX = (Y ⊙ (dY - S)) / τ
-    for (int c = threadIdx.x; c < cols; c += blockDim.x) {
-        float y  = out[row * cols + c];
-        float gy = grad_out[row * cols + c];
-        grad_in[row * cols + c] = (y * (gy - S)) * inv_temp;
+        out[r*cols + c] = out[r*cols + c] / ssum;
     }
 }
 
@@ -94,18 +62,49 @@ void launch_softmax_forward(const float* in, float* out,
                             int rows, int cols, float temperature,
                             cudaStream_t stream)
 {
-    int blocks = rows;
-    int threads = SOFTMAX_BLOCK_X;
-    float inv_temp = 1.0f / fmaxf(temperature, 1e-6f);
-    softmax_forward_kernel<<<blocks, threads, 0, stream>>>(in, out, rows, cols, inv_temp);
+    dim3 grid(rows);
+    dim3 block(min(256, cols));
+    softmax_forward_rowwise<<<grid, block, 0, stream>>>(in, out, rows, cols, temperature);
+}
+
+__global__ void softmax_backward_rowwise(
+    const float* __restrict__ dY,
+    const float* __restrict__ Y,
+    float* __restrict__ dX,
+    int rows, int cols, float temperature)
+{
+    int r = blockIdx.x;
+    if (r >= rows) return;
+
+    // row-wise dot(dY, Y)
+    float dot = 0.f;
+    for (int c = threadIdx.x; c < cols; c += blockDim.x) {
+        dot += dY[r*cols + c] * Y[r*cols + c];
+    }
+    __shared__ float sdot;
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        float s = 0.f;
+        for (int c = 0; c < cols; ++c) s += dY[r*cols + c] * Y[r*cols + c];
+        sdot = s;
+    }
+    __syncthreads();
+
+    // dX = (dY - dot*Y) * Y / T
+    const float invT = 1.f / temperature;
+    for (int c = threadIdx.x; c < cols; c += blockDim.x) {
+        float y = Y[r*cols + c];
+        float gy = dY[r*cols + c];
+        dX[r*cols + c] = (gy - sdot * y) * y * invT;
+    }
 }
 
 void launch_softmax_backward(const float* grad_out, const float* out,
                              float* grad_in, int rows, int cols,
                              float temperature, cudaStream_t stream)
 {
-    int blocks = rows;
-    int threads = SOFTMAX_BLOCK_X;
-    float inv_temp = 1.0f / fmaxf(temperature, 1e-6f);
-    softmax_backward_kernel<<<blocks, threads, 0, stream>>>(grad_out, out, grad_in, rows, cols, inv_temp);
+    dim3 grid(rows);
+    dim3 block(min(256, cols));
+    softmax_backward_rowwise<<<grid, block, 0, stream>>>(
+        grad_out, out, grad_in, rows, cols, temperature);
 }

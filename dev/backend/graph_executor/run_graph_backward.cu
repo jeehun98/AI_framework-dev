@@ -1,4 +1,4 @@
-// run_graph_backward.cu (final, TF32 + strided-batched + no local handle)
+// run_graph_backward.cu (final, TF32 + strided-batched + fused softmax-xent)
 #include <iostream>
 #include <string>
 #include <vector>
@@ -36,86 +36,32 @@ static cublasHandle_t g_cublas = nullptr;
 static void ensure_cublas() {
     if (!g_cublas) {
         CUBLAS_CHECK(cublasCreate(&g_cublas));
-        // Ampere+ 성능 우선이면 주석 해제(전역 TF32)
-        // cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH);
+        // 성능 우선시 TF32 활성화하려면 주석 해제
+        // CUBLAS_CHECK(cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH));
     }
 }
 
-// 텐서/그래디언트 헬퍼
-inline const float* get_tensor_ptr(
-    const std::unordered_map<std::string, uintptr_t>& tensors,
-    const std::string& id)
-{
-    auto it = tensors.find(id);
-    if (it == tensors.end()) {
-        fprintf(stderr, "[ERROR] Tensor ID '%s' not found (get_tensor_ptr)\n", id.c_str());
-        return nullptr;
+// 디버그/동기 헬퍼
+static inline void checkCudaLast(const char* where) {
+    cudaError_t e = cudaGetLastError();
+    if (e != cudaSuccess) {
+        std::fprintf(stderr, "[CUDA][ERR] %s: %s\n", where, cudaGetErrorString(e));
     }
-    return reinterpret_cast<const float*>(it->second);
 }
-
-inline float* get_tensor_ptr_rw(
-    std::unordered_map<std::string, uintptr_t>& tensors,
-    const std::string& id)
-{
-    auto it = tensors.find(id);
-    if (it == tensors.end()) {
-        fprintf(stderr, "[ERROR] Tensor ID '%s' not found (get_tensor_ptr_rw)\n", id.c_str());
-        return nullptr;
-    }
-    return reinterpret_cast<float*>(it->second);
-}
-
-inline const float* get_grad_ptr(
-    const std::unordered_map<std::string, uintptr_t>& grads,
-    const std::string& id)
-{
-    auto it = grads.find(id);
-    if (it == grads.end()) {
-        fprintf(stderr, "[ERROR] Grad ID '%s' not found (get_grad_ptr)\n", id.c_str());
-        return nullptr;
-    }
-    return reinterpret_cast<const float*>(it->second);
-}
-
-inline float* ensure_grad(std::unordered_map<std::string, uintptr_t>& grads,
-                          const std::unordered_map<std::string, Shape>& shapes,
-                          const std::string& id,
-                          const Shape& shape,
-                          int batch_size)
-{
-    auto it = grads.find(id);
-    if (it != grads.end()) {
-        return reinterpret_cast<float*>(it->second);
-    }
-    size_t elems = static_cast<size_t>(batch_size) * shape.rows * shape.cols;
-    float* dptr = nullptr;
-    CUDA_CHECK(cudaMalloc(&dptr, elems * sizeof(float)));
-    grads[id] = reinterpret_cast<uintptr_t>(dptr);
-    return dptr;
-}
-
-// 활성화 매핑
-static inline int map_act_type(int op_type) {
-    switch (op_type) {
-        case SIGMOID:    return ACT_SIGMOID;
-        case RELU:       return ACT_RELU;
-        case TANH:       return ACT_TANH;
-        case LEAKY_RELU: return ACT_LEAKY;
-        case ELU:        return ACT_ELU;
-        case GELU:       return ACT_GELU;
-        case SILU:       return ACT_SILU;
-        default:         return ACT_IDENTITY;
+static inline void checkCudaSync(const char* where) {
+    cudaError_t e = cudaDeviceSynchronize();
+    if (e != cudaSuccess) {
+        std::fprintf(stderr, "[CUDA][SYNC] %s: %s\n", where, cudaGetErrorString(e));
     }
 }
 
-static inline cudaStream_t pick_stream(cudaStream_t user_stream) {
-    return user_stream;
+// ones 벡터 채우기
+__global__ void fill_kernel(float* p, float v, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) p[i] = v;
 }
-
 
 // ---- GEMM 래퍼 (row-major 매핑) --------------------------------------------
-
 // 단일 GEMM (row-major) TF32
 static inline void gemm_rm_tf32(
     cublasHandle_t h,
@@ -177,40 +123,35 @@ static inline void gemm_rm_strided_batched_tf32(
 }
 // -----------------------------------------------------------------------------
 
-// 디버그용
-static inline void checkCudaLast(const char* where) {
-    cudaError_t e = cudaGetLastError();
-    if (e != cudaSuccess) {
-        std::fprintf(stderr, "[CUDA][ERR] %s: %s\n", where, cudaGetErrorString(e));
+// 활성화 매핑
+static inline int map_act_type(int op_type) {
+    switch (op_type) {
+        case SIGMOID:    return ACT_SIGMOID;
+        case RELU:       return ACT_RELU;
+        case TANH:       return ACT_TANH;
+        case LEAKY_RELU: return ACT_LEAKY;
+        case ELU:        return ACT_ELU;
+        case GELU:       return ACT_GELU;
+        case SILU:       return ACT_SILU;
+        default:         return ACT_IDENTITY;
     }
 }
-static inline void checkCudaSync(const char* where) {
-    cudaError_t e = cudaDeviceSynchronize();
-    if (e != cudaSuccess) {
-        std::fprintf(stderr, "[CUDA][SYNC] %s: %s\n", where, cudaGetErrorString(e));
-    }
-}
-
-// ones 벡터 채우기
-__global__ void fill_kernel(float* p, float v, int n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) p[i] = v;
-}
-
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,
     std::unordered_map<std::string, float*>& tensors,
     std::unordered_map<std::string, Shape>& shapes,
     std::unordered_map<std::string, float*>& gradients,
-    const std::string& final_output_id,  // ← 반드시 Activation output의 ID
+    const std::string& final_output_id,  // ← 보통 activation output의 ID
     int batch_size)
 {
     ensure_cublas();
 
     std::string grad_start_id = final_output_id;
+    bool fused_softmax = false;
+    std::string fused_softmax_in_id, fused_softmax_out_id;
 
-    // 1) LOSS backward: dL/dy_pred 생성
+    // 1) LOSS backward: dL/dy_pred (혹은 fused면 dL/dz) 생성
     if (!E.empty() && E.back().op_type == LOSS) {
         const OpStruct& loss_op = E.back();
         const std::string loss_type = loss_op.extra_params.loss_type;
@@ -219,33 +160,77 @@ void run_graph_backward(
         const float* y_true = tensors[label_id];
         const float* y_pred = tensors[loss_op.input_id];
 
-        Shape shp = shapes[loss_op.input_id];  // per-sample
-        const int per_sample = shp.rows * shp.cols;
-        const int sz = batch_size * per_sample;
+        Shape shp = shapes[loss_op.input_id];
+        const int C = shp.cols;
+        const int rows_per_sample = shp.rows;          // 보통 1
+        const int B = batch_size * rows_per_sample;
+        const int N = B * C;
 
-        float* dL_dy = nullptr;
-        CUDA_CHECK(cudaMalloc(&dL_dy, (size_t)sz * sizeof(float)));
+        cudaStream_t stream = 0;
 
-        if (loss_type == "bce") {
-            bce_loss_backward<<<(sz + 255)/256, 256>>>(y_true, y_pred, dL_dy, sz, batch_size);
-            checkCudaLast("bce_loss_backward");
-            checkCudaSync("bce_loss_backward");
-        } else if (loss_type == "mse") {
-            mse_loss_backward<<<(sz + 255)/256, 256>>>(y_true, y_pred, dL_dy, sz);
-            checkCudaLast("mse_loss_backward");
-            checkCudaSync("mse_loss_backward");
-        } else {
-            std::fprintf(stderr, "[LOSS][BW] unsupported: %s\n", loss_type.c_str());
+        // 직전 op이 SOFTMAX인지 확인 (fused 조건)
+        const OpStruct* prev = nullptr;
+        if (E.size() >= 2) {
+            const OpStruct& cand = E[E.size()-2];
+            if (cand.op_type == SOFTMAX && cand.output_id == loss_op.input_id) {
+                prev = &cand;
+            }
         }
 
-        grad_start_id = loss_op.input_id;
-        gradients[loss_op.input_id] = dL_dy;
+        if (loss_type == "cce" && prev) {
+            // ✅ fused: ∂L/∂z = (p - y) / B, SOFTMAX는 스킵
+            float* dL_dz = nullptr;
+            CUDA_CHECK(cudaMalloc(&dL_dz, (size_t)N * sizeof(float)));
+            launch_softmax_xent_fused_backward(
+                /*y_prob*/ y_pred,
+                /*y_true*/ y_true,
+                /*grad_z*/ dL_dz,
+                /*B*/ B, /*C*/ C, stream
+            );
+            checkCudaLast("launch_softmax_xent_fused_backward");
+            checkCudaSync("softmax_xent_fused_backward sync");
+
+            fused_softmax = true;
+            fused_softmax_in_id  = prev->input_id;   // z
+            fused_softmax_out_id = prev->output_id;  // p
+            grad_start_id = prev->input_id;
+            gradients[prev->input_id] = dL_dz;
+        } else {
+            // 일반 경로: dL/dY(또는 dL/da) 생성
+            float* dL_dy = nullptr;
+            CUDA_CHECK(cudaMalloc(&dL_dy, (size_t)N * sizeof(float)));
+
+            if (loss_type == "bce") {
+                launch_bce_loss_backward(y_true, y_pred, dL_dy, N, B, stream);
+                checkCudaLast("launch_bce_loss_backward");
+                checkCudaSync("bce_backward sync");
+            } else if (loss_type == "mse") {
+                launch_mse_loss_backward(y_true, y_pred, dL_dy, N, stream);
+                checkCudaLast("launch_mse_loss_backward");
+                checkCudaSync("mse_backward sync");
+            } else if (loss_type == "cce") {
+                // softmax 출력(확률)에 대한 dL/dY = -(y/p)/B
+                launch_cce_loss_backward(y_true, y_pred, dL_dy, B, C, stream);
+                checkCudaLast("launch_cce_loss_backward");
+                checkCudaSync("cce_backward sync");
+            } else {
+                std::fprintf(stderr, "[LOSS][BW] unsupported: %s\n", loss_type.c_str());
+            }
+
+            grad_start_id = loss_op.input_id;
+            gradients[loss_op.input_id] = dL_dy;
+        }
     }
 
     // 2) 나머지 역전파
     for (auto it = E.rbegin(); it != E.rend(); ++it) {
         const OpStruct& op = *it;
         if (op.op_type == LOSS) continue;
+
+        // ✅ fused면 해당 SOFTMAX 노드는 스킵
+        if (fused_softmax && op.op_type == SOFTMAX && op.output_id == fused_softmax_out_id) {
+            continue;
+        }
 
         float* input = tensors[op.input_id];
         float* param = (!op.param_id.empty() && tensors.count(op.param_id))
@@ -382,7 +367,7 @@ void run_graph_backward(
             const float alpha = op.extra_params.alpha;
             const int gelu_tanh_flag = op.extra_params.gelu_tanh ? 1 : 0;
 
-            cudaStream_t stream = 0; // 기본 스트림
+            cudaStream_t stream = 0;
 
             launch_activation_backward(
                 /*grad_out*/ gout,
@@ -400,9 +385,10 @@ void run_graph_backward(
             break;
         }
 
-        // -------- Softmax: launch_softmax_backward 호출 --------
+        // -------- Softmax: 필요 시 일반 backward (fused면 위에서 스킵됨) --------
         case SOFTMAX:
         {
+            // fused가 아니면 일반 softmax backward 수행
             const int rowsB = batch_size * out_shape.rows;
             const int cols  = out_shape.cols;
 
@@ -434,7 +420,7 @@ void run_graph_backward(
         }
 
         default:
-            // 다른 OpType들(MATMUL/ADD/CONV2D 등) 외 구현은 위에서 처리/유지
+            // 다른 OpType은 위에서 처리됨
             break;
         }
 
