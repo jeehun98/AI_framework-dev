@@ -72,7 +72,7 @@ float run_graph_with_loss_cuda(
 
     // 1) Forward (pred_id를 최종 출력으로 사용)
     {
-        float dummy = 0.0f; // run_graph_cuda가 out_host에 결과를 복사하지만 여기선 사용 안 함
+        // out_host=nullptr → run_graph_cuda 내부에서 host copy를 생략하도록 구현해두어야 안전
         run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         cuda_check_last_and_sync("run_graph_cuda");
     }
@@ -92,8 +92,10 @@ float run_graph_with_loss_cuda(
 
     // per-sample shape
     Shape out_shape = shapes[pred_id];
-    const int per_sample = out_shape.rows * out_shape.cols;
-    const int n = batch_size * per_sample;
+    const int rows_per_sample = out_shape.rows;    // 보통 1
+    const int num_classes     = out_shape.cols;    // softmax/class 수
+    const int B = batch_size * rows_per_sample;    // 유효 배치 크기(행)
+    const int n = B * num_classes;                 // 총 요소 수
     if (n <= 0) {
         std::fprintf(stderr, "[LOSS] invalid size: n=%d (rows=%d, cols=%d, batch=%d)\n",
                      n, out_shape.rows, out_shape.cols, batch_size);
@@ -124,7 +126,7 @@ float run_graph_with_loss_cuda(
     if (dense_out) std::printf(", dense_out=%p", (void*)dense_out);
     std::printf("\n");
 
-    // y_pred 범위 체크
+    // y_pred 범위 체크 (확률 계열일 때)
     {
         std::vector<float> hp(std::min(n, 8));
         cudaMemcpy(hp.data(), y_pred, sizeof(float)*hp.size(), cudaMemcpyDeviceToHost);
@@ -142,9 +144,12 @@ float run_graph_with_loss_cuda(
     // 3) 손실 계산 (평균)
     float loss_value = 0.0f;
     if (loss_type == "mse") {
-        loss_value = compute_mse_loss_cuda(y_true, y_pred, n);
+        loss_value = compute_mse_loss_cuda(y_true, y_pred, n);                 // 평균은 내부에서 /n
     } else if (loss_type == "binary_crossentropy" || loss_type == "bce") {
-        loss_value = compute_bce_loss_cuda(y_true, y_pred, n);
+        loss_value = compute_bce_loss_cuda(y_true, y_pred, n);                 // 평균은 내부에서 /n
+    } else if (loss_type == "cce") {
+        // Categorical Cross-Entropy on probabilities (softmax 출력)
+        loss_value = compute_cce_loss_cuda(y_true, y_pred, B, num_classes);    // 배치 평균
     } else {
         std::fprintf(stderr, "[LOSS] Unsupported loss type: %s\n", loss_type.c_str());
         return NAN;
@@ -159,19 +164,36 @@ float run_graph_with_loss_cuda(
         CUDA_OK(cudaMemcpy(ht.data(), y_true, sizeof(float)*n, cudaMemcpyDeviceToHost));
         const double eps = 1e-7;
         double acc = 0.0;
+
         if (loss_type == "mse") {
             for (int i=0;i<n;++i) { double d = (double)hp[i] - (double)ht[i]; acc += d*d; }
             acc /= (double)n;
-        } else {
+        } else if (loss_type == "binary_crossentropy" || loss_type == "bce") {
             for (int i=0;i<n;++i) {
                 double yp = std::min(std::max((double)hp[i], eps), 1.0 - eps);
                 double yt = (double)ht[i];
                 acc += -(yt*std::log(yp) + (1.0-yt)*std::log(1.0-yp));
             }
             acc /= (double)n;
+        } else if (loss_type == "cce") {
+            // CCE: -sum_b sum_c y*log(p) / B
+            // 여기서는 행 평균(B) 기준
+            // hp, ht를 (B, C)로 간주
+            for (int b=0; b<B; ++b) {
+                for (int c=0; c<num_classes; ++c) {
+                    int i = b*num_classes + c;
+                    double yt = (double)ht[i];
+                    if (yt > 0.0) {
+                        double yp = std::min(std::max((double)hp[i], eps), 1.0 - eps);
+                        acc += -(yt * std::log(yp));
+                    }
+                }
+            }
+            acc /= (double)B;
         }
-        std::printf("[LOSS][CHECK] GPU=%.6f  CPU=%.6f  (n=%d, batch=%d)\n",
-                    loss_value, (float)acc, n, batch_size);
+
+        std::printf("[LOSS][CHECK] GPU=%.6f  CPU=%.6f  (n=%d, B=%d, C=%d)\n",
+                    loss_value, (float)acc, n, B, num_classes);
     }
 #endif
 
