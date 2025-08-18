@@ -70,6 +70,7 @@ class Flatten(Layer):
     def from_config(cls, config):
         return cls(**config)
 
+
     def to_e_matrix(self, input_id):
         if self.input_shape is None:
             raise ValueError("[Flatten] input_shape is None. Did you forget to call build()?")
@@ -81,19 +82,20 @@ class Flatten(Layer):
         extra = OpExtraParams()
 
         e_block = [{
-            "op_type": 5,  # Flatten
+            "op_type": 5,  # FLATTEN
             "input_id": input_id,
             "param_id": "",
             "output_id": output_id,
             "extra_params": extra
         }]
 
-        input_shape_flat = int(np.prod(self.input_shape[1:]))
-        output_shape_flat = int(np.prod(self.output_shape[1:]))
+        # rows=1(샘플 당), cols=feature 수
+        in_cols  = int(np.prod(self.input_shape[1:]))     # e.g. (B,C,H,W) -> C*H*W
+        out_cols = int(np.prod(self.output_shape[1:]))
 
         shape_map = {
-            input_id: Shape(int(self.input_shape[0]), input_shape_flat),
-            output_id: Shape(int(self.output_shape[0]), output_shape_flat)
+            input_id:  Shape(1, in_cols),
+            output_id: Shape(1, out_cols),
         }
 
         return e_block, {}, {}, output_id, shape_map

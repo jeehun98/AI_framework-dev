@@ -1,4 +1,4 @@
-// run_graph_backward.cu (final, TF32 + strided-batched + fused softmax-xent)
+// run_graph_backward.cu (TF32 + strided-batched + fused softmax-xent, with batch-mean grads)
 #include <iostream>
 #include <string>
 #include <vector>
@@ -36,7 +36,6 @@ static cublasHandle_t g_cublas = nullptr;
 static void ensure_cublas() {
     if (!g_cublas) {
         CUBLAS_CHECK(cublasCreate(&g_cublas));
-        // 성능 우선시 TF32 활성화하려면 주석 해제
         // CUBLAS_CHECK(cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH));
     }
 }
@@ -62,7 +61,6 @@ __global__ void fill_kernel(float* p, float v, int n) {
 }
 
 // ---- GEMM 래퍼 (row-major 매핑) --------------------------------------------
-// 단일 GEMM (row-major) TF32
 static inline void gemm_rm_tf32(
     cublasHandle_t h,
     bool transA, bool transB,
@@ -85,13 +83,12 @@ static inline void gemm_rm_tf32(
             /*A*/ A, CUDA_R_32F, lda,
             &beta,
             /*C*/ C, CUDA_R_32F, ldc,
-            /*computeType*/ CUBLAS_COMPUTE_32F_FAST_TF32,
-            /*algo*/ CUBLAS_GEMM_DEFAULT_TENSOR_OP
+            CUBLAS_COMPUTE_32F_FAST_TF32,
+            CUBLAS_GEMM_DEFAULT_TENSOR_OP
         )
     );
 }
 
-// StridedBatched GEMM (row-major) TF32
 static inline void gemm_rm_strided_batched_tf32(
     cublasHandle_t h,
     bool transA, bool transB,
@@ -116,8 +113,8 @@ static inline void gemm_rm_strided_batched_tf32(
             &beta,
             /*C*/ C, CUDA_R_32F, ldc, strideC,
             /*batch*/ batch,
-            /*computeType*/ CUBLAS_COMPUTE_32F_FAST_TF32,
-            /*algo*/ CUBLAS_GEMM_DEFAULT_TENSOR_OP
+            CUBLAS_COMPUTE_32F_FAST_TF32,
+            CUBLAS_GEMM_DEFAULT_TENSOR_OP
         )
     );
 }
@@ -142,7 +139,7 @@ void run_graph_backward(
     std::unordered_map<std::string, float*>& tensors,
     std::unordered_map<std::string, Shape>& shapes,
     std::unordered_map<std::string, float*>& gradients,
-    const std::string& final_output_id,  // ← 보통 activation output의 ID
+    const std::string& final_output_id,
     int batch_size)
 {
     ensure_cublas();
@@ -178,15 +175,10 @@ void run_graph_backward(
         }
 
         if (loss_type == "cce" && prev) {
-            // ✅ fused: ∂L/∂z = (p - y) / B, SOFTMAX는 스킵
+            // ∂L/∂z = (p - y) / B
             float* dL_dz = nullptr;
             CUDA_CHECK(cudaMalloc(&dL_dz, (size_t)N * sizeof(float)));
-            launch_softmax_xent_fused_backward(
-                /*y_prob*/ y_pred,
-                /*y_true*/ y_true,
-                /*grad_z*/ dL_dz,
-                /*B*/ B, /*C*/ C, stream
-            );
+            launch_softmax_xent_fused_backward(y_pred, y_true, dL_dz, B, C, stream);
             checkCudaLast("launch_softmax_xent_fused_backward");
             checkCudaSync("softmax_xent_fused_backward sync");
 
@@ -196,7 +188,6 @@ void run_graph_backward(
             grad_start_id = prev->input_id;
             gradients[prev->input_id] = dL_dz;
         } else {
-            // 일반 경로: dL/dY(또는 dL/da) 생성
             float* dL_dy = nullptr;
             CUDA_CHECK(cudaMalloc(&dL_dy, (size_t)N * sizeof(float)));
 
@@ -209,7 +200,6 @@ void run_graph_backward(
                 checkCudaLast("launch_mse_loss_backward");
                 checkCudaSync("mse_backward sync");
             } else if (loss_type == "cce") {
-                // softmax 출력(확률)에 대한 dL/dY = -(y/p)/B
                 launch_cce_loss_backward(y_true, y_pred, dL_dy, B, C, stream);
                 checkCudaLast("launch_cce_loss_backward");
                 checkCudaSync("cce_backward sync");
@@ -227,7 +217,6 @@ void run_graph_backward(
         const OpStruct& op = *it;
         if (op.op_type == LOSS) continue;
 
-        // ✅ fused면 해당 SOFTMAX 노드는 스킵
         if (fused_softmax && op.op_type == SOFTMAX && op.output_id == fused_softmax_out_id) {
             continue;
         }
@@ -255,7 +244,7 @@ void run_graph_backward(
 
         switch (op.op_type) {
         case MATMUL: {
-            if (!param) break; // W 없음
+            if (!param) break;
 
             // dX = dY · W^T  (B, M, K)
             gemm_rm_strided_batched_tf32(
@@ -270,8 +259,7 @@ void run_graph_backward(
             );
 
             // dW = sum_b (X_b^T · dY_b)
-            // 1) dW_tmp[b] = X_b^T(K,M) · dY_b(M,N)  →  (B, K, N)
-            float* dW_tmp = nullptr;
+            float* dW_tmp = nullptr; // (B, K, N)
             CUDA_CHECK(cudaMalloc(&dW_tmp, (size_t)batch_size * K * N * sizeof(float)));
 
             gemm_rm_strided_batched_tf32(
@@ -285,8 +273,8 @@ void run_graph_backward(
                 /*alpha=*/1.f, /*beta=*/0.f
             );
 
-            // 2) 배치축 합산: ones(1,B) · dW_tmp(B, K*N) → dW(1, K*N)
-            float* dW_accum = nullptr;
+            // 배치축 합산
+            float* dW_accum = nullptr;                 // (K, N)
             CUDA_CHECK(cudaMalloc(&dW_accum, (size_t)K * N * sizeof(float)));
 
             float* onesB = nullptr;
@@ -305,6 +293,7 @@ void run_graph_backward(
                 /*C=*/dW_accum,  /*ldc=*/(K * N),
                 1.f, 0.f
             );
+
 
             gradients[op.param_id] = dW_accum;
 
@@ -341,12 +330,13 @@ void run_graph_backward(
                 1.f, 0.f
             );
 
+
             gradients[op.param_id] = grad_bias;
             CUDA_CHECK(cudaFree(onesR));
             break;
         }
 
-        // -------- 활성화 계열: launch_activation_backward 호출 --------
+        // -------- 활성화 계열 --------
         case SIGMOID:
         case RELU:
         case TANH:
@@ -360,7 +350,7 @@ void run_graph_backward(
 
             const float* gout = grad_out_full;             // dL/dout
             const float* out  = tensors[op.output_id];     // f(z)
-            const float* in   = tensors[op.input_id];      // z (pre-activation)
+            const float* in   = tensors[op.input_id];      // z
             float* gin        = grad_input_full;           // dL/din
 
             const int act = map_act_type(op.op_type);
@@ -370,25 +360,15 @@ void run_graph_backward(
             cudaStream_t stream = 0;
 
             launch_activation_backward(
-                /*grad_out*/ gout,
-                /*in      */ in,
-                /*out     */ out,
-                /*grad_in */ gin,
-                /*rows    */ rowsB,
-                /*cols    */ cols,
-                /*act     */ act,
-                /*alpha   */ alpha,
-                /*gelu    */ gelu_tanh_flag,
-                /*stream  */ stream
+                gout, in, out, gin,
+                rowsB, cols, act, alpha, gelu_tanh_flag, stream
             );
             CUDA_CHECK(cudaGetLastError());
             break;
         }
 
-        // -------- Softmax: 필요 시 일반 backward (fused면 위에서 스킵됨) --------
         case SOFTMAX:
         {
-            // fused가 아니면 일반 softmax backward 수행
             const int rowsB = batch_size * out_shape.rows;
             const int cols  = out_shape.cols;
 
@@ -401,26 +381,18 @@ void run_graph_backward(
             cudaStream_t stream = 0;
 
             launch_softmax_backward(
-                /*grad_out*/ gout,
-                /*out     */ y,
-                /*grad_in */ gin,
-                /*rows    */ rowsB,
-                /*cols    */ cols,
-                /*temperature*/ temperature,
-                /*stream  */ stream
+                gout, y, gin, rowsB, cols, temperature, stream
             );
             CUDA_CHECK(cudaGetLastError());
             break;
         }
 
         case FLATTEN: {
-            // shape만 바뀌는 op → 그래디언트 패스-스루
             gradients[op.input_id] = grad_out_full;
             continue;
         }
 
         default:
-            // 다른 OpType은 위에서 처리됨
             break;
         }
 
