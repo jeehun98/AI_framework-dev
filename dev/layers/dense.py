@@ -94,8 +94,8 @@ class Dense(Layer):
         return dx
 
     def update(self, optimizer):
-        reg_term = self.apply_regularizer(self.weights)
-        optimizer.update(self.weights, self.dW + reg_term, self.bias, self.db)
+        # 그래프-익스큐터 경로에선 절대 호출되지 않아야 함
+        raise RuntimeError("Dense.update() should not be called; graph_executor handles updates.")
 
     def _apply_activation(self, z):
         if self.activation is None:
@@ -123,64 +123,41 @@ class Dense(Layer):
         if self.input_shape is None:
             raise ValueError("[Dense] input_shape is None. Did you forget to call build()?")
 
-        batch, input_dim = map(int, self.input_shape)
+        # 기존: batch, input_dim = map(int, self.input_shape)
+        # ✅ 샘플당 형상으로 해석 (rows=1 고정)
+        _, input_dim = map(int, self.input_shape)
         units = int(self.units)
 
         weight_id = self.weight_var
-        bias_id = self.bias_var
+        bias_id   = self.bias_var
         linear_out_id = f"{self.name}_linear"
-        output_id = self.output_var
-        preact_id = f"{self.name}_preact"
+        output_id     = self.output_var
+        preact_id     = f"{self.name}_preact"
 
         extra = OpExtraParams()
 
-        # ✅ 정수 대신 enum 사용 (가장 중요)
         e_block = [
-            {
-                "op_type": ge.OpType.MATMUL,
-                "input_id": input_id,
-                "param_id": weight_id,
-                "output_id": linear_out_id,
-                "extra_params": extra
-            },
-            {
-                "op_type": ge.OpType.ADD,
-                "input_id": linear_out_id,
-                "param_id": bias_id,
-                "output_id": preact_id if self.activation_name else output_id,
-                "extra_params": extra
-            }
+            {"op_type": 0, "input_id": input_id, "param_id": weight_id, "output_id": linear_out_id, "extra_params": extra},
+            {"op_type": 1, "input_id": linear_out_id, "param_id": bias_id,
+            "output_id": preact_id if self.activation_name else output_id, "extra_params": extra},
         ]
-
         if self.activation_name:
-            act_map = {
-                "relu": ge.OpType.RELU,
-                "sigmoid": ge.OpType.SIGMOID,
-                "tanh": ge.OpType.TANH,
-            }
-            if self.activation_name not in act_map:
-                raise ValueError(f"Unsupported activation: {self.activation_name}")
-            e_block.append({
-                "op_type": act_map[self.activation_name],
-                "input_id": preact_id,
-                "param_id": "",
-                "output_id": output_id,
-                "extra_params": extra
-            })
+            act_map = {"relu": 2, "sigmoid": 3, "tanh": 4}
+            e_block.append({"op_type": act_map[self.activation_name],
+                            "input_id": preact_id, "param_id": "", "output_id": output_id, "extra_params": extra})
 
-        # 파라미터 텐서 반환
         weights = {weight_id: self.weights}
-        biases = {bias_id: self.bias if not self.force_bias_tile else cp.tile(self.bias, (batch, 1))}
+        biases  = {bias_id: self.bias}
 
-        # 셰이프 맵
+        # ✅ rows=1 로 통일 (샘플당 행 수)
         shape_map = {
-            input_id: Shape(batch, input_dim),
-            weight_id: Shape(input_dim, units),   # (in, out)
-            bias_id: Shape(1 if not self.force_bias_tile else batch, units),
-            linear_out_id: Shape(batch, units),
-            output_id: Shape(batch, units),
+            input_id:      Shape(1, input_dim),
+            weight_id:     Shape(input_dim, units),
+            bias_id:       Shape(1, units),
+            linear_out_id: Shape(1, units),
+            output_id:     Shape(1, units),
         }
         if self.activation_name:
-            shape_map[preact_id] = Shape(batch, units)
+            shape_map[preact_id] = Shape(1, units)
 
         return e_block, weights, biases, output_id, shape_map
