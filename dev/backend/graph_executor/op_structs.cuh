@@ -1,6 +1,7 @@
 // op_struct.h (또는 동일 헤더)
 #pragma once
 #include <string>
+#include "quant/quant_types.cuh"
 
 enum OpType {
     MATMUL = 0,

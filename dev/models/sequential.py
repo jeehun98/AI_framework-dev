@@ -2,20 +2,19 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-import typing
+import sys, os
 import json
+import typing
+import logging
 import numpy as np
 import cupy as cp
-import sys
-import os
-import logging
+
+sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
 
 from dev.layers.layer import Layer
 from dev.backend.backend_ops.losses import losses as cuda_losses
 from dev.backend.backend_ops.optimizers import optimizers
 from dev.backend.backend_ops.metrics import metrics
-
-sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
 
 # CUDA 연동 Pybind11 모듈
 import graph_executor as ge
@@ -24,11 +23,10 @@ Shape = ge.Shape
 
 # 상수 정의
 INPUT_ID = "input"
-GRAPH_FILE = "compiled_graph.npz"
 
 # 로깅 설정
-logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Sequential:
@@ -40,9 +38,27 @@ class Sequential:
         self.name = name
         self.output_var = None
 
-        # 🔧 디바이스 상태
+        # 디바이스 상태
         self._device_ready = False     # 파라미터/옵티마이저 버퍼 준비 여부
         self.opt_buffers = {}          # {name: {"velocity": cp, "m": cp, "v": cp}}
+
+        # 러닝 설정
+        self.loss_type = None
+        self.optimizer_type = None
+        self.learning_rate = None
+
+        # 그래프/셰이프
+        self.E_raw = []
+        self.E = []
+        self.shapes = {}
+        self.weights = {}
+        self.biases = {}
+
+        # 손실 출력 ID (compile에서 설정)
+        self.loss_output_id = None
+
+        # 글로벌 스텝
+        self.global_step = 1
 
     def add(self, layer):
         if not isinstance(layer, Layer):
@@ -70,6 +86,7 @@ class Sequential:
         input_id = INPUT_ID
         current_shape = self.input_shape
 
+        # 레이어를 순회하며 그래프 구성
         for i, layer in enumerate(self._layers):
             if i == 0:
                 if not layer.input_shape:
@@ -88,26 +105,28 @@ class Sequential:
             self.shapes.update(shape_map)
             input_id = output_id
 
+        # 모델 최종 출력(손실 이전) ID
         self.output_var = input_id
 
-        # ✅ CUDA 런타임용 학습 설정 저장
+        # 학습 설정
         self.loss_type = loss
         self.optimizer_type = optimizer
         self.learning_rate = learning_rate
 
-        # ✅ 마지막에 손실 노드 추가 (label은 param_id에 담아줌)
+        # ✅ 마지막에 손실 노드 추가 (label은 param_id로)
         extra = ge.OpExtraParams()
-        extra.label_id = "y_true"  # ✅ 🔥 핵심 추가
+        extra.label_id = "y_true"
         extra.loss_type = self.loss_type
 
         self.E_raw.append({
             "op_type": ge.OpType.LOSS,
-            "input_id": self.output_var,
+            "input_id": self.output_var,   # 손실의 입력은 모델의 최종 출력
             "param_id": "y_true",
             "output_id": "loss",
-            "extra_params": extra     # 🔑 이걸 같이 넣어야 Pybind11을 통해 전달됨
+            "extra_params": extra
         })
-
+        # 🔥 역전파/손실 계산의 기준이 되는 출력 ID를 보관
+        self.loss_output_id = "loss"
 
         self.built = True
 
@@ -117,7 +136,7 @@ class Sequential:
             extra = op.get("extra_params", ge.OpExtraParams())
             param_id = op.get("param_id", "") or ""
             node = ge.OpStruct(
-                int(op["op_type"]),
+                ge.OpType(op["op_type"]),   # int -> enum 캐스팅
                 str(op["input_id"]),
                 str(param_id),
                 str(op["output_id"]),
@@ -125,13 +144,12 @@ class Sequential:
             )
             self.E.append(node)
 
-    # 🔧 내부 유틸: 디바이스 파라미터/옵티마이저 버퍼 1회 초기화
+    # 내부 유틸: 디바이스 파라미터/옵티마이저 버퍼 초기화(1회)
     def _ensure_device_state(self):
         if self._device_ready:
             return
 
-        # 파라미터는 compile 에서 이미 CuPy로 만들어 두었으니 포인터만 쓰면 됨
-        # 옵티마이저 상태 버퍼 준비 (필요 시만 생성)
+        # 옵티마이저 상태 버퍼 준비 (필요 시 생성)
         for name in list(self.weights.keys()) + list(self.biases.keys()):
             param = self.weights.get(name) if name in self.weights else self.biases[name]
             if name not in self.opt_buffers:
@@ -143,7 +161,7 @@ class Sequential:
 
         self._device_ready = True
 
-    # 🔧 OptimizerType 매핑
+    # OptimizerType 매핑
     def _opt_type_enum(self):
         s = (self.optimizer_type or "sgd").lower()
         if s == "sgd":
@@ -154,13 +172,59 @@ class Sequential:
             return ge.OptimizerType.ADAM
         raise ValueError(f"Unsupported optimizer type: {self.optimizer_type}")
 
-    def fit(self, x=None, y=None, epochs=1, batch_size=-1):
+    # Keras 스타일 한 배치 학습 (편의용)
+    def train_on_batch(self, x, y):
+        if not self.built:
+            raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
+        self._ensure_device_state()
+
+        x_cp = cp.asarray(x, dtype=cp.float32)
+        y_cp = cp.asarray(y, dtype=cp.float32)
+        batch_size_actual = x_cp.shape[0]
+
+        # 입력/라벨 + 파라미터 포인터 맵
+        tensor_ptrs = {
+            "input": x_cp.data.ptr,
+            "y_true": y_cp.data.ptr,
+        }
+        for name, arr in self.weights.items():
+            tensor_ptrs[name] = arr.data.ptr
+        for name, arr in self.biases.items():
+            tensor_ptrs[name] = arr.data.ptr
+
+        # 옵티마 상태 포인터 맵
+        velocity_ptrs = {n: buf["velocity"].data.ptr for n, buf in self.opt_buffers.items()}
+        m_ptrs        = {n: buf["m"].data.ptr        for n, buf in self.opt_buffers.items()}
+        v_ptrs        = {n: buf["v"].data.ptr        for n, buf in self.opt_buffers.items()}
+
+        loss_val = ge.train_step_entry(
+            E=self.E,
+            tensors=tensor_ptrs,
+            shapes=self.shapes,
+            # 🔥 역전파 시작점은 손실 출력
+            final_output_id=(self.loss_output_id or self.output_var),
+            label_tensor_id="y_true",
+            loss_type=self.loss_type,
+            batch_size=batch_size_actual,
+            opt_type=self._opt_type_enum(),
+            lr=self.learning_rate,
+            beta1=0.9, beta2=0.999, eps=1e-8,
+            timestep=self.global_step,
+            velocity_ptrs=velocity_ptrs,
+            m_ptrs=m_ptrs,
+            v_ptrs=v_ptrs
+        )
+
+        self.global_step += 1
+        return float(loss_val)
+
+    def fit(self, x=None, y=None, epochs=1, batch_size=-1, verbose=0):
+        if not self.built:
+            raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
+
         if batch_size == -1 or batch_size < x.shape[0]:
             batch_size = x.shape[0]
 
-        self.global_step = 1
-
-        # 🔧 디바이스 상태 보장
         self._ensure_device_state()
 
         for epoch in range(epochs):
@@ -177,66 +241,20 @@ class Sequential:
             for i in range(0, x_cp.shape[0], batch_size):
                 batch_x = x_cp[i:i + batch_size]
                 batch_y = y_cp[i:i + batch_size]
-                batch_size_actual = batch_x.shape[0]
 
-                # 🔧 tensor_ptrs: 입력/라벨 + (디바이스 상주) 파라미터만 넣으면 됨
-                tensor_ptrs = {
-                    "input": batch_x.data.ptr,
-                    "y_true": batch_y.data.ptr,
-                }
-                # 파라미터 포인터 추가
-                for name, arr in self.weights.items():
-                    tensor_ptrs[name] = arr.data.ptr
-                for name, arr in self.biases.items():
-                    tensor_ptrs[name] = arr.data.ptr
+                loss_val = self.train_on_batch(batch_x, batch_y)
 
-                # 🔧 옵티마이저 상태 포인터 맵 준비(이름 → uintptr)
-                velocity_ptrs = {n: buf["velocity"].data.ptr for n, buf in self.opt_buffers.items()}
-                m_ptrs        = {n: buf["m"].data.ptr        for n, buf in self.opt_buffers.items()}
-                v_ptrs        = {n: buf["v"].data.ptr        for n, buf in self.opt_buffers.items()}
-
-                # 🔧 한 번에 학습: fwd+loss → bwd → opt
-                loss_val = ge.train_step_entry(
-                    E=self.E,
-                    tensors=tensor_ptrs,
-                    shapes=self.shapes,
-                    # 주의: with_loss 엔트리와 동일하게 최종 출력 ID를 넘김
-                    # LOSS 노드가 그래프 끝에 있으므로 내부에서 적절히 처리됨
-                    final_output_id=self.output_var,
-                    label_tensor_id="y_true",
-                    loss_type=self.loss_type,
-                    batch_size=batch_size_actual,
-                    opt_type=self._opt_type_enum(),
-                    lr=self.learning_rate,
-                    beta1=0.9, beta2=0.999, eps=1e-8,
-                    timestep=self.global_step,
-                    velocity_ptrs=velocity_ptrs,
-                    m_ptrs=m_ptrs,
-                    v_ptrs=v_ptrs
-                )
-
-                # 파라미터는 디바이스 상에서 **제자리(in-place)** 업데이트됨.
-                # self.weights / self.biases 는 CuPy 배열을 그대로 들고 있으므로
-                # 추가 동기화나 복사가 필요 없음.
-
-                self.global_step += 1
                 epoch_loss += float(loss_val)
                 batch_count += 1
 
-            if batch_count > 0 and (epoch + 1) % 100 == 0:
+            if verbose and batch_count > 0:
                 avg_loss = epoch_loss / batch_count
                 logger.info(f"[Epoch {epoch + 1}] 평균 손실: {avg_loss:.6f}")
-
-                # (옵션) 디버그 예측
-                y_pred = self.predict(x)
-                print(f"[Epoch {epoch + 1}] 예측값: {y_pred.ravel()}")
-                print(f"[Epoch {epoch + 1}] 정답: {y.ravel()}")
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
 
-        # 🔧 디바이스 상태 보장 (파라미터 포인터 사용)
         self._ensure_device_state()
 
         x_cp = cp.asarray(x, dtype=cp.float32)
@@ -249,7 +267,7 @@ class Sequential:
         for name, arr in self.biases.items():
             tensor_ptrs[name] = arr.data.ptr
 
-        # 중간 텐서는 run_graph 내부에서 필요시 할당
+        # 최종(손실 이전) 출력 shape
         out_shape = self.shapes[self.output_var]
         output_host = np.zeros((batch_size, out_shape.cols), dtype=np.float32)
 
@@ -258,7 +276,7 @@ class Sequential:
             tensors=tensor_ptrs,
             shapes=self.shapes,
             out_host=output_host,
-            final_output_id=self.output_var,
+            final_output_id=self.output_var,   # predict는 손실 이전 출력이 필요
             batch_size=batch_size
         )
         return output_host
@@ -267,7 +285,6 @@ class Sequential:
         if not self.built:
             raise RuntimeError("✅ 모델이 컴파일되지 않았습니다. 먼저 compile()을 호출하세요.")
 
-        # 🔧 디바이스 상태 보장
         self._ensure_device_state()
 
         x_cp = cp.asarray(x, dtype=cp.float32)
@@ -280,18 +297,14 @@ class Sequential:
         for name, arr in self.biases.items():
             tensor_ptrs[name] = arr.data.ptr
 
-        # 손실 계산만 수행 (CUDA에서 fwd+loss)
+        # 🔥 손실 기준으로 fwd+loss 수행
         loss_val = ge.run_graph_with_loss_entry(
             E=self.E,
             tensors=tensor_ptrs,
             shapes=self.shapes,
-            final_output_id=self.output_var,  # LOSS 노드가 있으면 내부에서 자동 처리
+            final_output_id=(self.loss_output_id or self.output_var),
             label_tensor_id="y_true",
             loss_type=self.loss_type,
             batch_size=batch_size
         )
-
-        # 메트릭 계산(호스트/간단)
-        # 출력 텐서를 굳이 복사하지 않고, 간단히 loss를 반환해도 됨.
-        # 필요하면 predict()로 y_pred를 받아 metrics.* 에 넘겨 계산.
         return float(loss_val)

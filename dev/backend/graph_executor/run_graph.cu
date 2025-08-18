@@ -7,6 +7,12 @@
 #include <unordered_map>
 #include <cublas_v2.h>
 
+#include "quant/quant_types.cuh"
+#include "quant/observers.cuh"
+#include "quant/quant_kernels.cuh"
+#include "quant/int8_gemm_dp4a.cuh"
+#include "quant/epilogue_kernels.cuh"
+
 #include "run_graph.cuh"
 #include "activation_ops.cuh"
 #include "softmax_kernels.cuh"
