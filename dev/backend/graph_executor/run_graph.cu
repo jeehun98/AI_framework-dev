@@ -189,6 +189,7 @@ static inline float* ensure_output(std::unordered_map<std::string, float*>& tens
     return out_ptr;
 }
 
+// run_graph_cuda (revised)
 void run_graph_cuda(
     const std::vector<OpStruct>& E,
     std::unordered_map<std::string, float*>& tensors,
@@ -197,15 +198,34 @@ void run_graph_cuda(
     const std::string& final_output_id,
     int batch_size)
 {
+    ensure_cublas();
+
     for (size_t i = 0; i < E.size(); ++i) {
         const auto& op = E[i];
         if (op.op_type == LOSS) continue;
 
-        float* input = tensors[op.input_id];
-        float* param = (!op.param_id.empty() && tensors.find(op.param_id) != tensors.end())
-                         ? tensors[op.param_id] : nullptr;
+        // ---- 입력 포인터/shape 확보 ----
+        auto it_in = tensors.find(op.input_id);
+        if (it_in == tensors.end() || it_in->second == nullptr) {
+            fprintf(stderr, "[ERR] missing input tensor: %s\n", op.input_id.c_str());
+            break;
+        }
+        float* input = it_in->second;
 
-        const Shape in_shape = shapes[op.input_id];
+        const auto it_inshape = shapes.find(op.input_id);
+        if (it_inshape == shapes.end()) {
+            fprintf(stderr, "[ERR] missing input shape: %s\n", op.input_id.c_str());
+            break;
+        }
+        const Shape in_shape = it_inshape->second;
+
+        float* param = nullptr;
+        if (!op.param_id.empty()) {
+            auto it_p = tensors.find(op.param_id);
+            if (it_p != tensors.end()) param = it_p->second;
+        }
+
+        // 기본 out_shape는 입력과 동일. 필요 시 덮어씀.
         Shape out_shape = in_shape;
 
         switch (op.op_type) {
@@ -214,11 +234,19 @@ void run_graph_cuda(
                 fprintf(stderr, "[MATMUL] missing param for %s\n", op.output_id.c_str());
                 break;
             }
-            // A[M,K] * W[K,N] = C[M,N]
-            const Shape w_shape = shapes[op.param_id]; // [K, N]
+            auto it_wshape = shapes.find(op.param_id);
+            if (it_wshape == shapes.end()) {
+                fprintf(stderr, "[MATMUL] missing weight shape: %s\n", op.param_id.c_str());
+                break;
+            }
+            const Shape w_shape = it_wshape->second; // [K, N]
             const int M = in_shape.rows;
             const int K = in_shape.cols;
             const int N = w_shape.cols;
+            if (w_shape.rows != K) {
+                fprintf(stderr, "[MATMUL] dim mismatch: in(K=%d) vs W(rows=%d)\n", K, w_shape.rows);
+                break;
+            }
             out_shape = { M, N };
 
             // 다음 op가 row-wise ADD면 bias fuse
@@ -244,29 +272,24 @@ void run_graph_cuda(
 
             float* Y = ensure_output(tensors, shapes, out_id, out_shape, batch_size);
 
-            // 배치 루프 없이 GEMM 1회
-            ensure_cublas();
             const long long strideA = (long long)M * K;
             const long long strideC = (long long)M * N;
 
-            // TF32 경로
             gemm_rm_strided_batched_tf32(
                 g_cublas,
                 /*transA=*/false, /*transB=*/false,
                 /*M=*/M, /*N=*/N, /*K=*/K,
-                /*A =*/ input,              /*lda =*/ K, /*strideA =*/ strideA,
-                /*B =*/ param,              /*ldb =*/ N, /*strideB =*/ 0LL, // 공유 가중치
-                /*C =*/ Y,                  /*ldc =*/ N, /*strideC =*/ strideC,
+                /*A*/ input,  /*lda=*/K, /*strideA=*/strideA,
+                /*B*/ param,  /*ldb=*/N, /*strideB=*/0LL,   // shared weight
+                /*C*/ Y,      /*ldc=*/N, /*strideC=*/strideC,
                 /*batch=*/batch_size,
                 /*alpha=*/1.f, /*beta=*/0.f
             );
 
-            // bias를 한 번에 더함 (ADD fuse)
             if (fuse_bias) {
                 const int rowsB = batch_size * M;
                 const int cols  = N;
-                launch_add_bias_rowwise(/*input=*/Y, /*bias=*/bias_ptr, /*output=*/Y,
-                                        /*rows=*/rowsB, /*cols=*/cols);
+                launch_add_bias_rowwise(Y, bias_ptr, Y, rowsB, cols);
                 CUDA_CHECK(cudaGetLastError());
                 ++i; // 다음 ADD 스킵
             }
@@ -278,125 +301,115 @@ void run_graph_cuda(
                 fprintf(stderr, "[ADD] missing param for %s\n", op.output_id.c_str());
                 break;
             }
+            // 출력 shape는 보통 입력과 동일
             out_shape = in_shape;
             float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
 
             const Shape bshape = shapes[op.param_id];
             const bool row_bias = (bshape.rows == 1 && bshape.cols == out_shape.cols) ||
                                   (bshape.rows == out_shape.cols && bshape.cols == 1);
-
             if (row_bias) {
-                // 배치까지 합쳐 한 번에
                 const int rowsB = batch_size * out_shape.rows;
                 const int cols  = out_shape.cols;
-                launch_add_bias_rowwise(/*input=*/input, /*bias=*/param, /*output=*/output,
-                                        /*rows=*/rowsB, /*cols=*/cols);
+                launch_add_bias_rowwise(input, param, output, rowsB, cols);
                 CUDA_CHECK(cudaGetLastError());
             } else {
-                // 필요시 다른 add 구현 추가
-                const size_t bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
-                CUDA_CHECK(cudaMemcpy(output, input, bytes, cudaMemcpyDeviceToDevice));
                 fprintf(stderr,
                         "[ADD] unsupported shape: input(%d,%d) + param(%d,%d). Expect row-wise bias.\n",
                         in_shape.rows, in_shape.cols, bshape.rows, bshape.cols);
+                // 안전 복사만 수행
+                const size_t bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
+                CUDA_CHECK(cudaMemcpy(output, input, bytes, cudaMemcpyDeviceToDevice));
             }
             break;
         }
 
-        // ---------- 활성화( bias 선택 지원 ) ----------
+        // ---------- 활성화 ----------
         case SIGMOID:
         case RELU:
         case TANH:
         case LEAKY_RELU:
         case ELU:
         case GELU:
-        case SILU:
-        {
-            Shape act_shape = shapes[op.output_id];
-            float* output   = ensure_output(tensors, shapes, op.output_id, act_shape, batch_size);
+        case SILU: {
+            // 출력 shape가 사전에 등록되지 않았을 수 있으므로 입력과 동일로 강제
+            out_shape = (shapes.count(op.output_id) ? shapes[op.output_id] : in_shape);
+            float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
 
-            const int rowsB = batch_size * act_shape.rows;
-            const int cols  = act_shape.cols;
+            const int rowsB = batch_size * out_shape.rows;
+            const int cols  = out_shape.cols;
 
-            const float* in_ptr   = input;      // pre-activation z
-            const float* bias_ptr = nullptr;    // 선택적 bias
+            const float* bias_ptr = nullptr; // 선택적 bias
             if (!op.param_id.empty()) {
-                auto it = tensors.find(op.param_id);
-                if (it != tensors.end()) bias_ptr = it->second;
+                auto itb = tensors.find(op.param_id);
+                if (itb != tensors.end()) bias_ptr = itb->second;
             }
-
             const int act = map_act_type(op.op_type);
-            const float alpha = op.extra_params.alpha;            // Leaky/ELU
+            const float alpha = op.extra_params.alpha;
             const int gelu_tanh_flag = op.extra_params.gelu_tanh ? 1 : 0;
 
-            cudaStream_t stream = 0; // 이 함수 서명엔 stream이 없으므로 기본 스트림 사용
-
-            launch_activation_forward(
-                /*in*/   in_ptr,
-                /*bias*/ bias_ptr,
-                /*out*/  output,
-                /*rows*/ rowsB,
-                /*cols*/ cols,
-                /*act*/  act,
-                /*alpha*/alpha,
-                /*gelu_tanh*/ gelu_tanh_flag,
-                /*stream*/ stream
-            );
+            launch_activation_forward(input, bias_ptr, output,
+                                      rowsB, cols, act, alpha, gelu_tanh_flag, /*stream*/0);
             CUDA_CHECK(cudaGetLastError());
             break;
         }
 
-        // ---------- Softmax(행 기준, temperature 지원) ----------
-        case SOFTMAX:
-        {
-            Shape sm_shape = shapes[op.output_id];
-            float* output  = ensure_output(tensors, shapes, op.output_id, sm_shape, batch_size);
-            const float* in_ptr = input;
+        // ---------- Softmax ----------
+        case SOFTMAX: {
+            out_shape = (shapes.count(op.output_id) ? shapes[op.output_id] : in_shape);
+            float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
 
-            const int rowsB = batch_size * sm_shape.rows;
-            const int cols  = sm_shape.cols;
+            const int rowsB = batch_size * out_shape.rows;
+            const int cols  = out_shape.cols;
+            const float temperature = (op.extra_params.temperature > 0.f)
+                                        ? op.extra_params.temperature : 1.f;
 
-            float temperature = (op.extra_params.temperature > 0.f)
-                                  ? op.extra_params.temperature : 1.f;
-            cudaStream_t stream = 0;
-
-            launch_softmax_forward(
-                /*in*/   in_ptr,
-                /*out*/  output,
-                /*rows*/ rowsB,
-                /*cols*/ cols,
-                /*temperature*/ temperature,
-                /*stream*/ stream
-            );
+            launch_softmax_forward(input, output, rowsB, cols, temperature, /*stream*/0);
             CUDA_CHECK(cudaGetLastError());
             break;
         }
 
         case FLATTEN: {
-            // 통짜 D2D 복사
-            float* output = ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
-            const size_t bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
-            CUDA_CHECK(cudaMemcpy(output, input, bytes, cudaMemcpyDeviceToDevice));
+            // ✅ flatten은 출력 shape가 반드시 사전에 존재해야 함
+            auto it_outshape = shapes.find(op.output_id);
+            if (it_outshape == shapes.end()) {
+                fprintf(stderr, "[FLATTEN][ERR] missing out shape for %s\n", op.output_id.c_str());
+                break;
+            }
+            const Shape out_shape_f = it_outshape->second;
+            float* output = ensure_output(tensors, shapes, op.output_id, out_shape_f, batch_size);
+
+            const size_t elems_in  = (size_t)batch_size * in_shape.rows      * in_shape.cols;
+            const size_t elems_out = (size_t)batch_size * out_shape_f.rows    * out_shape_f.cols;
+            if (elems_in != elems_out) {
+                fprintf(stderr,
+                        "[FLATTEN][ERR] elem mismatch: in=%zu out=%zu (B=%d in=(%d,%d) out=(%d,%d))\n",
+                        elems_in, elems_out, batch_size,
+                        in_shape.rows, in_shape.cols, out_shape_f.rows, out_shape_f.cols);
+                break;
+            }
+            CUDA_CHECK(cudaMemcpy(output, input, elems_in * sizeof(float), cudaMemcpyDeviceToDevice));
             break;
         }
 
         case CONV2D: {
-            // (기존 구현 유지)
-            int KH = op.extra_params.kernel_h;
-            int KW = op.extra_params.kernel_w;
-            int SH = op.extra_params.stride_h;
-            int SW = op.extra_params.stride_w;
-            int PH = op.extra_params.padding_h;
-            int PW = op.extra_params.padding_w;
-            int IH = op.extra_params.input_h;
-            int IW = op.extra_params.input_w;
-            int IC = op.extra_params.input_c;
-            int OC = op.extra_params.output_c;
+            auto it_outshape = shapes.find(op.output_id);
+            if (it_outshape == shapes.end()) {
+                fprintf(stderr, "[CONV2D][ERR] missing out shape for %s\n", op.output_id.c_str());
+                break;
+            }
+            const Shape out_shape_c = it_outshape->second;
+            float* output = ensure_output(tensors, shapes, op.output_id, out_shape_c, batch_size);
 
-            const int OW = shapes[op.output_id].cols / OC;
-            const int OH = shapes[op.output_id].rows;
+            const int KH = op.extra_params.kernel_h;
+            const int KW = op.extra_params.kernel_w;
+            const int IH = op.extra_params.input_h;
+            const int IW = op.extra_params.input_w;
+            const int IC = op.extra_params.input_c;
+            const int OC = op.extra_params.output_c;
 
-            float* output = ensure_output(tensors, shapes, op.output_id, shapes[op.output_id], batch_size);
+            const int OW = out_shape_c.cols / OC;
+            const int OH = out_shape_c.rows;
 
             dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
             dim3 gridDim((OW + TILE_WIDTH - 1) / TILE_WIDTH,
@@ -419,17 +432,19 @@ void run_graph_cuda(
         }
 
         default:
-            fprintf(stderr, "[ERROR] Unsupported op_type: %d\n", op.op_type);
+            fprintf(stderr, "[ERR] Unsupported op_type: %d\n", op.op_type);
             break;
         } // switch
-    } // for i
+    } // for
 
-    // 최종 출력 호스트로 복사
-    const Shape out_shape = shapes[final_output_id];
-    const size_t out_bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
-    
-    // 변경
-    if (out_host != nullptr) {
-        CUDA_CHECK(cudaMemcpy(out_host, tensors[final_output_id], out_bytes, cudaMemcpyDeviceToHost));
+    // ---- 최종 출력 호스트 복사 ----
+    auto it_final = tensors.find(final_output_id);
+    auto it_fshape = shapes.find(final_output_id);
+    if (out_host && it_final != tensors.end() && it_fshape != shapes.end()) {
+        const Shape out_shape = it_fshape->second;
+        const size_t bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
+        CUDA_CHECK(cudaMemcpy(out_host, it_final->second, bytes, cudaMemcpyDeviceToHost));
+    } else if (out_host) {
+        fprintf(stderr, "[ERR] final output missing: id=%s\n", final_output_id.c_str());
     }
 }
