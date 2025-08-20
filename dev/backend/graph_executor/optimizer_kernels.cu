@@ -202,17 +202,22 @@ __global__ void adam_kernel(float* __restrict__ param,
 // ===== Host Launcher =====
 void optimizer_update_cuda(
     float* param,
-    const float* grad,   // ★ const
+    const float* grad,     // ★ const 유지
     float* velocity,
     float* m,
     float* v,
 #if AMSGRAD_ENABLE
     float* vhat_max,
 #endif
-    float lr, float beta1, float beta2, float epsilon,
-    float weight_decay,   // 0이면 미적용
-    int size, OptimizerType opt_type, int t)
-{
+    float lr, float beta1, float beta2, float eps,
+#if WEIGHT_DECAY_ENABLE
+    float weight_decay,
+#endif
+    int size,
+    OptimizerType opt_type,
+    int timestep,
+    cudaStream_t stream     // ★ 정의에도 stream 추가
+){
     const int threads = 256;
     const int blocks  = (size + threads - 1) / threads;
 
@@ -283,7 +288,7 @@ void optimizer_update_cuda(
 #if WEIGHT_DECAY_ENABLE
                 weight_decay,
 #endif
-                lr, beta1, beta2, epsilon, t, size);
+                lr, beta1, beta2, eps, timestep, size);
             break;
 
         default:

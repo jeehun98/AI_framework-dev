@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <stdexcept>  // added
 
 #include "loss_kernels.cuh"
 #include "run_graph.cuh"
@@ -27,6 +28,9 @@
 #ifndef GLOBAL_NORM_CLIP_ENABLE
 #define GLOBAL_NORM_CLIP_ENABLE 0
 #endif
+// Optional debug knobs:
+// #define GE_DEBUG_SYNC 1
+// #define GE_VERBOSE 1
 
 #include "optimizer_config.cuh"
 #include "optimizer_kernels.cuh"
@@ -64,6 +68,8 @@ void run_graph_forward_entry(
     const std::string& final_output_id,
     int batch_size)
 {
+    if (E.empty()) throw std::runtime_error("empty graph");
+
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
     for (const auto& kv : tensor_ptrs)
@@ -74,6 +80,9 @@ void run_graph_forward_entry(
         py::gil_scoped_release nogil;
         run_graph_cuda(E, tensors, shapes, out_ptr, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
     }
 }
 
@@ -87,6 +96,8 @@ float run_graph_with_loss_entry(
     const std::string& loss_type,
     int batch_size)
 {
+    if (E.empty()) throw std::runtime_error("empty graph");
+
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
     for (const auto& kv : tensor_ptrs)
@@ -99,6 +110,9 @@ float run_graph_with_loss_entry(
                                         final_output_id, label_tensor_id,
                                         loss_type, batch_size);
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
     }
     return loss;
 }
@@ -112,6 +126,8 @@ py::dict run_graph_backward_entry(
     const std::string& final_output_id,
     int batch_size)
 {
+    if (E.empty()) throw std::runtime_error("empty graph");
+
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
     for (const auto& kv : tensor_ptrs)
@@ -128,9 +144,15 @@ py::dict run_graph_backward_entry(
         // Warm forward to produce y_pred on device only
         run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
 
         run_graph_backward(E, tensors, shapes, gradients, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
     }
 
     py::dict result;
@@ -165,12 +187,14 @@ float train_step_entry(
 #endif
 )
 {
+    if (E.empty()) throw std::runtime_error("empty graph");
+
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
     for (const auto& kv : tensor_ptrs)
         tensors[kv.first] = reinterpret_cast<float*>(kv.second);
 
-     float loss = 0.f;
+    float loss = 0.f;
     std::unordered_map<std::string, float*> gradients;
 
     {   // ---- Forward (keep intermediates) ----
@@ -184,45 +208,60 @@ float train_step_entry(
         // Forward 실행. out_host=nullptr → 호스트 복사 없음. 중간 텐서 유지.
         run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
 
-        // ---- Loss 계산을 직접 수행 ----
+        // ---- Loss 계산 ----
         auto it_pred = tensors.find(pred_id);
         auto it_true = tensors.find(label_tensor_id);
         auto it_pshp = shapes.find(pred_id);
-        if (it_pred == tensors.end() || it_true == tensors.end() || it_pshp == shapes.end())
+        auto it_tshp = shapes.find(label_tensor_id);
+        if (it_pred == tensors.end() || it_true == tensors.end() ||
+            it_pshp == shapes.end()  || it_tshp == shapes.end())
             throw std::runtime_error("loss: missing y_pred/y_true/shape");
 
         float* y_pred = it_pred->second;
         float* y_true = it_true->second;
-        const Shape sp = it_pshp->second;
-        const int rows_per_sample = sp.rows;
+        const Shape sp = it_pshp->second; // per-sample
+        const Shape st = it_tshp->second; // per-sample
+
+        const int rows_per_sample = sp.rows; // may be 1 or seq_len
         const int C = sp.cols;
         const int B = batch_size * rows_per_sample;
         const int N = B * C;
 
         if (loss_type == "mse") {
+            if (st.rows * st.cols * batch_size != N)
+                throw std::runtime_error("loss(mse): y_true size mismatch");
             loss = compute_mse_loss_cuda(y_true, y_pred, N);
         } else if (loss_type == "binary_crossentropy" || loss_type == "bce") {
+            if (st.rows * st.cols * batch_size != N)
+                throw std::runtime_error("loss(bce): y_true size mismatch");
             loss = compute_bce_loss_cuda(y_true, y_pred, N);
         } else if (loss_type == "cce") {
+            if (st.rows != rows_per_sample || st.cols != C)
+                throw std::runtime_error("loss(cce): y_true per-sample shape mismatch");
             loss = compute_cce_loss_cuda(y_true, y_pred, B, C);
         } else {
             throw std::runtime_error("loss: unsupported type");
         }
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
 
         // ---- Backward (중간 텐서 해제 금지) ----
         run_graph_backward(E, tensors, shapes, gradients, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
 
         // ---- Optimizer 업데이트 ----
         std::set<std::string> trainable_params;
         for (const auto& op : E) {
-            const bool uses_param =
-                (op.op_type == OpType::MATMUL) ||
-                (op.op_type == OpType::ADD)    ||
-                (op.op_type == OpType::CONV2D);
-            if (uses_param && !op.param_id.empty())
+            if (!op.param_id.empty())
                 trainable_params.insert(op.param_id);
         }
 
@@ -230,8 +269,12 @@ float train_step_entry(
             auto t_it = tensors.find(name);
             auto g_it = gradients.find(name);
             auto s_it = shapes.find(name);
-            if (t_it == tensors.end() || g_it == gradients.end() || s_it == shapes.end())
+            if (t_it == tensors.end() || g_it == gradients.end() || s_it == shapes.end()) {
+#ifdef GE_VERBOSE
+                std::cerr << "[warn] missing tensor/grad/shape for param " << name << "\n";
+#endif
                 continue;
+            }
 
             float*       param_ptr = t_it->second;
             const float* grad_ptr  = g_it->second;
@@ -264,13 +307,16 @@ float train_step_entry(
                 size, opt_type, timestep
             );
             CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+            CUDA_CHECK(cudaDeviceSynchronize());
+#endif
         }
 
         // ---- grad 버퍼만 free ----
-        std::unordered_set<float*> freed;
+        std::unordered_set<const float*> freed;
         for (const auto& kv : gradients) {
-            float* p = kv.second;
-            if (p && freed.insert(p).second) CUDA_CHECK(cudaFree(p));
+            const float* p = kv.second;
+            if (p && freed.insert(p).second) CUDA_CHECK(cudaFree(const_cast<float*>(p)));
         }
     }
 
@@ -394,6 +440,9 @@ PYBIND11_MODULE(graph_executor, m) {
                 size, opt_type, timestep
             );
             CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+            CUDA_CHECK(cudaDeviceSynchronize());
+#endif
         },
         py::arg("param_ptr"), py::arg("grad_ptr"),
         py::arg("velocity_ptr") = 0, py::arg("m_ptr") = 0, py::arg("v_ptr") = 0,
@@ -438,6 +487,9 @@ PYBIND11_MODULE(graph_executor, m) {
                 size, opt_type, timestep
             );
             CUDA_CHECK(cudaGetLastError());
+#ifdef GE_DEBUG_SYNC
+            CUDA_CHECK(cudaDeviceSynchronize());
+#endif
         },
         py::arg("param_ptr"), py::arg("grad_ptr"),
         py::arg("velocity_ptr") = 0, py::arg("m_ptr") = 0, py::arg("v_ptr") = 0,
