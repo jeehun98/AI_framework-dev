@@ -88,20 +88,22 @@ __global__ void adam_kernel(
 // - MOMENTUM: beta1 -> beta 로 사용
 // - ADAM: t는 1부터 증가
 // - AMSGRAD/WD는 빌드 토글 및 인자 유무로 자동 분기
+
 void optimizer_update_cuda(
-    float*       param,
+    float* param,
     const float* grad,
-    float*       velocity,
-    float*       m,
-    float*       v,
+    float* velocity,
+    float* m,
+    float* v,
 #if AMSGRAD_ENABLE
-    float*       vhat_max,
+    float* vhat_max,
 #endif
-    float lr, float beta1, float beta2, float epsilon,
+    float lr, float beta1, float beta2, float eps,
 #if WEIGHT_DECAY_ENABLE
-    float        weight_decay,
+    float weight_decay,
 #endif
-    int          size,
-    OptimizerType opt_type,
-    int          t
+    int size,
+    OptimizerType opt_type,   // <-- 강타입 enum
+    int timestep,
+    cudaStream_t stream = 0   // 선택
 );
