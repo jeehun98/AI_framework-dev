@@ -1,9 +1,10 @@
 // run_graph_backward.cu (TF32 + strided-batched + fused softmax-xent, with batch-mean grads)
+
 #include <iostream>
 #include <string>
 #include <vector>
-#include <cuda_runtime.h>
 #include <unordered_map>
+#include <cuda_runtime.h>
 #include <cublas_v2.h>
 
 #include "run_graph.cuh"
@@ -13,34 +14,16 @@
 #include "op_structs.cuh"
 #include "loss_kernels.cuh"
 
+#include "ge/cuda_check.cuh"
+#include "ge/cublas_utils.cuh"
+#include "ge/gemm_rm.cuh"
+#include "ge/act_map.cuh"
+#include "ge/fill.cuh"
+
 #ifndef TILE_WIDTH
 #define TILE_WIDTH 16
 #endif
 
-#ifndef CUDA_CHECK
-#define CUDA_CHECK(x) do { cudaError_t _e=(x); if(_e!=cudaSuccess){ \
-  fprintf(stderr,"[CUDA] %s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(_e)); } } while(0)
-#endif
-
-#ifndef CUBLAS_CHECK
-#define CUBLAS_CHECK(call) do { \
-    cublasStatus_t _st = (call); \
-    if (_st != CUBLAS_STATUS_SUCCESS) { \
-        fprintf(stderr, "[cuBLAS] %s:%d status=%d\n", __FILE__, __LINE__, (int)_st); \
-    } \
-} while(0)
-#endif
-
-// === 전역 cuBLAS 핸들 재사용 ===
-static cublasHandle_t g_cublas = nullptr;
-static void ensure_cublas() {
-    if (!g_cublas) {
-        CUBLAS_CHECK(cublasCreate(&g_cublas));
-        // CUBLAS_CHECK(cublasSetMathMode(g_cublas, CUBLAS_TF32_TENSOR_OP_MATH));
-    }
-}
-
-// 디버그/동기 헬퍼
 static inline void checkCudaLast(const char* where) {
     cudaError_t e = cudaGetLastError();
     if (e != cudaSuccess) {
@@ -54,86 +37,6 @@ static inline void checkCudaSync(const char* where) {
     }
 }
 
-// ones 벡터 채우기
-__global__ void fill_kernel(float* p, float v, int n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) p[i] = v;
-}
-
-// ---- GEMM 래퍼 (row-major 매핑) --------------------------------------------
-static inline void gemm_rm_tf32(
-    cublasHandle_t h,
-    bool transA, bool transB,
-    int M, int N, int K,
-    const float* A, int lda,
-    const float* B, int ldb,
-    float* C, int ldc,
-    float alpha=1.f, float beta=0.f)
-{
-    cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
-    cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
-
-    CUBLAS_CHECK(
-        cublasGemmEx(
-            h,
-            /*opB,opA*/ opB, opA,
-            /*m,n,k*/   N,   M,   K,
-            &alpha,
-            /*B*/ B, CUDA_R_32F, ldb,
-            /*A*/ A, CUDA_R_32F, lda,
-            &beta,
-            /*C*/ C, CUDA_R_32F, ldc,
-            CUBLAS_COMPUTE_32F_FAST_TF32,
-            CUBLAS_GEMM_DEFAULT_TENSOR_OP
-        )
-    );
-}
-
-static inline void gemm_rm_strided_batched_tf32(
-    cublasHandle_t h,
-    bool transA, bool transB,
-    int M, int N, int K,
-    const float* A, int lda, long long strideA,
-    const float* B, int ldb, long long strideB,
-    float* C, int ldc, long long strideC,
-    int batch,
-    float alpha=1.f, float beta=0.f)
-{
-    cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
-    cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
-
-    CUBLAS_CHECK(
-        cublasGemmStridedBatchedEx(
-            h,
-            /*opB,opA*/ opB, opA,
-            /*m,n,k*/   N,   M,   K,
-            &alpha,
-            /*B*/ B, CUDA_R_32F, ldb, strideB,
-            /*A*/ A, CUDA_R_32F, lda, strideA,
-            &beta,
-            /*C*/ C, CUDA_R_32F, ldc, strideC,
-            /*batch*/ batch,
-            CUBLAS_COMPUTE_32F_FAST_TF32,
-            CUBLAS_GEMM_DEFAULT_TENSOR_OP
-        )
-    );
-}
-// -----------------------------------------------------------------------------
-
-// 활성화 매핑
-static inline int map_act_type(int op_type) {
-    switch (op_type) {
-        case SIGMOID:    return ACT_SIGMOID;
-        case RELU:       return ACT_RELU;
-        case TANH:       return ACT_TANH;
-        case LEAKY_RELU: return ACT_LEAKY;
-        case ELU:        return ACT_ELU;
-        case GELU:       return ACT_GELU;
-        case SILU:       return ACT_SILU;
-        default:         return ACT_IDENTITY;
-    }
-}
-
 void run_graph_backward(
     const std::vector<OpStruct>& E,
     std::unordered_map<std::string, float*>& tensors,
@@ -142,7 +45,7 @@ void run_graph_backward(
     const std::string& final_output_id,
     int batch_size)
 {
-    ensure_cublas();
+    auto h = ge_cublas();
 
     std::string grad_start_id = final_output_id;
     bool fused_softmax = false;
@@ -248,7 +151,7 @@ void run_graph_backward(
 
             // dX = dY · W^T  (B, M, K)
             gemm_rm_strided_batched_tf32(
-                g_cublas,
+                h,
                 /*transA=*/false, /*transB=*/true,
                 /*M=*/M, /*N=*/K, /*K=*/N,
                 /*A =*/ grad_out_full,   /*lda =*/ N, /*strideA =*/ (long long)M * N,
@@ -263,7 +166,7 @@ void run_graph_backward(
             CUDA_CHECK(cudaMalloc(&dW_tmp, (size_t)batch_size * K * N * sizeof(float)));
 
             gemm_rm_strided_batched_tf32(
-                g_cublas,
+                h,
                 /*transA=*/true, /*transB=*/false,
                 /*M=*/K, /*N=*/N, /*K=*/M,
                 /*A =*/ input,          /*lda =*/ K, /*strideA =*/ (long long)M * K,
@@ -281,19 +184,18 @@ void run_graph_backward(
             CUDA_CHECK(cudaMalloc(&onesB, (size_t)batch_size * sizeof(float)));
             {
                 int thr = 256, blk = (batch_size + thr - 1) / thr;
-                fill_kernel<<<blk, thr>>>(onesB, 1.0f, batch_size);
+                ge_fill_kernel<<<blk, thr>>>(onesB, 1.0f, batch_size);
             }
 
             // C(1, K*N) = A(1, B) · B(B, K*N)
             gemm_rm_tf32(
-                g_cublas, false, false,
+                h, false, false,
                 /*M=*/1, /*N=*/(K * N), /*K=*/batch_size,
                 /*A=*/onesB,     /*lda=*/batch_size,
                 /*B=*/dW_tmp,    /*ldb=*/(K * N),
                 /*C=*/dW_accum,  /*ldc=*/(K * N),
                 1.f, 0.f
             );
-
 
             gradients[op.param_id] = dW_accum;
 
@@ -303,11 +205,11 @@ void run_graph_backward(
         }
 
         case ADD: {
-            // dX = dY (그대로 복사)
+            // dX = dY
             const size_t bytes = (size_t)batch_size * out_size * sizeof(float);
             CUDA_CHECK(cudaMemcpy(grad_input_full, grad_out_full, bytes, cudaMemcpyDeviceToDevice));
 
-            // dB = sum over batch and rows → ones(1, B*M) · dY(B*M, N)
+            // dB = sum over batch and rows
             const int rowsB = batch_size * M;
             const int cols  = N;
 
@@ -318,18 +220,17 @@ void run_graph_backward(
             CUDA_CHECK(cudaMalloc(&onesR, (size_t)rowsB * sizeof(float)));
             {
                 int thr = 256, blk = (rowsB + thr - 1) / thr;
-                fill_kernel<<<blk, thr>>>(onesR, 1.0f, rowsB);
+                ge_fill_kernel<<<blk, thr>>>(onesR, 1.0f, rowsB);
             }
 
             gemm_rm_tf32(
-                g_cublas, false, false,
+                h, false, false,
                 /*M=*/1, /*N=*/cols, /*K=*/rowsB,
                 /*A=*/onesR,            /*lda=*/rowsB,
                 /*B=*/grad_out_full,    /*ldb=*/cols,
                 /*C=*/grad_bias,        /*ldc=*/cols,
                 1.f, 0.f
             );
-
 
             gradients[op.param_id] = grad_bias;
             CUDA_CHECK(cudaFree(onesR));
@@ -348,12 +249,12 @@ void run_graph_backward(
             const int rowsB = batch_size * out_shape.rows;
             const int cols  = out_shape.cols;
 
-            const float* gout = grad_out_full;             // dL/dout
-            const float* out  = tensors[op.output_id];     // f(z)
-            const float* in   = tensors[op.input_id];      // z
-            float* gin        = grad_input_full;           // dL/din
+            const float* gout = grad_out_full;           // dL/dout
+            const float* out  = tensors[op.output_id];   // f(z)
+            const float* in   = tensors[op.input_id];    // z
+            float* gin        = grad_input_full;         // dL/din
 
-            const int act = map_act_type(op.op_type);
+            const int act = ge_map_act_type(op.op_type);
             const float alpha = op.extra_params.alpha;
             const int gelu_tanh_flag = op.extra_params.gelu_tanh ? 1 : 0;
 
@@ -389,7 +290,7 @@ void run_graph_backward(
 
         case FLATTEN: {
             gradients[op.input_id] = grad_out_full;
-            continue;
+            continue; // grad_input_full 할당 안 함
         }
 
         default:
