@@ -12,12 +12,12 @@
 #include <iostream>
 #include <stdexcept>  // added
 
-#include "loss_kernels.cuh"
-#include "run_graph.cuh"
-#include "run_graph_backward.cuh"
-#include "run_graph_with_loss.cuh"
+#include "loss/loss_kernels.cuh"
+#include "executor/run_graph.cuh"
+#include "executor/run_graph_backward.cuh"
+#include "executor/run_graph_with_loss.cuh"
 #include "op_structs.cuh"
-#include "optimizer_types.cuh"
+#include "optimizer/optimizer_types.cuh"
 
 #ifndef WEIGHT_DECAY_ENABLE
 #define WEIGHT_DECAY_ENABLE 0
