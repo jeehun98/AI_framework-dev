@@ -1,4 +1,6 @@
-#include "add_bias_rowwise.cuh"
+// add_bias_rowwise.cuh
+#pragma once
+#include <cuda_runtime.h>
 #include <cstdio>
 
 #ifndef CUDA_CHECK
@@ -11,25 +13,53 @@
 } while(0)
 #endif
 
-// 2D 인덱싱으로 모듈러 연산 제거, coalesced 접근 유지
-static __global__ void add_bias_rowwise_kernel(const float* __restrict__ in,
-                                               const float* __restrict__ bias, // [cols]
-                                               float* __restrict__ out,
-                                               int rows, int cols) {
-    const int row = blockIdx.y * blockDim.y + threadIdx.y;
-    const int col = blockIdx.x * blockDim.x + threadIdx.x;
+// ============================
+// Row-wise bias: bias length == cols
+// ============================
+__global__ void add_bias_rowwise_kernel(const float* __restrict__ in,
+                                        const float* __restrict__ bias, // [cols]
+                                        float* __restrict__ out,
+                                        int rows, int cols) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (row < rows && col < cols) {
-        const int idx = row * cols + col;
+        int idx = row * cols + col;
         out[idx] = in[idx] + bias[col];
     }
 }
 
+// ============================
+// Col-wise(채널) bias: bias length == rows_per_sample
+// rows = batch * rows_per_sample
+// ============================
+__global__ void add_bias_colwise_kernel(const float* __restrict__ in,
+                                        const float* __restrict__ bias, // [rows_per_sample]
+                                        float* __restrict__ out,
+                                        int rows, int cols, int rows_per_sample) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y; // 0..rows-1
+    int col = blockIdx.x * blockDim.x + threadIdx.x; // 0..cols-1
+    if (row < rows && col < cols) {
+        int idx = row * cols + col;
+        int r_local = row % rows_per_sample;         // channel index within sample
+        out[idx] = in[idx] + bias[r_local];
+    }
+}
 void launch_add_bias_rowwise(const float* in, const float* bias, float* out,
                              int rows, int cols, cudaStream_t stream) {
-    // warp가 x축으로 길게 뻗도록 구성 → 연속 주소 접근
-    dim3 block(32, 8); // 256 threads
+    dim3 block(32, 8);
     dim3 grid((cols + block.x - 1) / block.x,
               (rows + block.y - 1) / block.y);
     add_bias_rowwise_kernel<<<grid, block, 0, stream>>>(in, bias, out, rows, cols);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void launch_add_bias_colwise(const float* in, const float* bias, float* out,
+                             int rows, int cols, int rows_per_sample,
+                             cudaStream_t stream) {
+    dim3 block(32, 8);
+    dim3 grid((cols + block.x - 1) / block.x,
+              (rows + block.y - 1) / block.y);
+    add_bias_colwise_kernel<<<grid, block, 0, stream>>>(
+        in, bias, out, rows, cols, rows_per_sample);
     CUDA_CHECK(cudaGetLastError());
 }
