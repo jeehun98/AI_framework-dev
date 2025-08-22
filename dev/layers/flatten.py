@@ -81,29 +81,23 @@ class Flatten(Layer):
         extra = OpExtraParams()
 
         e_block = [{
-            "op_type": 5,  # FLATTEN
+            "op_type": int(ge.OpType.FLATTEN),  # FLATTEN
             "input_id": input_id,
             "param_id": "",
             "output_id": output_id,
             "extra_params": extra
         }]
 
-        # 🔽 입력 2D 해석을 '그대로' 사용: (rows_in, cols_in) = (F, H*W) 또는 이전 레이어의 2D
-        # - Conv2D가 위에서 (F, H*W)로 보내므로 자동으로 맞습니다.
-        # - 만약 이전 레이어가 이미 (1, K)라면 rows_in=1, cols_in=K가 됩니다.
-        # 주의: self.input_shape는 원래 4D(NHWC)일 수 있으므로, 2D Shape는 engine의 shape_map에서 가져오는 게 이상적.
-        # 여기서는 간단히, Conv2D 이후라는 가정 아래 rows_in/cols_in을 계산합니다.
-        # 안전하게 하려면 Sequential.compile 단계에서 shape_map을 전달받아 참조하세요.
-        if len(self.input_shape) == 4:
-            _, H, W, C = map(int, self.input_shape)
-            rows_in, cols_in = int(C), int(H * W)   # ✅ Conv 정렬과 일치
+        # ✅ 입력 shape는 이전 op가 이미 정확히 등록했으므로 건드리지 않는다.
+        #    출력만 등록: (rows=1, cols=배치 제외 모든 차원의 곱)
+        if len(self.input_shape) >= 2:
+            flattened = int(np.prod(self.input_shape[1:]))  # 레이아웃(NCHW/NHWC) 무관
         else:
-            # 2D 이어받는 경우 등
-            rows_in, cols_in = 1, int(np.prod(self.input_shape[1:]))
+            raise ValueError(f"Flatten expects rank>=2, got {self.input_shape}")
 
-        rows_out, cols_out = 1, rows_in * cols_in
         shape_map = {
-            input_id:  Shape(int(rows_in), int(cols_in)),
-            output_id: Shape(int(rows_out), int(cols_out)),
+            output_id: Shape(1, flattened),
         }
+
+        # 가중치/바이어스 없음
         return e_block, {}, {}, output_id, shape_map

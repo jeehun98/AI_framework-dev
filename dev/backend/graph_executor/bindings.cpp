@@ -340,7 +340,12 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("ELU", OpType::ELU)
         .value("GELU", OpType::GELU)
         .value("SILU", OpType::SILU)
-        .value("SOFTMAX", OpType::SOFTMAX);
+        .value("SOFTMAX", OpType::SOFTMAX)
+        // 👇 추가
+        .value("POOL_MAX", OpType::POOL_MAX)
+        .value("POOL_AVG", OpType::POOL_AVG)
+        .export_values();
+
 
     py::enum_<OptimizerType>(m, "OptimizerType")
         .value("SGD", OptimizerType::SGD)
@@ -348,14 +353,18 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("ADAM", OptimizerType::ADAM)
         .export_values();
 
-    // Structs
     py::class_<OpExtraParams>(m, "OpExtraParams")
         .def(py::init([](){
             OpExtraParams e{};
+            // 기존 기본값
             e.alpha = 0.01f;
             e.gelu_tanh = 1;
             e.temperature = 1.0f;
             e.axis = 1;
+            // 👇 새 필드 기본값(구조체에도 기본값 있지만, 가독성 위해 중복 명시 OK)
+            e.dilation_h = 1;
+            e.dilation_w = 1;
+            e.count_include_pad = false;
             return e;
         }))
         .def_readwrite("kernel_h", &OpExtraParams::kernel_h)
@@ -364,17 +373,25 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("stride_w", &OpExtraParams::stride_w)
         .def_readwrite("padding_h", &OpExtraParams::padding_h)
         .def_readwrite("padding_w", &OpExtraParams::padding_w)
+        // 👇 새 필드 바인딩
+        .def_readwrite("dilation_h", &OpExtraParams::dilation_h)
+        .def_readwrite("dilation_w", &OpExtraParams::dilation_w)
+        .def_readwrite("count_include_pad", &OpExtraParams::count_include_pad)
+        // 입력/출력 메타
         .def_readwrite("input_h", &OpExtraParams::input_h)
         .def_readwrite("input_w", &OpExtraParams::input_w)
         .def_readwrite("input_c", &OpExtraParams::input_c)
         .def_readwrite("output_c", &OpExtraParams::output_c)
         .def_readwrite("batch_size", &OpExtraParams::batch_size)
+        // RNN/기타
         .def_readwrite("time_steps", &OpExtraParams::time_steps)
         .def_readwrite("hidden_size", &OpExtraParams::hidden_size)
         .def_readwrite("num_layers", &OpExtraParams::num_layers)
         .def_readwrite("use_bias", &OpExtraParams::use_bias)
+        // Loss
         .def_readwrite("label_id", &OpExtraParams::label_id)
         .def_readwrite("loss_type", &OpExtraParams::loss_type)
+        // Activ / Softmax
         .def_readwrite("alpha", &OpExtraParams::alpha)
         .def_readwrite("gelu_tanh", &OpExtraParams::gelu_tanh)
         .def_readwrite("temperature", &OpExtraParams::temperature)

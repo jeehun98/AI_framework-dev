@@ -15,6 +15,9 @@
 #include "loss_kernels.cuh"
 #include "reduce_stride.cuh"
 #include "reduce_ops.cuh" 
+#include "pack_utils.cuh"
+#include "pooling_ops.cuh"
+#include "pooling_kernels.cuh"
 
 #include "ge/cuda_check.cuh"
 #include "ge/cublas_utils.cuh"
@@ -26,30 +29,6 @@
 #define TILE_WIDTH 16
 #endif
 
-static __global__ void rm_to_nhwc_kernel(const float* __restrict__ rm,
-                                         float* __restrict__ nhwc,
-                                         int B, int C, int H, int W) {
-    // rm: [B, C, H*W] row-major
-    // nhwc: [B, H, W, C]
-    int b = blockIdx.z;
-    int h = blockIdx.y * blockDim.y + threadIdx.y;
-    int w = blockIdx.x * blockDim.x + threadIdx.x;
-    if (b >= B || h >= H || w >= W) return;
-    int hw = h * W + w;
-    for (int c = 0; c < C; ++c) {
-        int rm_idx   = ((b * C + c) * (H * W)) + hw;
-        int nhwc_idx = (((b * H + h) * W + w) * C) + c;
-        nhwc[nhwc_idx] = rm[rm_idx];
-    }
-}
-
-static inline void launch_pack_rm_to_nhwc(const float* rm, float* nhwc,
-                                          int B, int C, int H, int W,
-                                          cudaStream_t stream = 0) {
-    dim3 block(16, 16);
-    dim3 grid((W + 15)/16, (H + 15)/16, B);
-    rm_to_nhwc_kernel<<<grid, block, 0, stream>>>(rm, nhwc, B, C, H, W);
-}
 
 static void debug_l2(const char* name, const float* dptr, size_t n_elems) {
     std::vector<float> h(n_elems);
@@ -377,11 +356,11 @@ void run_graph_backward(
             continue; // grad_input_full 할당 안 함
         }
 
-        // run_graph_backward.cu  —  switch(op.op_type) 내부
+        // run_graph_backward.cu — switch(op.op_type) 내부
         case CONV2D: {
             const OpExtraParams& ex = op.extra_params;
 
-            const int B    = batch_size;
+            const int N    = batch_size;
             const int Cin  = ex.input_c;
             const int Hin  = ex.input_h;
             const int Win  = ex.input_w;
@@ -393,14 +372,14 @@ void run_graph_backward(
             const int Ph   = ex.padding_h;
             const int Pw   = ex.padding_w;
 
-            // 엔진과 동일한 식으로 산출
+            // 엔진과 동일한 식
             const int Hout = (Hin + 2*Ph - Kh) / Sh + 1;
             const int Wout = (Win + 2*Pw - Kw) / Sw + 1;
 
-            // 텐서 포인터
-            const float* X    = tensors[op.input_id];     // NHWC: [B,Hin,Win,Cin]
-            const float* W    = tensors[op.param_id];     // [Cout,Cin,Kh,Kw] (contig)
-            const float* dYrm = gradients[op.output_id];  // 엔진 2D: [Cout, Hout*Wout] per sample
+            // 텐서 포인터 (NCHW)
+            const float* X    = tensors[op.input_id];     // [N, Cin, Hin, Win]
+            const float* W    = tensors[op.param_id];     // [Cout, Cin, Kh, Kw] (contiguous)
+            const float* dYrm = gradients[op.output_id];  // per-sample row-major: [Cout, Hout*Wout]
 
             if (!X || !W) {
                 std::fprintf(stderr, "[BW][CONV2D] missing X or W (X=%p, W=%p) for op=%s param=%s\n",
@@ -413,53 +392,136 @@ void run_graph_backward(
                 break;
             }
 
-            // rm(B,Cout,Hout*Wout) → NHWC 패킹
-            float* dY = nullptr;
-            CUDA_CHECK(cudaMalloc(&dY, (size_t)B * Hout * Wout * Cout * sizeof(float)));
-            launch_pack_rm_to_nhwc(/*rm=*/dYrm, /*nhwc=*/dY, B, Cout, Hout, Wout);
+            // rm(B, Cout, Hout*Wout) → NCHW 패킹
+            float* dY = nullptr; // [N, Cout, Hout, Wout]
+            CUDA_CHECK(cudaMalloc(&dY, (size_t)N * Cout * Hout * Wout * sizeof(float)));
+            launch_pack_rm_to_nchw(/*rm=*/dYrm, /*nchw=*/dY, N, Cout, Hout, Wout);
             CUDA_CHECK(cudaGetLastError());
 
             // 출력 그라드 버퍼 준비
-            float* dX = nullptr; // [B,Hin,Win,Cin]
-            float* dW = nullptr; // [Cout,Cin,Kh,Kw]
-            CUDA_CHECK(cudaMalloc(&dX, (size_t)B * Hin * Win * Cin * sizeof(float)));
+            float* dX = nullptr; // [N, Cin, Hin, Win]
+            float* dW = nullptr; // [Cout, Cin, Kh, Kw]
+            CUDA_CHECK(cudaMalloc(&dX, (size_t)N * Cin * Hin * Win * sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dW, (size_t)Cout * Cin * Kh * Kw * sizeof(float)));
+            CUDA_CHECK(cudaMemset(dX, 0, (size_t)N * Cin * Hin * Win * sizeof(float)));
             CUDA_CHECK(cudaMemset(dW, 0, (size_t)Cout * Cin * Kh * Kw * sizeof(float)));
 
-            // 입력 그라드
-            launch_conv2d_backward_input_nhwc(
+            // dX
+            launch_conv2d_backward_input_nchw(
                 /*dY=*/dY, /*W=*/W, /*dX=*/dX,
-                /*B=*/B, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
+                /*N=*/N, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
                 /*Hout=*/Hout, /*Wout=*/Wout, /*Cout=*/Cout,
-                /*Kh=*/Kh, /*Kw=*/Kw, /*Sh=*/Sh, /*Sw=*/Sw, /*Ph=*/Ph, /*Pw=*/Pw, /*stream=*/0);
+                /*Kh=*/Kh, /*Kw=*/Kw, /*Sh=*/Sh, /*Sw=*/Sw, /*Ph=*/Ph, /*Pw=*/Pw,
+                /*stream=*/0);
             CUDA_CHECK(cudaGetLastError());
 
-            // 가중치 그라드
-            launch_conv2d_backward_weight_nhwc(
+            // dW
+            launch_conv2d_backward_weight_nchw(
                 /*dY=*/dY, /*X=*/X, /*dW=*/dW,
-                /*B=*/B, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
+                /*N=*/N, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
                 /*Hout=*/Hout, /*Wout=*/Wout, /*Cout=*/Cout,
-                /*Kh=*/Kh, /*Kw=*/Kw, /*Sh=*/Sh, /*Sw=*/Sw, /*Ph=*/Ph, /*Pw=*/Pw, /*stream=*/0);
+                /*Kh=*/Kh, /*Kw=*/Kw, /*Sh=*/Sh, /*Sw=*/Sw, /*Ph=*/Ph, /*Pw=*/Pw,
+                /*stream=*/0);
             CUDA_CHECK(cudaGetLastError());
 
-            // ── 필수: gradients에 등록 + 로그 ─────────────────────────────
+            // gradients에 등록
             if (op.param_id.empty()) {
                 std::fprintf(stderr,
                     "[BW][CONV2D] op.param_id EMPTY for output=%s (Cout=%d Cin=%d KhKw=%dx%d)\n",
                     op.output_id.c_str(), Cout, Cin, Kh, Kw);
             } else {
                 gradients[op.input_id] = dX;  // dX는 이전 op로 전달
-                gradients[op.param_id] = dW;  // ← 여기서 'conv_W'가 등록되어야 함
+                gradients[op.param_id] = dW;  // conv weight grad
                 std::fprintf(stderr,
                     "[BW][CONV2D] set grad for '%s' (dW elems=%zu) and '%s' (dX elems=%zu)\n",
                     op.param_id.c_str(), (size_t)Cout*Cin*Kh*Kw,
-                    op.input_id.c_str(), (size_t)B*Hin*Win*Cin);
+                    op.input_id.c_str(), (size_t)N*Cin*Hin*Win);
             }
-            // ─────────────────────────────────────────────────────────────
 
             CUDA_CHECK(cudaFree(dY));
             break;
         }
+
+        case POOL_MAX:
+        case POOL_AVG: {
+            const OpExtraParams& ex = op.extra_params;
+
+            // 입력 NCHW 메타
+            const int N = batch_size;
+            const int C = ex.input_c;
+            const int H = ex.input_h;
+            const int W = ex.input_w;
+
+            const int kH = ex.kernel_h;
+            const int kW = ex.kernel_w;
+            const int sH = (ex.stride_h > 0 ? ex.stride_h : 1);
+            const int sW = (ex.stride_w > 0 ? ex.stride_w : 1);
+            const int pH = ex.padding_h;
+            const int pW = ex.padding_w;
+            const int dH = (ex.dilation_h > 0 ? ex.dilation_h : 1);
+            const int dW = (ex.dilation_w > 0 ? ex.dilation_w : 1);
+
+            const int Hout = (H + 2*pH - dH*(kH - 1) - 1) / sH + 1;
+            const int Wout = (W + 2*pW - dW*(kW - 1) - 1) / sW + 1;
+
+            if (Hout <= 0 || Wout <= 0) {
+                std::fprintf(stderr, "[BW][POOL] invalid out size Hout=%d Wout=%d\n", Hout, Wout);
+                break;
+            }
+
+            // grad_out (엔진 2D 뷰) -> NCHW 패킹
+            const float* dYrm = gradients[op.output_id]; // per-sample: [C, Hout*Wout]
+            if (!dYrm) {
+                std::fprintf(stderr, "[BW][POOL] missing grad_out for %s\n", op.output_id.c_str());
+                break;
+            }
+
+            float* dY = nullptr; // [N,C,Hout,Wout]
+            CUDA_CHECK(cudaMalloc(&dY, (size_t)N * C * Hout * Wout * sizeof(float)));
+            launch_pack_rm_to_nchw(/*rm=*/dYrm, /*nchw=*/dY, N, C, Hout, Wout);
+            CUDA_CHECK(cudaGetLastError());
+
+            // dX 준비
+            float* dX = nullptr; // [N,C,H,W]
+            CUDA_CHECK(cudaMalloc(&dX, (size_t)N * C * H * W * sizeof(float)));
+            CUDA_CHECK(cudaMemset(dX, 0, (size_t)N * C * H * W * sizeof(float)));
+
+            // 공통 Pool 파라미터
+            Pool2DParams p{};
+            p.N=N; p.C=C; p.H=H; p.W=W;
+            p.H_out=Hout; p.W_out=Wout;
+            p.kernel_h=kH; p.kernel_w=kW;
+            p.stride_h=sH; p.stride_w=sW;
+            p.pad_h=pH; p.pad_w=pW;
+            p.dilation_h=dH; p.dilation_w=dW;
+            p.avg_inclusive = ex.count_include_pad;
+
+            if (op.op_type == POOL_MAX) {
+                // forward 때 저장해둔 argmax 필요
+                auto it = tensors.find("__pool_argmax::" + op.output_id);
+                if (it == tensors.end() || !it->second) {
+                    std::fprintf(stderr, "[BW][POOL_MAX] missing argmax for %s\n", op.output_id.c_str());
+                    CUDA_CHECK(cudaFree(dY));
+                    CUDA_CHECK(cudaFree(dX));
+                    break;
+                }
+                const int32_t* argmax = reinterpret_cast<const int32_t*>(it->second);
+
+                maxpool2d_backward(/*grad_y=*/dY, /*grad_x=*/dX, /*argmax=*/argmax, /*p=*/p, /*stream=*/0);
+                CUDA_CHECK(cudaGetLastError());
+            } else { // POOL_AVG
+                avgpool2d_backward(/*grad_y=*/dY, /*grad_x=*/dX, /*p=*/p, /*stream=*/0);
+                CUDA_CHECK(cudaGetLastError());
+            }
+
+            // 등록: 입력 텐서의 그래디언트
+            gradients[op.input_id] = dX;
+
+            // 정리
+            CUDA_CHECK(cudaFree(dY));
+            break;
+        }
+
 
 
         default:

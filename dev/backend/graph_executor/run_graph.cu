@@ -15,12 +15,16 @@
 #include "quant/int8_gemm_dp4a.cuh"
 #include "quant/epilogue_kernels.cuh"
 
+#include "pooling_ops.cuh"
+#include "pooling_kernels.cuh"
 #include "run_graph.cuh"
 #include "activation_ops.cuh"
 #include "softmax_kernels.cuh"
 #include "add_bias_rowwise.cuh"
 #include "cnn_kernels.cuh"
 #include "op_structs.cuh"
+#include "pooling_kernels.cuh"
+#include "run_graph_utils.cuh"
 
 #include "ge/cuda_check.cuh"
 #include "ge/cublas_utils.cuh"
@@ -273,11 +277,77 @@ void run_graph_cuda(
             break;
         }
 
+        // run_graph.cu — switch(op.op_type) 내부 교체
+        case POOL_MAX:
+        case POOL_AVG: {
+            const OpExtraParams& ex = op.extra_params;
+
+            // 입력 NCHW 크기
+            const int N = batch_size;
+            const int C = ex.input_c;
+            const int H = ex.input_h;
+            const int W = ex.input_w;
+
+            const int kH = ex.kernel_h;
+            const int kW = ex.kernel_w;
+            const int sH = (ex.stride_h > 0 ? ex.stride_h : 1);
+            const int sW = (ex.stride_w > 0 ? ex.stride_w : 1);
+            const int pH = ex.padding_h;
+            const int pW = ex.padding_w;
+            const int dH = (ex.dilation_h > 0 ? ex.dilation_h : 1);
+            const int dW = (ex.dilation_w > 0 ? ex.dilation_w : 1);
+
+            // 출력 공간 크기 (ceil_mode=false)
+            const int Hout = (H + 2*pH - dH*(kH - 1) - 1) / sH + 1;
+            const int Wout = (W + 2*pW - dW*(kW - 1) - 1) / sW + 1;
+
+            if (Hout <= 0 || Wout <= 0) {
+                std::fprintf(stderr, "[POOL][ERR] invalid output size Hout=%d Wout=%d\n", Hout, Wout);
+                break;
+            }
+
+            // sample view: (rows=C, cols=Hout*Wout) — 물리 버퍼는 [N,C,Hout,Wout]
+            Shape out_shape_p{ C, Hout * Wout };
+            shapes[op.output_id] = out_shape_p;
+
+            // 버퍼 (NCHW contiguous)
+            const float* X = get_tensor_ro(tensors, op.input_id);        // [N,C,H,W]
+            float* Y = ge_ensure_output(tensors, shapes, op.output_id, out_shape_p, N); // [N,C,Hout,Wout]
+
+            if (!X || !Y) {
+                std::fprintf(stderr, "[POOL][ERR] missing tensors X(%p) or Y(%p)\n", (void*)X, (void*)Y);
+                break;
+            }
+
+            // Pool 파라미터 (커널은 NCHW 가정)
+            Pool2DParams p{};
+            p.N = N; p.C = C; p.H = H; p.W = W;
+            p.kernel_h = kH; p.kernel_w = kW;
+            p.stride_h = sH; p.stride_w = sW;
+            p.pad_h = pH;   p.pad_w = pW;
+            p.dilation_h = dH; p.dilation_w = dW;
+            p.H_out = Hout; p.W_out = Wout;
+            p.avg_inclusive = ex.count_include_pad; // 필요 시 OpExtraParams에 bool 필드 존재해야 함
+
+            if (op.op_type == POOL_MAX) {
+                const size_t n_out = (size_t)N * C * Hout * Wout;
+                int32_t* argmax = ensure_argmax_ws(tensors, n_out, "__pool_argmax::" + op.output_id);
+
+                maxpool2d_forward(/*x=*/X, /*y=*/Y, /*argmax=*/argmax, /*p=*/p, /*stream=*/0);
+                CUDA_CHECK(cudaGetLastError());
+            } else { // POOL_AVG
+                avgpool2d_forward(/*x=*/X, /*y=*/Y, /*p=*/p, /*stream=*/0);
+                CUDA_CHECK(cudaGetLastError());
+            }
+            break;
+        }
+
+
         case CONV2D: {
             const OpExtraParams& ex = op.extra_params;
 
-            const int B    = batch_size;
-            const int Cin  = ex.input_c;
+            const int N    = batch_size;
+            const int Cin  = ex.input_c;   // NCHW
             const int Hin  = ex.input_h;
             const int Win  = ex.input_w;
             const int Cout = ex.output_c;
@@ -291,23 +361,30 @@ void run_graph_cuda(
             const int Hout = (Hin + 2*Ph - Kh) / Sh + 1;
             const int Wout = (Win + 2*Pw - Kw) / Sw + 1;
 
-            // 출력 Shape = (rows=Cout, cols=Hout*Wout)
-            Shape out_shape_c{Cout, Hout * Wout};
+            if (Hout <= 0 || Wout <= 0) {
+                std::fprintf(stderr, "[CONV2D][ERR] invalid output size Hout=%d Wout=%d\n", Hout, Wout);
+                break;
+            }
+
+            // sample view: (rows=Cout, cols=Hout*Wout) — 물리 버퍼는 [N,Cout,Hout,Wout]
+            Shape out_shape_c{ Cout, Hout * Wout };
             shapes[op.output_id] = out_shape_c;
 
-            float* X = tensors[op.input_id];  // [B,Hin,Win,Cin]
-            float* W = tensors[op.param_id];  // [Cout,Cin,Kh,Kw] (연속)
-            float* Y = ge_ensure_output(tensors, shapes, op.output_id, out_shape_c, B);
+            // 버퍼는 NCHW로 관리되어야 함
+            float* X = tensors[op.input_id];  // [N, Cin, Hin, Win]
+            float* W = tensors[op.param_id];  // [Cout, Cin, Kh, Kw] contiguous
+            float* Y = ge_ensure_output(tensors, shapes, op.output_id, out_shape_c, N); // [N, Cout, Hout, Wout] 여야 함
 
-            launch_conv2d_forward_nhwc(
+            launch_conv2d_forward_nchw(
                 /*X=*/X, /*W=*/W, /*Y=*/Y,
-                /*B=*/B, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
+                /*N=*/N, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
                 /*Hout=*/Hout, /*Wout=*/Wout, /*Cout=*/Cout,
                 /*Kh=*/Kh, /*Kw=*/Kw, /*Sh=*/Sh, /*Sw=*/Sw, /*Ph=*/Ph, /*Pw=*/Pw,
                 /*stream=*/0);
             CUDA_CHECK(cudaGetLastError());
             break;
         }
+
 
 
         default:
