@@ -75,19 +75,27 @@ class Sequential:
     def add(self, layer):
         if not isinstance(layer, Layer):
             raise ValueError("Only instances of Layer can be added.")
-        if self._layers:
+
+        if not self._layers:
+            # 첫 레이어: layer.input_shape 우선, 없으면 self.input_shape 사용
+            inferred = layer.input_shape or self.input_shape
+            if inferred is None:
+                raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다. "
+                                   "Sequential(input_shape=...) 또는 layer.input_shape=... 로 설정하세요.")
+            layer.input_shape = inferred
+            layer.build(inferred)
+        else:
             prev = self._layers[-1]
             input_shape = prev.output_shape
-            if input_shape:
-                layer.input_shape = input_shape
-                layer.build(input_shape)
-        elif layer.input_shape is not None:
-            layer.build(layer.input_shape)
-        else:
-            raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
+            if input_shape is None:
+                raise RuntimeError("이전 레이어가 build되지 않았습니다.")
+            layer.input_shape = input_shape
+            layer.build(input_shape)
+
         self._layers.append(layer)
         logger.info(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
 
+        
     def compile(self, optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001):
         # reset containers
         self.E_raw = []
@@ -347,3 +355,65 @@ class Sequential:
                     self.biases[name][...] = cp.asarray(v, dtype=cp.float32)
         self._device_ready = False
         self._ensure_device_state()
+
+    def grad_dump_l2(self, x_batch, y_batch, keys=None, head=8, title="Grad L2 dump"):
+        """
+        x_batch, y_batch: 같은 배치 크기(작은 배치 추천, 예: 8)
+        keys: 확인할 파라미터 키 리스트(예: ["conv2d_..._W","dense_..._W"])
+            None이면 모든 W/b를 대상으로 덤프
+        head: 앞쪽 몇 개 값만 미리보기
+        """
+        
+        if not self.built:
+            raise RuntimeError("compile() 먼저 호출하세요.")
+        self._ensure_device_state()
+
+        x_cp = cp.asarray(x_batch, dtype=cp.float32)
+        y_cp = cp.asarray(y_batch, dtype=cp.float32)
+
+        # y_true shape 등록(한 번만)
+        self._ensure_label_shape(y_cp)
+
+        # 텐서 포인터 바인딩
+        tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
+        for name, arr in self.weights.items(): tensor_ptrs[name] = arr.data.ptr
+        for name, arr in self.biases.items():  tensor_ptrs[name] = arr.data.ptr
+
+        # 역전파 실행 → 각 파라미터의 grad 디바이스 포인터 반환
+        grads_ptrs = ge.run_graph_backward_entry(
+            E=self.E,
+            tensors=tensor_ptrs,
+            shapes=self.shapes,
+            gradients={},                     # C++ 쪽에서 채워 반환
+            final_output_id=self.output_var,  # 손실 이전 출력
+            batch_size=x_cp.shape[0]
+        )
+
+        # 대상 키 결정
+        if keys is None:
+            keys = list(self.weights.keys()) + list(self.biases.keys())
+
+        print(f"\n=== {title} (batch={x_cp.shape[0]}) ===")
+        found_any = False
+        for k in keys:
+            if k not in grads_ptrs:
+                print(f"[MISS] {k}: grad not found")
+                continue
+            shp = self.shapes[k]  # ge.Shape(rows, cols)
+            ptr = int(grads_ptrs[k])
+            nbytes = shp.rows * shp.cols * 4
+
+            # 디바이스 포인터를 cupy 배열로 래핑
+            mem = cp.cuda.UnownedMemory(ptr, nbytes, self)  # self를 owner로 유지
+            mp  = cp.cuda.MemoryPointer(mem, 0)
+            gcp = cp.ndarray((shp.rows, shp.cols), dtype=cp.float32, memptr=mp)
+
+            g_np = cp.asnumpy(gcp)
+            l2 = float(np.linalg.norm(g_np))
+            flat = g_np.reshape(-1)
+            head_vals = " ".join([f"{v:+.3e}" for v in flat[:head]])
+            print(f"[GRAD] {k:>32s} | shape=({shp.rows},{shp.cols}) | L2={l2:.6e} | head: {head_vals}")
+            found_any = True
+
+        if not found_any:
+            print("❌ No gradients returned. (BWD 경로/노드 연결/손실 설정을 점검하세요.)")

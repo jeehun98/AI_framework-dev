@@ -1,88 +1,194 @@
-#include <cuda_runtime.h>
 #include "cnn_kernels.cuh"
 
-#define TILE_WIDTH 16
+#define TW 16
 
-// ✅ Forward: Convolution Layer (single-channel, no padding, stride=1)
-__global__ void conv2d_forward_kernel(const float* input, const float* kernel,
-                                      float* output, int B, int H, int W,
-                                      int IC, int OC, int KH, int KW, int OH, int OW) {
-    int b = blockIdx.z;  // batch index
-    int row = blockIdx.y * blockDim.y + threadIdx.y;  // output row
-    int col = blockIdx.x * blockDim.x + threadIdx.x;  // output col
+// -------------------- Forward (NHWC) --------------------
+__global__ void conv2d_fwd_nhwc_kernel(
+    const float* __restrict__ X,   // [B,Hin,Win,Cin]
+    const float* __restrict__ Wt,  // [Cout,Cin,Kh,Kw]
+    float* __restrict__ Y,         // [B,Hout,Wout,Cout]
+    int B, int Hin, int Win, int Cin,
+    int Hout, int Wout, int Cout,
+    int Kh, int Kw, int Sh, int Sw, int Ph, int Pw)
+{
+    // grid.z = B*Cout
+    int bz = blockIdx.z;
+    int b  = bz / Cout;
+    int oc = bz % Cout;
 
-    if (row < OH && col < OW) {
-        float sum = 0.0f;
-        for (int i = 0; i < KH; ++i) {
-            for (int j = 0; j < KW; ++j) {
-                int in_row = row + i;
-                int in_col = col + j;
-                sum += input[b * H * W + in_row * W + in_col] *
-                       kernel[i * KW + j];
+    int oh = blockIdx.y * blockDim.y + threadIdx.y;
+    int ow = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= B || oc >= Cout || oh >= Hout || ow >= Wout) return;
+
+    float acc = 0.f;
+
+    // (oh,ow) ↔ (h,w) 입력 좌표
+    const int h_base = oh * Sh - Ph;
+    const int w_base = ow * Sw - Pw;
+
+    // sum over Cin,Kh,Kw
+    for (int ic = 0; ic < Cin; ++ic) {
+        for (int kh = 0; kh < Kh; ++kh) {
+            int h = h_base + kh;
+            if ((unsigned)h >= (unsigned)Hin) continue;
+            for (int kw = 0; kw < Kw; ++kw) {
+                int w = w_base + kw;
+                if ((unsigned)w >= (unsigned)Win) continue;
+
+                // X[b,h,w,ic]
+                int x_idx = ((b * Hin + h) * Win + w) * Cin + ic;
+                // W[oc,ic,kh,kw]
+                int w_idx = (((oc * Cin) + ic) * Kh + kh) * Kw + kw;
+                acc += X[x_idx] * Wt[w_idx];
             }
         }
-        output[b * OH * OW + row * OW + col] = sum;
     }
+
+    // Y[b,oh,ow,oc]
+    int y_idx = ((b * Hout + oh) * Wout + ow) * Cout + oc;
+    Y[y_idx] = acc;
 }
 
-// ✅ Backward: dL/dInput (for input propagation)
-__global__ void conv2d_backward_input_kernel(const float* d_out, const float* W,
-                                             float* d_input, int B, int H, int W_in,
-                                             int IC, int OC, int KH, int KW,
-                                             int OH, int OW) {
-    int b = blockIdx.z;
+void launch_conv2d_forward_nhwc(
+    const float* X, const float* W, float* Y,
+    int B, int Hin, int Win, int Cin,
+    int Hout, int Wout, int Cout,
+    int Kh, int Kw, int Sh, int Sw, int Ph, int Pw,
+    cudaStream_t stream)
+{
+    dim3 block(TW, TW, 1);
+    dim3 grid((Wout + TW - 1) / TW,
+              (Hout + TW - 1) / TW,
+              B * Cout);
+    conv2d_fwd_nhwc_kernel<<<grid, block, 0, stream>>>(
+        X, W, Y,
+        B, Hin, Win, Cin,
+        Hout, Wout, Cout,
+        Kh, Kw, Sh, Sw, Ph, Pw);
+}
+
+
+
+// -------------------- Backward dX (NHWC) --------------------
+__global__ void conv2d_bwd_input_nhwc_kernel(
+    const float* __restrict__ dY,  // [B,Hout,Wout,Cout]
+    const float* __restrict__ Wt,  // [Cout,Cin,Kh,Kw]
+    float* __restrict__ dX,        // [B,Hin,Win,Cin]
+    int B, int Hin, int Win, int Cin,
+    int Hout, int Wout, int Cout,
+    int Kh, int Kw, int Sh, int Sw, int Ph, int Pw)
+{
+    // grid.z = B*Cin
+    int bz = blockIdx.z;
+    int b  = bz / Cin;
+    int ic = bz % Cin;
+
     int h = blockIdx.y * blockDim.y + threadIdx.y;
     int w = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= B || ic >= Cin || h >= Hin || w >= Win) return;
 
-    if (h >= H || w >= W_in) return;
+    float acc = 0.f;
 
-    for (int ic = 0; ic < IC; ++ic) {
-        float val = 0.0f;
-        for (int oc = 0; oc < OC; ++oc) {
-            for (int kh = 0; kh < KH; ++kh) {
-                for (int kw = 0; kw < KW; ++kw) {
-                    int out_h = h - kh;
-                    int out_w = w - kw;
-                    if (out_h >= 0 && out_h < OH && out_w >= 0 && out_w < OW) {
-                        int dout_idx = ((b * OH + out_h) * OW + out_w) * OC + oc;
-                        int w_idx = ((oc * IC + ic) * KH + kh) * KW + kw;
-                        val += d_out[dout_idx] * W[w_idx];
-                    }
-                }
+    // dY 위치 순회: oh,ow such that h = oh*Sh - Ph + kh, w = ow*Sw - Pw + kw
+    for (int oc = 0; oc < Cout; ++oc) {
+        for (int kh = 0; kh < Kh; ++kh) {
+            int oh = (h + Ph - kh);
+            if (oh % Sh != 0) continue;
+            oh /= Sh;
+            if ((unsigned)oh >= (unsigned)Hout) continue;
+
+            for (int kw = 0; kw < Kw; ++kw) {
+                int ow = (w + Pw - kw);
+                if (ow % Sw != 0) continue;
+                ow /= Sw;
+                if ((unsigned)ow >= (unsigned)Wout) continue;
+
+                // dY[b,oh,ow,oc]
+                int dy_idx = ((b * Hout + oh) * Wout + ow) * Cout + oc;
+                // W[oc,ic,kh,kw]
+                int w_idx  = (((oc * Cin) + ic) * Kh + kh) * Kw + kw;
+                acc += dY[dy_idx] * Wt[w_idx];
             }
         }
-        int idx = ((b * H + h) * W_in + w) * IC + ic;
-        d_input[idx] = val;
     }
+
+    int dx_idx = ((b * Hin + h) * Win + w) * Cin + ic;
+    dX[dx_idx] = acc;
+}
+
+void launch_conv2d_backward_input_nhwc(
+    const float* dY, const float* W, float* dX,
+    int B, int Hin, int Win, int Cin,
+    int Hout, int Wout, int Cout,
+    int Kh, int Kw, int Sh, int Sw, int Ph, int Pw,
+    cudaStream_t stream)
+{
+    dim3 block(TW, TW, 1);
+    dim3 grid((Win + TW - 1) / TW,
+              (Hin + TW - 1) / TW,
+              B * Cin);
+    conv2d_bwd_input_nhwc_kernel<<<grid, block, 0, stream>>>(
+        dY, W, dX,
+        B, Hin, Win, Cin,
+        Hout, Wout, Cout,
+        Kh, Kw, Sh, Sw, Ph, Pw);
 }
 
 
-// ✅ Backward: dL/dKernel
-__global__ void conv2d_backward_kernel_kernel(const float* input, const float* d_out,
-                                              float* d_kernel, int B, int H, int W_in,
-                                              int IC, int OC, int KH, int KW,
-                                              int OH, int OW) {
+
+// -------------------- Backward dW (NHWC) --------------------
+__global__ void conv2d_bwd_weight_nhwc_kernel(
+    const float* __restrict__ dY,  // [B,Hout,Wout,Cout]
+    const float* __restrict__ X,   // [B,Hin,Win,Cin]
+    float* __restrict__ dW,        // [Cout,Cin,Kh,Kw]
+    int B, int Hin, int Win, int Cin,
+    int Hout, int Wout, int Cout,
+    int Kh, int Kw, int Sh, int Sw, int Ph, int Pw)
+{
+    // grid.z = Cout, grid.y = Cin, grid.x = Kh
     int oc = blockIdx.z;
     int ic = blockIdx.y;
     int kh = blockIdx.x;
-    int kw = threadIdx.x;
+    int kw = threadIdx.x;  // 1D within kernel width
+    if (oc >= Cout || ic >= Cin || kh >= Kh || kw >= Kw) return;
 
-    if (kh >= KH || kw >= KW) return;
+    float acc = 0.f;
 
-    float sum = 0.0f;
+    // sum over batch and output spatial
     for (int b = 0; b < B; ++b) {
-        for (int oh = 0; oh < OH; ++oh) {
-            for (int ow = 0; ow < OW; ++ow) {
-                int in_h = oh + kh;
-                int in_w = ow + kw;
-                int in_idx = ((b * H + in_h) * W_in + in_w) * IC + ic;
-                int out_idx = ((b * OH + oh) * OW + ow) * OC + oc;
-                sum += input[in_idx] * d_out[out_idx];
+        for (int oh = 0; oh < Hout; ++oh) {
+            int h = oh * Sh - Ph + kh;
+            if ((unsigned)h >= (unsigned)Hin) continue;
+
+            for (int ow = 0; ow < Wout; ++ow) {
+                int w = ow * Sw - Pw + kw;
+                if ((unsigned)w >= (unsigned)Win) continue;
+
+                // X[b,h,w,ic]
+                int x_idx = ((b * Hin + h) * Win + w) * Cin + ic;
+                // dY[b,oh,ow,oc]
+                int dy_idx = ((b * Hout + oh) * Wout + ow) * Cout + oc;
+                acc += X[x_idx] * dY[dy_idx];
             }
         }
     }
 
-    int w_idx = ((oc * IC + ic) * KH + kh) * KW + kw;
-    d_kernel[w_idx] = sum;
+    int w_idx = (((oc * Cin) + ic) * Kh + kh) * Kw + kw;
+    dW[w_idx] = acc;
 }
 
+void launch_conv2d_backward_weight_nhwc(
+    const float* dY, const float* X, float* dW,
+    int B, int Hin, int Win, int Cin,
+    int Hout, int Wout, int Cout,
+    int Kh, int Kw, int Sh, int Sw, int Ph, int Pw,
+    cudaStream_t stream)
+{
+    dim3 block(Kw, 1, 1);   // thread.x = kw
+    dim3 grid(Kh, Cin, Cout);
+    conv2d_bwd_weight_nhwc_kernel<<<grid, block, 0, stream>>>(
+        dY, X, dW,
+        B, Hin, Win, Cin,
+        Hout, Wout, Cout,
+        Kh, Kw, Sh, Sw, Ph, Pw);
+}

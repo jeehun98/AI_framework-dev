@@ -1,5 +1,6 @@
 import sys, os
 import cupy as cp
+import numpy as np
 from dev.layers.layer import Layer
 
 # (선택) 예전 CUDA 테스트용 모듈이 필요하면 로드. 사용 안하면 넘어감.
@@ -29,11 +30,11 @@ NAME2OP = {
 
 class Activation(Layer):
     """
-    새 활성화(LeakyReLU, ELU, GELU, SiLU, Softmax) 지원.
-    - alpha: LeakyReLU/ELU용 기울기/계수 (default 0.01 / 1.0)
-    - gelu_tanh: GELU tanh 근사 사용 여부 (1=True)
-    - temperature: Softmax 온도 (default 1.0)
-    - axis: Softmax 축 (현재 런타임은 (batch, features) 2D에서 features축=1 가정)
+    임의 차원 입력 지원:
+      - elementwise 계열: (B, -1) 가상 2D로 매핑하여 e-블록 생성 (실제 텐서 모양은 유지)
+      - softmax:
+          * 2D: (B, F)에서 axis 사용(기본 1)
+          * 3D 이상(NHWC 가정): (B*H*W..., C) 로 가상 2D → 채널축(C) softmax
     """
     def __init__(
         self,
@@ -80,9 +81,11 @@ class Activation(Layer):
         return self.call(x)
 
     def build(self, input_shape):
-        # 내부 그래프는 (batch, features) 2D를 가정하므로, 필요한 경우 상위에서 Flatten
-        self.input_shape = input_shape
-        self.output_shape = self.compute_output_shape(input_shape)
+        if input_shape is None:
+            raise ValueError("[Activation] build: input_shape is None")
+        # 활성화는 모양을 바꾸지 않음
+        self.input_shape = tuple(map(int, input_shape))
+        self.output_shape = self.input_shape
         self.built = True
 
     def call(self, inputs):
@@ -93,10 +96,8 @@ class Activation(Layer):
         self.last_z = x
         if self.use_backend_init and self.activations_cuda is not None:
             try:
-                # 이름만으로 호출 가능한 경우에 한해 사용
                 self.activations_cuda.apply_activation(x, self.activation_name)
             except Exception:
-                # 그래프 실행에서 처리되므로 실패해도 치명적 아님
                 pass
         return x
 
@@ -115,17 +116,94 @@ class Activation(Layer):
         return g
 
     def compute_output_shape(self, input_shape):
-        return input_shape
+        if input_shape is None:
+            raise ValueError("[Activation] compute_output_shape: input_shape is None")
+        return tuple(map(int, input_shape))
+
+    # ---------- helpers: 가상 2D 셰이프 계산 ----------
+    @staticmethod
+    def _virtual_2d_for_elementwise(shape_tuple):
+        """
+        elementwise 계열 활성화용 (rows=B, cols=∏rest) 반환
+        """
+        if len(shape_tuple) == 0:
+            return 1, 1
+        if len(shape_tuple) == 1:
+            return 1, int(shape_tuple[0])
+        B = int(shape_tuple[0])
+        F = int(np.prod(shape_tuple[1:])) if len(shape_tuple) > 1 else 1
+        return B, F
+
+    @staticmethod
+    def _virtual_2d_for_softmax(shape_tuple):
+        """
+        softmax 전용 가상 2D:
+          - 2D: (B,F) 그대로
+          - 3D 이상(NHWC 가정): (B*H*W..., C)  (C=마지막 축)
+        """
+        if len(shape_tuple) == 2:
+            B, F = map(int, shape_tuple)
+            return ("2d", B, F, None, None, F)  # tag, rows, cols, H, W, C
+        # 3D 이상
+        B = int(shape_tuple[0])
+        C = int(shape_tuple[-1])
+        spatial = int(np.prod(shape_tuple[1:-1])) if len(shape_tuple) > 2 else 1
+        rows = int(B * spatial)
+        cols = int(max(C, 1))
+        if len(shape_tuple) == 4:
+            H, W = int(shape_tuple[1]), int(shape_tuple[2])
+        else:
+            H, W = spatial, 1  # 힌트용(엔진이 필요 없다면 무시)
+        return ("nd", rows, cols, H, W, C)
+
+    @staticmethod
+    def _virtual_2d_for_elementwise(shape_tuple):
+        """
+        Elementwise 계열 활성화 가상 2D:
+        - 4D(NHWC): (rows=C, cols=H*W)  ← Conv2D와 동일 정렬
+        - 3D(NWC 등): (rows=C, cols=H*W) 가정
+        - 2D(B, F): (rows=F, cols=1)로 두지 않고, (rows=1, cols=F)보다
+                     Conv 규칙과 맞추기 위해 (rows=F, cols=1) 대신 (rows=1, cols=F)도 가능하나,
+                     아래 일관성을 위해 (rows=F, cols=rest) 대신 'rows=F, cols=?'가 중요.
+        - 1D(F,): (1,F)
+        """
+        n = len(shape_tuple)
+        if n == 4:
+            B, H, W, C = map(int, shape_tuple)
+            return int(C), int(H * W)      # ✅ Conv2D와 동일 정렬
+        if n == 3:
+            H, W, C = map(int, shape_tuple)
+            return int(C), int(H * W)      # ✅ 동일 정렬
+        if n == 2:
+            B, F = map(int, shape_tuple)
+            return int(F), 1               # ✅ 행=특징수, 열=1 (배치는 엔진이 곱함)
+        if n == 1:
+            F = int(shape_tuple[0])
+            return int(F), 1
+        return 1, int(np.prod(shape_tuple))  # 최후방어
+
+    @staticmethod
+    def _virtual_2d_for_softmax(shape_tuple):
+        """
+        Softmax만 4D에서 (B*H*W, C) 유지 (채널축 softmax를 axis=1로 처리).
+        2D는 (B,F) 그대로 axis=1.
+        """
+        if len(shape_tuple) == 2:
+            B, F = map(int, shape_tuple)
+            return ("2d", B, F, None, None, F)
+        # 3D 이상: (B*H*W, C)
+        B = int(shape_tuple[0])
+        C = int(shape_tuple[-1])
+        spatial = int(np.prod(shape_tuple[1:-1])) if len(shape_tuple) > 2 else 1
+        rows = int(B * spatial)
+        cols = int(max(C, 1))
+        return ("nd", rows, cols, None, None, C)
+
+
 
     def to_e_matrix(self, input_id):
-        """
-        그래프 노드 생성:
-        - output_id: self.output_var
-        - extra_params: alpha/gelu_tanh/temperature/axis 등 세팅
-        - shape_map: (batch, features) 2D Shape 등록
-        """
-        if not self.input_shape or len(self.input_shape) != 2:
-            raise ValueError(f"[Activation] input_shape must be 2D (batch, features), got {self.input_shape}")
+        if self.input_shape is None:
+            raise ValueError("[Activation] input_shape is None. Did you forget to call build()?")
 
         output_id = self.output_var
 
@@ -142,20 +220,40 @@ class Activation(Layer):
         # Softmax
         if self.activation_name == "softmax":
             extra.temperature = self.temperature if self.temperature > 0 else 1.0
-            extra.axis = self.axis  # 현재 런타임은 axis=1 가정
+            # axis는 2D에서만 의미, ND에서는 채널축(C)로 강제
+            extra.axis = int(self.axis)
 
+        weights = {}
+        biases = {}
+
+        # ---------- Softmax 별도 처리 ----------
+        if self.op_type == ge.OpType.SOFTMAX:
+            tag, rows, cols, H, W, C = self._virtual_2d_for_softmax(self.input_shape)
+            shape_map = {
+                input_id: Shape(int(rows), int(cols)),
+                output_id: Shape(int(rows), int(cols)),
+            }
+            extra.axis = 1  # 클래스 축
+            e_block = [{
+                "op_type": int(self.op_type),
+                "input_id": input_id,
+                "param_id": "",
+                "output_id": output_id,
+                "extra_params": extra
+            }]
+            return e_block, weights, biases, output_id, shape_map
+
+        # ✅ elementwise: Conv2D와 정렬된 2D로
+        rows, cols = self._virtual_2d_for_elementwise(self.input_shape)
+        shape_map = {
+            input_id:  Shape(int(rows), int(cols)),
+            output_id: Shape(int(rows), int(cols)),
+        }
         e_block = [{
             "op_type": int(self.op_type),
             "input_id": input_id,
-            "param_id": "",                # bias 없음
+            "param_id": "",
             "output_id": output_id,
             "extra_params": extra
         }]
-
-        # Shape 등록 (host측 run_graph가 rows, cols로 사용)
-        b, f = map(int, self.input_shape)
-        shape_map = {
-            input_id: Shape(b, f),
-            output_id: Shape(b, f)
-        }
-        return e_block, {}, {}, output_id, shape_map
+        return e_block, weights, biases, output_id, shape_map

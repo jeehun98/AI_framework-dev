@@ -32,6 +32,16 @@
 #define TILE_WIDTH 16
 #endif
 
+
+static void debug_l2(const char* name, const float* dptr, size_t n_elems) {
+    std::vector<float> h(n_elems);
+    cudaMemcpy(h.data(), dptr, n_elems * sizeof(float), cudaMemcpyDeviceToHost);
+    double s = 0.0;
+    for (size_t i = 0; i < n_elems; ++i) { double v = h[i]; s += v * v; }
+    std::fprintf(stderr, "[GRAD] %s L2=%.6e\n", name, std::sqrt(s));
+}
+
+
 // 입력 텐서 조회
 inline const float* get_tensor_ro(const std::unordered_map<std::string, float*>& tensors,
                                   const std::string& id)
@@ -169,17 +179,28 @@ void run_graph_cuda(
             float* output = ge_ensure_output(tensors, shapes, op.output_id, out_shape, batch_size);
 
             const Shape bshape = shapes[op.param_id];
-            const bool row_bias = (bshape.rows == 1 && bshape.cols == out_shape.cols) ||
-                                  (bshape.rows == out_shape.cols && bshape.cols == 1);
-            if (row_bias) {
-                const int rowsB = batch_size * out_shape.rows;
-                const int cols  = out_shape.cols;
-                launch_add_bias_rowwise(input, param, output, rowsB, cols);
+
+            const int rows_per_sample = out_shape.rows; // 예: filters(채널)
+            const int cols            = out_shape.cols; // 예: H*W
+            const int rowsB           = batch_size * rows_per_sample;
+
+            const bool bias_rowwise = (bshape.rows == 1 && bshape.cols == cols)   // (1, cols)
+                                || (bshape.rows == cols && bshape.cols == 1);  // (cols, 1)
+
+            const bool bias_colwise = (bshape.rows == 1 && bshape.cols == rows_per_sample)   // (1, rows)
+                                || (bshape.rows == rows_per_sample && bshape.cols == 1);  // (rows, 1)
+
+            if (bias_rowwise) {
+                launch_add_bias_rowwise(input, param, output, rowsB, cols);  // stream 없음 오버로드
+                CUDA_CHECK(cudaGetLastError());
+            } else if (bias_colwise) {
+                launch_add_bias_colwise(input, param, output, rowsB, cols, rows_per_sample);
                 CUDA_CHECK(cudaGetLastError());
             } else {
                 std::fprintf(stderr,
-                        "[ADD] unsupported shape: input(%d,%d) + param(%d,%d). Expect row-wise bias.\n",
-                        in_shape.rows, in_shape.cols, bshape.rows, bshape.cols);
+                    "[ADD] unsupported shape: input(%d,%d) + param(%d,%d). "
+                    "Expect row-wise (len=cols) or channel-wise (len=rows) bias.\n",
+                    in_shape.rows, in_shape.cols, bshape.rows, bshape.cols);
                 const size_t bytes = (size_t)batch_size * out_shape.rows * out_shape.cols * sizeof(float);
                 CUDA_CHECK(cudaMemcpy(output, input, bytes, cudaMemcpyDeviceToDevice));
             }
@@ -253,43 +274,41 @@ void run_graph_cuda(
         }
 
         case CONV2D: {
-            auto it_outshape = shapes.find(op.output_id);
-            if (it_outshape == shapes.end()) {
-                std::fprintf(stderr, "[CONV2D][ERR] missing out shape for %s\n", op.output_id.c_str());
-                break;
-            }
-            const Shape out_shape_c = it_outshape->second;
-            float* output = ge_ensure_output(tensors, shapes, op.output_id, out_shape_c, batch_size);
+            const OpExtraParams& ex = op.extra_params;
 
-            const int KH = op.extra_params.kernel_h;
-            const int KW = op.extra_params.kernel_w;
-            const int IH = op.extra_params.input_h;
-            const int IW = op.extra_params.input_w;
-            const int IC = op.extra_params.input_c;
-            const int OC = op.extra_params.output_c;
+            const int B    = batch_size;
+            const int Cin  = ex.input_c;
+            const int Hin  = ex.input_h;
+            const int Win  = ex.input_w;
+            const int Cout = ex.output_c;
+            const int Kh   = ex.kernel_h;
+            const int Kw   = ex.kernel_w;
+            const int Sh   = (ex.stride_h > 0 ? ex.stride_h : 1);
+            const int Sw   = (ex.stride_w > 0 ? ex.stride_w : 1);
+            const int Ph   = ex.padding_h;
+            const int Pw   = ex.padding_w;
 
-            const int OW = out_shape_c.cols / OC;
-            const int OH = out_shape_c.rows;
+            const int Hout = (Hin + 2*Ph - Kh) / Sh + 1;
+            const int Wout = (Win + 2*Pw - Kw) / Sw + 1;
 
-            dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
-            dim3 gridDim((OW + TILE_WIDTH - 1) / TILE_WIDTH,
-                         (OH + TILE_WIDTH - 1) / TILE_WIDTH,
-                         OC);
+            // 출력 Shape = (rows=Cout, cols=Hout*Wout)
+            Shape out_shape_c{Cout, Hout * Wout};
+            shapes[op.output_id] = out_shape_c;
 
-            for (int b = 0; b < batch_size; ++b) {
-                float* in_b  = input  + (size_t)b * IH * IW * IC;
-                float* out_b = output + (size_t)b * OH * OW * OC;
-                conv2d_forward_kernel<<<gridDim, blockDim>>>(
-                    in_b, param, out_b,
-                    /*batch_size=*/1, IH, IW,
-                    IC, OC,
-                    KH, KW,
-                    OH, OW
-                );
-                CUDA_CHECK(cudaGetLastError());
-            }
+            float* X = tensors[op.input_id];  // [B,Hin,Win,Cin]
+            float* W = tensors[op.param_id];  // [Cout,Cin,Kh,Kw] (연속)
+            float* Y = ge_ensure_output(tensors, shapes, op.output_id, out_shape_c, B);
+
+            launch_conv2d_forward_nhwc(
+                /*X=*/X, /*W=*/W, /*Y=*/Y,
+                /*B=*/B, /*Hin=*/Hin, /*Win=*/Win, /*Cin=*/Cin,
+                /*Hout=*/Hout, /*Wout=*/Wout, /*Cout=*/Cout,
+                /*Kh=*/Kh, /*Kw=*/Kw, /*Sh=*/Sh, /*Sw=*/Sw, /*Ph=*/Ph, /*Pw=*/Pw,
+                /*stream=*/0);
+            CUDA_CHECK(cudaGetLastError());
             break;
         }
+
 
         default:
             std::fprintf(stderr, "[ERR] Unsupported op_type: %d\n", op.op_type);
