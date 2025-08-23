@@ -5,7 +5,7 @@
 #include <vector>
 #include <unordered_map>
 
-#include "op_structs.cuh"
+#include "../op_structs.cuh"
 
 void run_graph_cuda(
     const std::vector<OpStruct>& E,

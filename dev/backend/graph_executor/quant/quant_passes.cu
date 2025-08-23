@@ -1,7 +1,7 @@
 #include <algorithm>
-#include "quant/quant_types.cuh"
-#include "quant/observers.cuh"
-#include "quant/quant_kernels.cuh"
+#include "quant_types.cuh"
+#include "observers.cuh"
+#include "quant_kernels.cuh"
 
 namespace quant {
 

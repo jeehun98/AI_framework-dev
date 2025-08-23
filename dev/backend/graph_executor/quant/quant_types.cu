@@ -1,4 +1,4 @@
-#include "quant/quant_types.cuh"
+#include "quant_types.cuh"
 namespace quant {
 static QuantCache g_cache;
 static RuntimeFlags g_flags;

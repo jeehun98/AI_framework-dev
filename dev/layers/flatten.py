@@ -81,23 +81,22 @@ class Flatten(Layer):
         extra = OpExtraParams()
 
         e_block = [{
-            "op_type": int(ge.OpType.FLATTEN),  # FLATTEN
+            "op_type": int(ge.OpType.FLATTEN),
             "input_id": input_id,
             "param_id": "",
             "output_id": output_id,
             "extra_params": extra
         }]
 
-        # ✅ 입력 shape는 이전 op가 이미 정확히 등록했으므로 건드리지 않는다.
-        #    출력만 등록: (rows=1, cols=배치 제외 모든 차원의 곱)
+        # 🔴 핵심: 첫 op일 수 있으니 input_id의 per-sample shape도 등록
         if len(self.input_shape) >= 2:
-            flattened = int(np.prod(self.input_shape[1:]))  # 레이아웃(NCHW/NHWC) 무관
+            in_cols = int(np.prod(self.input_shape[1:]))   # (C,H,W) 등 → features
         else:
             raise ValueError(f"Flatten expects rank>=2, got {self.input_shape}")
 
         shape_map = {
-            output_id: Shape(1, flattened),
+            input_id:  Shape(1, in_cols),   # ✅ 추가
+            output_id: Shape(1, in_cols),
         }
 
-        # 가중치/바이어스 없음
         return e_block, {}, {}, output_id, shape_map

@@ -7,23 +7,23 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 
-#include "executor/run_graph.cuh"
-#include "activation/activation_ops.cuh"
-#include "softmax/softmax_kernels.cuh"
-#include "cnn/cnn_kernels.cuh"
-#include "op_structs.cuh"
-#include "loss/loss_kernels.cuh"
-#include "reduce/reduce_stride.cuh"
-#include "reduce/reduce_ops.cuh" 
-#include "pooling/pooling_ops.cuh"
-#include "pooling/pooling_kernels.cuh"
+#include "../executor/run_graph.cuh"
+#include "../activation/activation_ops.cuh"
+#include "../softmax/softmax_kernels.cuh"
+#include "../cnn/cnn_kernels.cuh"
+#include "../op_structs.cuh"
+#include "../loss/loss_kernels.cuh"
+#include "../reduce/reduce_stride.cuh"
+#include "../reduce/reduce_ops.cuh" 
+#include "../pooling/pooling_ops.cuh"
+#include "../pooling/pooling_kernels.cuh"
 
-#include "ge/pack_utils.cuh"
-#include "ge/cuda_check.cuh"
-#include "ge/cublas_utils.cuh"
-#include "ge/gemm_rm.cuh"
-#include "ge/act_map.cuh"
-#include "ge/fill.cuh"
+#include "../ge/pack_utils.cuh"
+#include "../ge/cuda_check.cuh"
+#include "../ge/cublas_utils.cuh"
+#include "../ge/gemm_rm.cuh"
+#include "../ge/act_map.cuh"
+#include "../ge/fill.cuh"
 
 #ifndef TILE_WIDTH
 #define TILE_WIDTH 16

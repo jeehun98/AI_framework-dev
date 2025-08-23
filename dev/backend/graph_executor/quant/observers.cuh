@@ -1,5 +1,5 @@
 #pragma once
-#include "quant/quant_types.cuh"
+#include "quant_types.cuh"
 
 namespace quant {
 

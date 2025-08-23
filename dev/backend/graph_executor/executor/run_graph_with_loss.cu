@@ -1,8 +1,8 @@
 // run_graph_with_loss.cu (revised)
 #include "run_graph_with_loss.cuh"
 #include "run_graph.cuh"
-#include "loss_kernels.cuh"
-#include "op_structs.cuh"
+#include "../loss/loss_kernels.cuh"
+#include "../op_structs.cuh"
 
 #include <cuda_runtime.h>
 #include <vector>
@@ -122,10 +122,13 @@ float run_graph_with_loss_cuda(
             return NAN;
         }
     } else if (loss_type == "cce") {
-        if (!(st.rows * st.cols == B * num_classes)) {
-            std::fprintf(stderr, "[LOSS] size mismatch for CCE: pred(B=%d,C=%d) vs true(%d,%d)\n",
-                         B, num_classes, st.rows, st.cols);
-            return NAN;
+    // Expect y_true shape to match per-sample y_pred shape
+    if (st.rows != rows_per_sample || st.cols != num_classes) {
+        std::fprintf(stderr,
+            "[LOSS] size mismatch for CCE: pred per-sample=(%d,%d), "
+            "y_true=(%d,%d), batch=%d\n",
+            rows_per_sample, num_classes, st.rows, st.cols, batch_size);
+        return NAN;
         }
     }
 

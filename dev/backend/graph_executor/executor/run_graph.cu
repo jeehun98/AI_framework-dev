@@ -9,29 +9,29 @@
 
 #include <cublas_v2.h>
 
-#include "quant/quant_types.cuh"
-#include "quant/observers.cuh"
-#include "quant/quant_kernels.cuh"
-#include "quant/int8_gemm_dp4a.cuh"
-#include "quant/epilogue_kernels.cuh"
+#include "../quant/quant_types.cuh"
+#include "../quant/observers.cuh"
+#include "../quant/quant_kernels.cuh"
+#include "../quant/int8_gemm_dp4a.cuh"
+#include "../quant/epilogue_kernels.cuh"
 
 #include "run_graph_utils.cuh"
 
-#include "pooling/pooling_ops.cuh"
-#include "pooling/pooling_kernels.cuh"
-#include "executor/run_graph.cuh"
-#include "activation/activation_ops.cuh"
-#include "softmax/softmax_kernels.cuh"
-#include "bias/add_bias_rowwise.cuh"
-#include "cnn/cnn_kernels.cuh"
-#include "op_structs.cuh"
-#include "pooling/pooling_kernels.cuh"
+#include "../pooling/pooling_ops.cuh"
+#include "../pooling/pooling_kernels.cuh"
+#include "../executor/run_graph.cuh"
+#include "../activation/activation_ops.cuh"
+#include "../softmax/softmax_kernels.cuh"
+#include "../bias/add_bias_rowwise.cuh"
+#include "../cnn/cnn_kernels.cuh"
+#include "../op_structs.cuh"
+#include "../pooling/pooling_kernels.cuh"
 
-#include "ge/cuda_check.cuh"
-#include "ge/cublas_utils.cuh"
-#include "ge/gemm_rm.cuh"
-#include "ge/act_map.cuh"
-#include "ge/alloc_utils.cuh"
+#include "../ge/cuda_check.cuh"
+#include "../ge/cublas_utils.cuh"
+#include "../ge/gemm_rm.cuh"
+#include "../ge/act_map.cuh"
+#include "../ge/alloc_utils.cuh"
 
 #ifndef TILE_WIDTH
 #define TILE_WIDTH 16
