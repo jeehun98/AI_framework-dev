@@ -1,8 +1,8 @@
 #pragma once
 #include <unordered_map>
 #include <string>
-#include "ge/cuda_check.cuh"
-#include "run_graph.cuh"  // Shape 정의 사용 (rows, cols)
+#include "../ge/cuda_check.cuh"
+#include "../executor/run_graph.cuh"  // Shape 정의 사용 (rows, cols)
 
 // 공통 출력 버퍼 보장(없으면 cudaMalloc, shapes 갱신)
 inline float* ge_ensure_output(std::unordered_map<std::string, float*>& tensors,

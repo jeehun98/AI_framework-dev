@@ -2,7 +2,7 @@
 #include "optimizer_types.cuh"
 #include <cuda_runtime.h>
 #include <math.h>          // isfinite, sqrtf, powf, fminf/fmaxf
-#include "logging_config.h"
+#include "../ge/logging_config.h"
 
 #include "optimizer_config.cuh"
 #include "optimizer_kernels.cuh"

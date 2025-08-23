@@ -32,8 +32,8 @@
 // #define GE_DEBUG_SYNC 1
 // #define GE_VERBOSE 1
 
-#include "optimizer_config.cuh"
-#include "optimizer_kernels.cuh"
+#include "optimizer/optimizer_config.cuh"
+#include "optimizer/optimizer_kernels.cuh"
 
 namespace py = pybind11;
 
@@ -240,8 +240,21 @@ float train_step_entry(
                 throw std::runtime_error("loss(bce): y_true size mismatch");
             loss = compute_bce_loss_cuda(y_true, y_pred, N);
         } else if (loss_type == "cce") {
-            if (st.rows != rows_per_sample || st.cols != C)
-                throw std::runtime_error("loss(cce): y_true per-sample shape mismatch");
+            // Cross-Entropy (one-hot). Per-sample shape rule:
+            //   y_pred: rows_per_sample x C   (per sample)
+            //   y_true: rows_per_sample x C   (per sample)
+            // Effective batch B = batch_size * rows_per_sample
+            if (st.rows != rows_per_sample || st.cols != C) {
+                std::ostringstream oss;
+                oss << "[LOSS] size mismatch for CCE: "
+                    << "pred(B=" << B << ",C=" << C << "), "
+                    << "expected y_true per-sample=(" << rows_per_sample << "," << C << ") "
+                    << "but got (" << st.rows << "," << st.cols << ")";
+                throw std::runtime_error(oss.str());
+            }
+
+            // NOTE: compute_cce_loss_cuda should consume B x C elements from y_true/y_pred.
+            // (Kernel should handle numerical stability internally, e.g., epsilon clamp.)
             loss = compute_cce_loss_cuda(y_true, y_pred, B, C);
         } else {
             throw std::runtime_error("loss: unsupported type");

@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <cuda_runtime.h>
-#include "ge/cuda_check.cuh"
+#include "../ge/cuda_check.cuh"
 
 // tensor_id -> device pointer 저장한다고 가정
 extern std::unordered_map<std::string, void*> tensors_ws;

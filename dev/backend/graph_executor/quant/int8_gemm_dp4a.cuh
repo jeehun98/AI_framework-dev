@@ -1,5 +1,5 @@
 #pragma once
-#include "quant/quant_types.cuh"
+#include "quant_types.cuh"
 
 #if __CUDACC_VER_MAJOR__ < 8
 #error "dp4a requires CUDA 8.0+ and SM6.1+"

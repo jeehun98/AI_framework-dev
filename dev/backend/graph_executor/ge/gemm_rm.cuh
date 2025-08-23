@@ -1,7 +1,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
-#include "ge/cuda_check.cuh"
+#include "../ge/cuda_check.cuh"
 
 // Row-major 매핑 래퍼들
 

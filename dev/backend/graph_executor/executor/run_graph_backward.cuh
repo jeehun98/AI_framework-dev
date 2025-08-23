@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "op_structs.cuh"
+#include "../op_structs.cuh"
 
 void run_graph_backward(
     const std::vector<OpStruct>& E,

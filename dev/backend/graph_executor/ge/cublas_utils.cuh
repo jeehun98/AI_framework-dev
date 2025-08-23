@@ -1,6 +1,6 @@
 #pragma once
 #include <cublas_v2.h>
-#include "ge/cuda_check.cuh"
+#include "../ge/cuda_check.cuh"
 
 // 전역 cuBLAS 핸들 싱글턴
 inline cublasHandle_t ge_cublas() {

@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "op_structs.cuh"  // OpStruct, Shape
+#include "../op_structs.cuh"  // OpStruct, Shape
 
 // Forward 연산 + Loss 계산을 수행
 float run_graph_with_loss_cuda(
