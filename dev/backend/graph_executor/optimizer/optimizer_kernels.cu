@@ -6,7 +6,7 @@
 
 #include "optimizer_config.cuh"
 #include "optimizer_kernels.cuh"
-
+#include "../ge/cuda_check.cuh"
 
 // ===== 옵션 =====
 #ifndef GRAD_CLIP_ENABLE          // 값 클리핑(절댓값 기준)
@@ -199,10 +199,9 @@ __global__ void adam_kernel(float* __restrict__ param,
     }
 }
 
-// ===== Host Launcher =====
 void optimizer_update_cuda(
     float* param,
-    const float* grad,     // ★ const 유지
+    const float* grad,
     float* velocity,
     float* m,
     float* v,
@@ -216,46 +215,46 @@ void optimizer_update_cuda(
     int size,
     OptimizerType opt_type,
     int timestep,
-    cudaStream_t stream     // ★ 정의에도 stream 추가
-){
+    cudaStream_t stream)
+{
     const int threads = 256;
     const int blocks  = (size + threads - 1) / threads;
 
 #if GLOBAL_NORM_CLIP_ENABLE
-    // 1) grad L2 norm 계산 → 2) scale 적용된 임시 grad_buf 생성
-    //    (메모리 여유 없으면 in-place 스케일링 커널로 바꿔도 됨)
-    static float* grad_scaled = nullptr;
-    static int    grad_cap = 0;
-    if (grad_cap < size) {
-        if (grad_scaled) cudaFree(grad_scaled);
-        cudaMalloc(&grad_scaled, size * sizeof(float));
-        grad_cap = size;
-    }
+    // ---- 안전한 호출-로컬 워크스페이스 사용 ----
+    float*  grad_scaled = nullptr;
+    CUDA_CHECK(cudaMalloc(&grad_scaled, size * sizeof(float)));
 
-    // partial sums
+    // partial sums (device)
     int redBlocks = min(blocks, 1024);
     double* d_partial = nullptr;
-    cudaMalloc(&d_partial, redBlocks * sizeof(double));
+    CUDA_CHECK(cudaMalloc(&d_partial, redBlocks * sizeof(double)));
 
+    // 1) ∥g∥₂^2 부분합
     size_t shmem = threads * sizeof(double);
-    grad_sqsum_kernel<<<redBlocks, threads, shmem>>>(grad, d_partial, size);
+    grad_sqsum_kernel<<<redBlocks, threads, shmem, stream>>>(grad, d_partial, size);
+    CUDA_CHECK(cudaGetLastError());
 
-    // host reduce
-    double* h_partial = (double*)malloc(redBlocks * sizeof(double));
-    cudaMemcpy(h_partial, d_partial, redBlocks * sizeof(double), cudaMemcpyDeviceToHost);
+    // 2) host reduce (async copy + sync)
+    std::vector<double> h_partial(redBlocks);
+    CUDA_CHECK(cudaMemcpyAsync(h_partial.data(), d_partial,
+                               redBlocks * sizeof(double),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream)); // ← 반드시 동기화
     double sum = 0.0;
     for (int i = 0; i < redBlocks; ++i) sum += h_partial[i];
-    free(h_partial);
-    cudaFree(d_partial);
+    CUDA_CHECK(cudaFree(d_partial));
 
-    double norm = sqrt(sum + 1e-30);
+    const double norm = sqrt(sum + 1e-30);
     float scale = 1.0f;
-    // 일반적으로 clip_threshold는 학습 코드 상위에서 전달
-    const float clip_threshold = GRAD_CLIP_THRESH; // 재사용
+    const float clip_threshold = GRAD_CLIP_THRESH;
     if (norm > (double)clip_threshold) {
         scale = (float)((double)clip_threshold / norm);
     }
-    scale_grad_kernel<<<blocks, threads>>>(grad, grad_scaled, scale, size);
+
+    // 3) g_scaled = scale * clip(g)
+    scale_grad_kernel<<<blocks, threads, 0, stream>>>(grad, grad_scaled, scale, size);
+    CUDA_CHECK(cudaGetLastError());
     const float* gptr = grad_scaled;
 #else
     const float* gptr = grad;
@@ -263,25 +262,37 @@ void optimizer_update_cuda(
 
     switch (opt_type) {
         case OptimizerType::SGD:
-            sgd_kernel<<<blocks, threads>>>(param, gptr,
+            sgd_kernel<<<blocks, threads, 0, stream>>>(param, gptr,
 #if WEIGHT_DECAY_ENABLE
                 weight_decay,
 #endif
                 lr, size);
+            CUDA_CHECK(cudaGetLastError());
             break;
 
         case OptimizerType::MOMENTUM:
-            if (!velocity) return;
-            momentum_kernel<<<blocks, threads>>>(param, gptr, velocity,
+            if (!velocity) { 
+#if GLOBAL_NORM_CLIP_ENABLE
+                CUDA_CHECK(cudaFree((void*)gptr));
+#endif
+                return;
+            }
+            momentum_kernel<<<blocks, threads, 0, stream>>>(param, gptr, velocity,
 #if WEIGHT_DECAY_ENABLE
                 weight_decay,
 #endif
-                lr, beta1 /*as beta*/, size);
+                lr, beta1 /*momentum coeff*/, size);
+            CUDA_CHECK(cudaGetLastError());
             break;
 
         case OptimizerType::ADAM:
-            if (!m || !v) return;
-            adam_kernel<<<blocks, threads>>>(param, gptr, m, v,
+            if (!m || !v) {
+#if GLOBAL_NORM_CLIP_ENABLE
+                CUDA_CHECK(cudaFree((void*)gptr));
+#endif
+                return;
+            }
+            adam_kernel<<<blocks, threads, 0, stream>>>(param, gptr, m, v,
 #if AMSGRAD_ENABLE
                 vhat_max,
 #endif
@@ -289,13 +300,21 @@ void optimizer_update_cuda(
                 weight_decay,
 #endif
                 lr, beta1, beta2, eps, timestep, size);
+            CUDA_CHECK(cudaGetLastError());
             break;
 
         default:
+#if GLOBAL_NORM_CLIP_ENABLE
+            CUDA_CHECK(cudaFree((void*)gptr));
+#endif
             return;
     }
 
+#if GLOBAL_NORM_CLIP_ENABLE
+    CUDA_CHECK(cudaFree((void*)gptr)); // grad_scaled 해제
+#endif
+
 #if DEBUG_KERNEL
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 #endif
 }
