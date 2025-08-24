@@ -226,6 +226,6 @@ if __name__ == "__main__":
     # test_cnn_lines()
 
     # 풀링 포함 테스트
-    test_cnn_lines_maxpool()
+    # test_cnn_lines_maxpool()
     # 또는
-    # test_cnn_lines_avgpool()
+    test_cnn_lines_avgpool()
