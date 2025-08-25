@@ -167,169 +167,91 @@ class RNN(Layer):
         B, T, _ = map(int, input_shape)
         return (B, T, self.units) if self.return_sequences else (B, self.units)
 
-    # -------------------------------------------------------------- E-matrix
+
     def to_e_matrix(self, input_id: str):
         """
-        시간축 언롤을 primitive로 생성:
-          for t in [0..T-1]:
-            x_t   = SLICE_TIME(input, t)
-            z_x   = MATMUL(x_t, Wx)
-            z_h   = MATMUL(h_{t-1}, Wh)
-            z     = ADD(z_x, z_h)
-            z_b   = ADD(z, b)             # if use_bias
-            h_t   = ACT(z_b or z)         # if activation
-        반환: (e_block, weights, biases, output_id, shape_map)
+        단일 RNN 오퍼로 그래프 생성.
+        inputs: [X]
+        params: [Wx, Wh, (b), (h0)]
+        extra:  time_steps, hidden_size, input_w, use_bias
+        출력 shape: (T, H) if return_sequences else (1, H)
         """
         if self.input_shape is None:
-            raise ValueError("[RNN] build() first")
+            raise ValueError("[RNN] call/build 먼저 수행 필요")
 
         B, T, D = map(int, self.input_shape)
-        U = int(self.units)
+        U = int(self.units)                    # <-- hidden size
+        H = int(self.units)
 
-        # 존재 확인 (엔진이 아직 없으면 명확히 안내)
-        if not hasattr(ge.OpType, "SLICE_TIME"):
-            raise NotImplementedError("Backend is missing OpType.SLICE_TIME for RNN to_e_matrix.")
-        need_concat = self.return_sequences
-        if need_concat and not hasattr(ge.OpType, "CONCAT_TIME"):
-            raise NotImplementedError("Backend is missing OpType.CONCAT_TIME for return_sequences=True.")
+        weights = {
+            self.wx_var: cp.ascontiguousarray(self.Wx.astype(cp.float32)),
+            self.wh_var: cp.ascontiguousarray(self.Wh.astype(cp.float32)),
+        }
+        biases = {}
+        if getattr(self, "use_bias", True):
+            biases[self.b_var] = cp.ascontiguousarray(self.b.astype(cp.float32))
 
-        act_op = _activation_op_type(self.activation_name)
+        # h0는 옵션: 없으면 엔진 내부에서 0버퍼 사용
+        h0_id = f"{self.name}_h0"
+        if getattr(self, "h0", None) is not None:
+            biases[h0_id] = cp.ascontiguousarray(self.h0.astype(cp.float32))
+            has_h0 = True
+        else:
+            # 안 넣어도 됨(엔진에서 0 버퍼 생성). 넣고 싶다면 주석 해제:
+            # biases[h0_id] = cp.zeros((1, H), dtype=cp.float32)
+            has_h0 = False
 
-        # 파라미터 등록
-        weights = { self.wx_var: cp.ascontiguousarray(self.Wx.astype(cp.float32)),
-                    self.wh_var: cp.ascontiguousarray(self.Wh.astype(cp.float32)) }
-        biases  = {}
+        # shape map (per-sample)
+        shape_map = {
+            input_id:     Shape(T, D),
+            self.wx_var:  Shape(D, H),
+            self.wh_var:  Shape(H, H),
+        }
+        if getattr(self, "use_bias", True):
+            shape_map[self.b_var] = Shape(1, H)
+        if has_h0:
+            shape_map[h0_id] = Shape(1, H)
+
+        # 출력 shape
+        out_rows = T if getattr(self, "return_sequences", False) else 1
+        shape_map[self.out_var] = Shape(out_rows, H)
+
+        # extra
+        # RNN.to_e_matrix (핵심 부분만)
+        extra = ge.OpExtraParams()
+        extra.batch_size  = B
+        extra.time_steps  = T
+        extra.input_w     = D      # feature dim
+        extra.hidden_size = U
+        extra.use_bias    = bool(self.use_bias)
+        extra.axis        = 1 if self.activation_name == "tanh" else (2 if self.activation_name == "sigmoid" else 0)
+
+        # 파라미터 텐서 등록
+        weights = {
+            self.wx_var: cp.ascontiguousarray(self.Wx.astype(cp.float32)),
+            self.wh_var: cp.ascontiguousarray(self.Wh.astype(cp.float32)),
+        }
+        biases = {}
         if self.use_bias:
             biases[self.b_var] = cp.ascontiguousarray(self.b.astype(cp.float32))
 
-        # 초기 hidden h_{-1} = 0 을 상수 텐서로 전달 (FILL_ZERO 없이도 가능)
-        h0_id = f"{self.name}_h0"
-        biases[h0_id] = cp.zeros((1, U), dtype=cp.float32)
-
-        # Shape 매핑 (per-sample 규칙: rows=time, cols=feat)
+        # Shape 등록(샘플당 뷰)
         shape_map = {
-            input_id:      Shape(T, D),
-            self.wx_var:   Shape(D, U),
-            self.wh_var:   Shape(U, U),
-            h0_id:         Shape(1, U),
+            input_id:     ge.Shape(T, D),
+            self.wx_var:  ge.Shape(D, U),
+            self.wh_var:  ge.Shape(U, U),
+            self.out_var: ge.Shape(1, U),       # return_sequences=False
         }
         if self.use_bias:
-            shape_map[self.b_var] = Shape(1, U)
+            shape_map[self.b_var] = ge.Shape(1, U)
 
-        e_block = []
-
-        h_prev = h0_id
-        h_list = []
-        for t in range(T):
-            xt     = f"{self.name}_x_{t}"
-            zx     = f"{self.name}_zx_{t}"
-            zh     = f"{self.name}_zh_{t}"
-            zsum   = f"{self.name}_z_{t}"
-            zbias  = f"{self.name}_zb_{t}"
-            ht     = f"{self.name}_h_{t}"
-
-            # shape 등록
-            shape_map[xt]   = Shape(1, D)
-            shape_map[zx]   = Shape(1, U)
-            shape_map[zh]   = Shape(1, U)
-            shape_map[zsum] = Shape(1, U)
-            shape_map[zbias]= Shape(1, U)
-            shape_map[ht]   = Shape(1, U)
-
-            # x_t = SLICE_TIME(input, t)
-            extra_t = OpExtraParams()
-            extra_t.time_index = t
-            extra_t.input_h = T
-            extra_t.input_w = D
-            e_block.append({
-                "op_type": int(getattr(ge.OpType, "SLICE_TIME")),
-                "input_id":  input_id,
-                "param_id":  "",
-                "output_id": xt,
-                "extra_params": extra_t
-            })
-
-            # z_x = x_t @ Wx
-            e_block.append({
-                "op_type": int(ge.OpType.MATMUL),
-                "input_id":  xt,
-                "param_id":  self.wx_var,
-                "output_id": zx,
-                "extra_params": OpExtraParams()
-            })
-
-            # z_h = h_{t-1} @ Wh
-            e_block.append({
-                "op_type": int(ge.OpType.MATMUL),
-                "input_id":  h_prev,
-                "param_id":  self.wh_var,
-                "output_id": zh,
-                "extra_params": OpExtraParams()
-            })
-
-            # z = z_x + z_h  (ADD: input_id=z_x, param_id=z_h)
-            e_block.append({
-                "op_type": int(ge.OpType.ADD),
-                "input_id":  zx,
-                "param_id":  zh,
-                "output_id": zsum,
-                "extra_params": OpExtraParams()
-            })
-
-            last_id = zsum
-
-            # z + b (same-shape ADD) — use_bias일 때만
-            if self.use_bias:
-                e_block.append({
-                    "op_type": int(ge.OpType.ADD),
-                    "input_id":  last_id,
-                    "param_id":  self.b_var,
-                    "output_id": zbias,
-                    "extra_params": OpExtraParams()
-                })
-                last_id = zbias
-
-            # h_t = activation(last)
-            if act_op is not None:
-                e_block.append({
-                    "op_type": act_op,
-                    "input_id":  last_id,
-                    "param_id":  "",
-                    "output_id": ht,
-                    "extra_params": OpExtraParams()
-                })
-                last_id = ht
-            else:
-                # 선형이면 last가 곧 h_t
-                # 별도 op 없이 alias하려면 마지막 ADD의 output_id를 ht로 바꿔도 됨
-                e_block[-1]["output_id"] = ht
-                last_id = ht
-
-            h_list.append(ht)
-            h_prev = ht
-
-        output_id = self.out_var
-        if self.return_sequences:
-            # chain CONCAT_TIME: acc = h0; for each next h -> concat
-            acc = h_list[0]
-            shape_map[acc] = Shape(1, U)
-            for i in range(1, T):
-                nxt = f"{self.name}_cat_{i}"
-                shape_map[nxt] = Shape(i + 1, U)
-                e_block.append({
-                    "op_type": int(getattr(ge.OpType, "CONCAT_TIME")),
-                    "input_id":  acc,
-                    "param_id":  h_list[i],
-                    "output_id": nxt,
-                    "extra_params": OpExtraParams()
-                })
-                acc = nxt
-            # 마지막 concat을 최종 출력으로
-            shape_map[output_id] = Shape(T, U)
-            e_block[-1]["output_id"] = output_id
-        else:
-            # 마지막 h_T를 출력으로
-            shape_map[output_id] = Shape(1, U)
-            e_block[-1]["output_id"] = output_id
-
-        return e_block, weights, biases, output_id, shape_map
+        # ✅ 벡터 생성자 사용 (inputs, params, output, extra)
+        op = ge.OpStruct(
+            ge.OpType.RNN,
+            [input_id],                                  # inputs
+            [self.wx_var, self.wh_var] + ([self.b_var] if self.use_bias else []),  # params
+            self.out_var,
+            extra
+        )
+        e_block = [op]
+        return e_block, weights, biases, self.out_var, shape_map
