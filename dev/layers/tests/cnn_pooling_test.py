@@ -158,7 +158,7 @@ def test_cnn_lines_maxpool():
 
     dump_grad_ptr_keys(model, x[:8], y[:8], tag="before training (maxpool)")
 
-    model.fit(x, y, epochs=1003, batch_size=B, verbose=1)
+    model.fit(x, y, epochs=13, batch_size=B, verbose=1)
 
     print("\n[AFTER] evaluate on full val set")
     loss_after = model.evaluate(x, y)
@@ -204,7 +204,7 @@ def test_cnn_lines_avgpool():
 
     dump_grad_ptr_keys(model, x[:8], y[:8], tag="before training (avgpool)")
 
-    model.fit(x, y, epochs=1000, batch_size=B, verbose=1)
+    model.fit(x, y, epochs=5000, batch_size=B, verbose=1)
 
     print("\n[AFTER] evaluate on full val set")
     loss_after = model.evaluate(x, y)

@@ -218,7 +218,7 @@ class Conv2D(Layer):
         bias_shape = None
         last_id = conv_write_id
         if self.use_bias:
-            add_bias_supported = hasattr(ge.OpType, "ADD_BIAS")
+            add_bias_supported = hasattr(ge.OpType, "ADD")
             if add_bias_supported and not self.force_bias_tile:
                 # (1, F) 형태로 채널 편향 브로드캐스트
                 bvec = self.bias.reshape(1, -1).astype(cp.float32)
@@ -227,7 +227,7 @@ class Conv2D(Layer):
 
                 last_id = preact_id if self.activation_name else output_id
                 e_block.append({
-                    "op_type": int(getattr(ge.OpType, "ADD_BIAS")),
+                    "op_type": int(getattr(ge.OpType, "ADD")),
                     "input_id":  conv_out_id,
                     "param_id":  bias_id,
                     "output_id": last_id,
