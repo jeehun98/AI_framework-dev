@@ -1,4 +1,3 @@
-# test_regression_only.py
 import os
 import sys
 import numpy as np
@@ -73,7 +72,7 @@ def dump_param_stats(model, tag=""):
 
 def debug_graph_bindings(model):
     uses_param = {ge.OpType.MATMUL, ge.OpType.ADD, ge.OpType.CONV2D}
-    graph_param_ids = sorted({op.param_id for op in model.E if (op.op_type in uses_param) and op.param_id})
+    graph_param_ids = sorted({op.param_id for op in model.E if (op.op_type in uses_param) and getattr(op, "param_id", "")})
     weight_keys = sorted(getattr(model, "weights", {}).keys())
     bias_keys   = sorted(getattr(model, "biases", {}).keys())
     shape_keys  = sorted(getattr(model, "shapes", {}).keys())
@@ -97,45 +96,46 @@ def debug_graph_bindings(model):
     elif not miss_tensors and not miss_shapes:
         print("✅ Wiring looks good.")
 
-# (옵션) 간단 numeric vs backprop: W,b의 부호만 빠르게 확인
 def quick_grad_sign_check(model, x, y, eps=1e-3):
-    # 첫번째 W, b 키만 사용
     wkey = sorted(model.weights.keys())[0]
     bkey = sorted(model.biases.keys())[0]
 
     def numeric_grad_on(key, idx=0):
         arr = model.weights[key] if key == wkey else model.biases[key]
-        arr_np = cp.asnumpy(arr)
-        orig = float(arr_np.ravel()[idx])
-
-        # +eps
+        orig = float(cp.asnumpy(arr).ravel()[idx])
         arr.ravel()[idx] = orig + eps
         loss_plus = float(model.evaluate(x, y))
-        # -eps
         arr.ravel()[idx] = orig - eps
         loss_minus = float(model.evaluate(x, y))
-        # restore
         arr.ravel()[idx] = orig
         return (loss_plus - loss_minus) / (2*eps)
 
-    # backprop grad 얻기
     x_cp = cp.asarray(x, dtype=cp.float32)
     y_cp = cp.asarray(y, dtype=cp.float32)
+
     tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
     for name, arr in model.weights.items(): tensor_ptrs[name] = arr.data.ptr
     for name, arr in model.biases.items():  tensor_ptrs[name] = arr.data.ptr
 
-    grads_ptrs = {}
-    grads_dict = ge.run_graph_backward_entry(
-        E=model.E,
-        tensors=tensor_ptrs,
-        shapes=model.shapes,
-        gradients=grads_ptrs,
-        final_output_id=model.output_var,
-        batch_size=x.shape[0]
+    # (선택) 순전파 1회 — 동일 dict 사용
+    out_shape = model.shapes[model.output_var]
+    out_host = np.zeros((x_cp.shape[0], int(out_shape.rows * out_shape.cols)), dtype=np.float32)
+    ge.run_graph_forward_entry(
+        E=model.E, tensors=tensor_ptrs, shapes=model.shapes,
+        out_host=out_host, final_output_id=model.output_var, batch_size=x_cp.shape[0]
     )
 
+    # ✅ 역전파: 리턴값을 받아 사용
+    grads_in = {}
+    ret = ge.run_graph_backward_entry(
+        E=model.E, tensors=tensor_ptrs, shapes=model.shapes,
+        gradients=grads_in, final_output_id=model.output_var, batch_size=x_cp.shape[0]
+    )
+    grads_dict = ret or grads_in   # 리턴 우선, fallback to in-place
+
     def pick_grad_numpy(key, shape):
+        if key not in grads_dict:
+            raise KeyError(f"Grad for '{key}' not found")
         ptr = int(grads_dict[key])
         nbytes = shape.rows * shape.cols * 4
         mem = cp.cuda.UnownedMemory(ptr, nbytes, model)
@@ -145,13 +145,10 @@ def quick_grad_sign_check(model, x, y, eps=1e-3):
 
     gn_w = numeric_grad_on(wkey, 0)
     gn_b = numeric_grad_on(bkey, 0)
-
     gw = pick_grad_numpy(wkey, model.shapes[wkey]).ravel()[0]
     gb = pick_grad_numpy(bkey, model.shapes[bkey]).ravel()[0]
-
     print(f"[GradCheck] W: numeric={gn_w:.6e} backprop={gw:.6e} same? {np.sign(gn_w)==np.sign(gw)}")
     print(f"[GradCheck] b: numeric={gn_b:.6e} backprop={gb:.6e} same? {np.sign(gn_b)==np.sign(gb)}")
-
 
 # ---------- 모델 ----------
 def build_reg_model(lr, optimizer):
@@ -205,10 +202,13 @@ def test_regression_only(opt_name="sgd", lr=0.05, epochs=300, batch=16, do_gradc
         tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
         for name, arr in model.weights.items(): tensor_ptrs[name] = arr.data.ptr
         for name, arr in model.biases.items():  tensor_ptrs[name] = arr.data.ptr
-        grads_dict = ge.run_graph_backward_entry(
+
+        grads_ptrs = {}
+        ge.run_graph_backward_entry(
             E=model.E, tensors=tensor_ptrs, shapes=model.shapes,
-            gradients={}, final_output_id=model.output_var, batch_size=x_b.shape[0]
+            gradients=grads_ptrs, final_output_id=model.output_var, batch_size=x_b.shape[0]
         )
+        grads_dict = grads_ptrs  # ← in-place 로 채워진 걸 사용
 
         grads = {}
         for k, shp in model.shapes.items():
@@ -219,6 +219,7 @@ def test_regression_only(opt_name="sgd", lr=0.05, epochs=300, batch=16, do_gradc
                 grads[k] = cp.asnumpy(cp.ndarray((shp.rows, shp.cols), dtype=cp.float32, memptr=mp))
         grad_flat = flatten_params(grads)
         print(f"  ΔW·grad(after 1 step): {dot(delta_1, grad_flat):.6e} (expected < 0)")
+
         # 나머지 에폭은 epochs-1 만큼 더
         remain = max(0, epochs-1)
         for e in range(remain):
@@ -251,8 +252,7 @@ def test_regression_only(opt_name="sgd", lr=0.05, epochs=300, batch=16, do_gradc
 
 
 if __name__ == "__main__":
-    # 권장 기본값: weight_decay는 구현 상 기본 0.0 (optimizer_update 시그니처) → 별도 설정 불필요
-    # 빠른 수렴용 러닝레이트 추천
+    # 권장 기본값
     cfgs = [
         ("sgd",      0.05),
         ("momentum", 0.03),
