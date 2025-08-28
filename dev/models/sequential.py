@@ -1,11 +1,11 @@
-# sequential.py (revised, with y_true shape fix)
+# dev/models/sequential.py
+# (revised: y_true shape fix + vector/legacy-compatible OpStruct freeze)
 
 import os
 import sys
 import logging
 import numpy as np
 
-# ---- CUDA DLL path first (Windows) ----
 try:
     os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin")
 except Exception:
@@ -13,7 +13,6 @@ except Exception:
 
 import cupy as cp
 
-# project-local test helpers if needed
 sys.path.append("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor/test")
 
 from dev.layers.layer import Layer
@@ -21,7 +20,6 @@ import graph_executor as ge
 OpStruct = ge.OpStruct
 Shape = ge.Shape
 
-# ---- logging ----
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -29,10 +27,6 @@ INPUT_ID = "input"
 
 
 class Sequential:
-    """
-    Minimal training loop on custom CUDA graph executor.
-    Layers must implement: build(), compute_output_shape(), to_e_matrix()
-    """
     def __init__(self, layers=None, trainable=True, name=None, input_shape=None):
         self.built = False
         self._layers = []
@@ -41,31 +35,23 @@ class Sequential:
         self.name = name
         self.output_var = None
 
-        # device state
         self._device_ready = False
-        self.opt_buffers = {}          # {name: {"velocity": cp, "m": cp, "v": cp}}
+        self.opt_buffers = {}
 
-        # training config
         self.loss_type = None
         self.optimizer_type = None
         self.learning_rate = None
         self.metric_type = None
 
-        # graph and tensors
-        self.E_raw = []
-        self.E = []
+        self.E_raw = []     # list[dict | ge.OpStruct]
+        self.E = []         # list[ge.OpStruct]
         self.shapes = {}
         self.weights = {}
         self.biases = {}
 
-        # ids
         self.loss_output_id = None
-
-        # step
         self.global_step = 1
-
-        # debug flags
-        self.debug_sync = False  # set True to cudaDeviceSynchronize() after kernels
+        self.debug_sync = False
 
         if layers:
             for layer in layers:
@@ -77,11 +63,9 @@ class Sequential:
             raise ValueError("Only instances of Layer can be added.")
 
         if not self._layers:
-            # 첫 레이어: layer.input_shape 우선, 없으면 self.input_shape 사용
             inferred = layer.input_shape or self.input_shape
             if inferred is None:
-                raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다. "
-                                   "Sequential(input_shape=...) 또는 layer.input_shape=... 로 설정하세요.")
+                raise RuntimeError("첫 번째 레이어는 input_shape를 지정해야 합니다.")
             layer.input_shape = inferred
             layer.build(inferred)
         else:
@@ -95,78 +79,56 @@ class Sequential:
         self._layers.append(layer)
         logger.info(f"✅ 레이어 추가됨: {layer.__class__.__name__} (input_shape={layer.input_shape}, output_shape={layer.output_shape})")
 
-        
-    def compile(self, optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001):
-        # reset containers
-        self.E_raw = []
-        self.weights = {}
-        self.biases = {}
-        self.metric_type = p_metrics
-        self.shapes = {}
-        self.opt_buffers = {}
-        self._device_ready = False
+    # ---------- helpers ----------
+    def _to_opstruct(self, node):
+        """
+        dict 또는 ge.OpStruct -> ge.OpStruct
+        벡터 API가 오더라도, 레거시 필드(input_id/param_id)도 반드시 채워서
+        레거시 경로(LOSS 등)와 완전 호환되도록 만든다.
+        """
+        if isinstance(node, ge.OpStruct):
+            # 파이프라인 어딘가에서 legacy를 읽을 수 있으니 normalize 호출을 기대
+            return node
 
-        input_id = INPUT_ID
-        current_shape = self.input_shape
+        op_type = node["op_type"]
+        if isinstance(op_type, int):
+            op_type = ge.OpType(op_type)
 
-        # build graph from layers
-        for i, layer in enumerate(self._layers):
-            if i == 0:
-                if not layer.input_shape:
-                    raise ValueError("첫 번째 레이어에 input_shape가 필요합니다.")
-                layer.build(layer.input_shape)
-                current_shape = layer.compute_output_shape(layer.input_shape)
-            else:
-                layer.input_shape = current_shape
-                layer.build(current_shape)
-                current_shape = layer.compute_output_shape(current_shape)
+        out_id = node["output_id"]
+        extra  = node.get("extra_params", ge.OpExtraParams())
 
-            e_block, w, b, output_id, shape_map = layer.to_e_matrix(input_id)
-            self.E_raw.extend(e_block)
-            self.weights.update(w)
-            self.biases.update(b)
-            self.shapes.update(shape_map)
-            input_id = output_id
+        inputs = node.get("inputs", [])
+        params = node.get("params", [])
 
-        # model final pre-loss output id
-        self.output_var = input_id
+        # legacy 보정
+        if not inputs and node.get("input_id", ""):
+            inputs = [node["input_id"]]
+        if not params and node.get("param_id", ""):
+            params = [node["param_id"]]
 
-        # training config
-        self.loss_type = loss
-        self.optimizer_type = optimizer
-        self.learning_rate = learning_rate
+        # 안전 보정
+        if isinstance(inputs, str): inputs = [inputs]
+        if isinstance(params, str): params = [params]
 
-        # append loss node
-        extra = ge.OpExtraParams()
-        extra.label_id = "y_true"
-        extra.loss_type = self.loss_type
-        self.E_raw.append({
-            "op_type": ge.OpType.LOSS,
-            "input_id": self.output_var,
-            "param_id": "y_true",
-            "output_id": "loss",
-            "extra_params": extra
-        })
-        self.loss_output_id = "loss"
+        # ✅ 레거시 필드도 반드시 채운다 (LOSS 등 호환)
+        legacy_in    = inputs[0] if inputs else node.get("input_id", "")
+        legacy_param = params[0] if params else node.get("param_id", "")
 
-        # freeze graph as OpStruct[]
-        self.E = []
-        for op in self.E_raw:
-            extra = op.get("extra_params", ge.OpExtraParams())
-            param_id = op.get("param_id", "") or ""
-            node = ge.OpStruct(
-                ge.OpType(op["op_type"]),
-                str(op["input_id"]),
-                str(param_id),
-                str(op["output_id"]),
-                extra
-            )
-            self.E.append(node)
+        # 레거시 생성자 사용 (pybind 레거시 경로와 100% 호환)
+        op = ge.OpStruct(op_type, str(legacy_in), str(legacy_param), str(out_id), extra)
 
-        self._assert_contiguous_params()
-        self.built = True
+        # 가능하면 벡터 필드도 채워주기 (pybind가 쓰기 가능할 때)
+        try:
+            if hasattr(op, "inputs") and not getattr(op, "inputs"):
+                if inputs: op.inputs = inputs
+            if hasattr(op, "params") and not getattr(op, "params"):
+                if params: op.params = params
+        except Exception:
+            # 쓰기 불가한 바인딩이면 레거시만으로도 동작함
+            pass
 
-    # ---------- utils ----------
+        return op
+
     def _assert_contiguous_params(self):
         for name, arr in {**self.weights, **self.biases}.items():
             assert hasattr(arr, "flags") and arr.flags.c_contiguous, f"{name} not C-contiguous"
@@ -191,7 +153,6 @@ class Sequential:
         raise ValueError(f"Unsupported optimizer type: {self.optimizer_type}")
 
     def _ensure_label_shape(self, y_cp):
-        # Prefer aligning to model output shape.
         if "y_true" in self.shapes:
             return
         out_shape = self.shapes.get(self.output_var, None)
@@ -200,6 +161,70 @@ class Sequential:
             return
         C = int(y_cp.shape[-1]) if y_cp.ndim >= 2 else 1
         self.shapes["y_true"] = ge.Shape(1, C)
+
+    # ---------- compile / graph build ----------
+    def compile(self, optimizer='sgd', loss='mse', p_metrics='mse', learning_rate=0.001):
+        self.E_raw = []
+        self.weights = {}
+        self.biases = {}
+        self.metric_type = p_metrics
+        self.shapes = {}
+        self.opt_buffers = {}
+        self._device_ready = False
+
+        input_id = INPUT_ID
+        current_shape = self.input_shape
+
+        for i, layer in enumerate(self._layers):
+            if i == 0:
+                if not layer.input_shape:
+                    raise ValueError("첫 번째 레이어에 input_shape가 필요합니다.")
+                layer.build(layer.input_shape)
+                current_shape = layer.compute_output_shape(layer.input_shape)
+            else:
+                layer.input_shape = current_shape
+                layer.build(current_shape)
+                current_shape = layer.compute_output_shape(current_shape)
+
+            e_block, w, b, output_id, shape_map = layer.to_e_matrix(input_id)
+            self.E_raw.extend(e_block)
+            if w: self.weights.update(w)
+            if b: self.biases.update(b)
+            if shape_map:
+                for k, shp in shape_map.items():
+                    if isinstance(shp, ge.Shape):
+                        self.shapes[k] = shp
+                    else:
+                        self.shapes[k] = ge.Shape(int(shp[0]), int(shp[1]))
+            input_id = output_id
+
+        self.output_var = input_id
+        self.loss_type = loss
+        self.optimizer_type = optimizer
+        self.learning_rate = learning_rate
+
+        # ✅ LOSS 노드 추가 — 벡터든 레거시든 OK지만, 레거시 필드는 반드시 채우자.
+        loss_extra = ge.OpExtraParams()
+        loss_extra.label_id = "y_true"
+        loss_extra.loss_type = self.loss_type
+        self.E_raw.append({
+            "op_type": ge.OpType.LOSS,
+            "inputs":  [self.output_var],   # vector
+            "params":  ["y_true"],          # vector
+            "input_id": self.output_var,    # legacy 채우기
+            "param_id": "y_true",           # legacy 채우기
+            "output_id": "loss",
+            "extra_params": loss_extra
+        })
+        self.loss_output_id = "loss"
+
+        # freeze
+        self.E = []
+        for node in self.E_raw:
+            self.E.append(self._to_opstruct(node))
+
+        self._assert_contiguous_params()
+        self.built = True
 
     # ---------- training ----------
     def train_on_batch(self, x, y):
@@ -211,7 +236,6 @@ class Sequential:
         y_cp = y if isinstance(y, cp.ndarray) else cp.asarray(y, dtype=cp.float32)
         batch_size_actual = x_cp.shape[0]
 
-        # ensure label shape present
         self._ensure_label_shape(y_cp)
 
         tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
@@ -258,7 +282,6 @@ class Sequential:
         x_full = cp.asarray(x, dtype=cp.float32)
         y_full = cp.asarray(y, dtype=cp.float32)
 
-        # ensure label shape at least once
         self._ensure_label_shape(y_full)
 
         for epoch in range(epochs):
@@ -316,7 +339,6 @@ class Sequential:
         y_cp = cp.asarray(y, dtype=cp.float32)
         batch_size = x_cp.shape[0]
 
-        # ensure label shape
         self._ensure_label_shape(y_cp)
 
         tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
@@ -357,13 +379,6 @@ class Sequential:
         self._ensure_device_state()
 
     def grad_dump_l2(self, x_batch, y_batch, keys=None, head=8, title="Grad L2 dump"):
-        """
-        x_batch, y_batch: 같은 배치 크기(작은 배치 추천, 예: 8)
-        keys: 확인할 파라미터 키 리스트(예: ["conv2d_..._W","dense_..._W"])
-            None이면 모든 W/b를 대상으로 덤프
-        head: 앞쪽 몇 개 값만 미리보기
-        """
-        
         if not self.built:
             raise RuntimeError("compile() 먼저 호출하세요.")
         self._ensure_device_state()
@@ -371,15 +386,12 @@ class Sequential:
         x_cp = cp.asarray(x_batch, dtype=cp.float32)
         y_cp = cp.asarray(y_batch, dtype=cp.float32)
 
-        # y_true shape 등록(한 번만)
         self._ensure_label_shape(y_cp)
 
-        # 텐서 포인터 바인딩
         tensor_ptrs = {"input": x_cp.data.ptr, "y_true": y_cp.data.ptr}
         for name, arr in self.weights.items(): tensor_ptrs[name] = arr.data.ptr
         for name, arr in self.biases.items():  tensor_ptrs[name] = arr.data.ptr
 
-        # 역전파 실행 → 각 파라미터의 grad 디바이스 포인터 반환
         grads_ptrs = ge.run_graph_backward_entry(
             E=self.E,
             tensors=tensor_ptrs,
@@ -389,7 +401,6 @@ class Sequential:
             batch_size=x_cp.shape[0]
         )
 
-        # 대상 키 결정
         if keys is None:
             keys = list(self.weights.keys()) + list(self.biases.keys())
 
@@ -399,14 +410,17 @@ class Sequential:
             if k not in grads_ptrs:
                 print(f"[MISS] {k}: grad not found")
                 continue
-            shp = self.shapes[k]  # ge.Shape(rows, cols)
-            ptr = int(grads_ptrs[k])
-            nbytes = shp.rows * shp.cols * 4
+            shp = self.shapes.get(k, None)
+            if shp is None:
+                print(f"[MISS] {k}: shape not found")
+                continue
 
-            # 디바이스 포인터를 cupy 배열로 래핑
-            mem = cp.cuda.UnownedMemory(ptr, nbytes, self)  # self를 owner로 유지
+            ptr = int(grads_ptrs[k])
+            nbytes = int(shp.rows * shp.cols) * 4
+
+            mem = cp.cuda.UnownedMemory(ptr, nbytes, self)
             mp  = cp.cuda.MemoryPointer(mem, 0)
-            gcp = cp.ndarray((shp.rows, shp.cols), dtype=cp.float32, memptr=mp)
+            gcp = cp.ndarray((int(shp.rows), int(shp.cols)), dtype=cp.float32, memptr=mp)
 
             g_np = cp.asnumpy(gcp)
             l2 = float(np.linalg.norm(g_np))

@@ -1,4 +1,4 @@
-// loss_kernels.cu (no cuBLAS dependency)
+// loss_kernels.cu (no cuBLAS dependency, with safe launch guards)
 
 #include <cuda_runtime.h>
 #include <cmath>
@@ -6,14 +6,7 @@
 #include <cfloat>
 #include <vector>
 
-#ifndef CUDA_CHECK
-#define CUDA_CHECK(x) do { \
-  cudaError_t err = (x); \
-  if (err != cudaSuccess) { \
-    std::fprintf(stderr,"CUDA %s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-  } \
-} while(0)
-#endif
+#include "../ge/cuda_check.cuh"
 
 // ======================================================================
 // 공용 유틸: 리덕션 커널 / 런치 구성
@@ -76,7 +69,7 @@ static inline void launch_conf(int n, dim3& grid, dim3& block, size_t& shmem) {
 }
 
 // ======================================================================
-// MSE (forward / backward)
+/* MSE (forward / backward) */
 // ======================================================================
 __global__ void mse_loss_kernel(const float* __restrict__ y_true,
                                 const float* __restrict__ y_pred,
@@ -115,7 +108,7 @@ __global__ void mse_loss_backward_kernel(const float* __restrict__ y_true,
 }
 
 float compute_mse_loss_cuda(const float* y_true, const float* y_pred, int size) {
-    if (size <= 0) return NAN;
+    if (size <= 0) return 0.f;
 
     float *d_sum = nullptr;
     CUDA_CHECK(cudaMalloc(&d_sum, sizeof(float)));
@@ -138,14 +131,16 @@ float compute_mse_loss_cuda(const float* y_true, const float* y_pred, int size) 
 void launch_mse_loss_backward(const float* y_true, const float* y_pred,
                               float* grad_out, int size, cudaStream_t stream)
 {
+    if (size <= 0) return;
     const int threads = 256;
-    const int blocks  = (size + threads - 1) / threads;
+    int blocks  = (size + threads - 1) / threads;
+    if (blocks < 1) blocks = 1;
     mse_loss_backward_kernel<<<blocks, threads, 0, stream>>>(y_true, y_pred, grad_out, size);
     CUDA_CHECK(cudaGetLastError());
 }
 
 // ======================================================================
-// BCE (sigmoid probs) forward / backward
+/* BCE (sigmoid probs) forward / backward) */
 // ======================================================================
 __global__ void bce_loss_kernel(const float* __restrict__ y_true,
                                 const float* __restrict__ y_pred,
@@ -192,7 +187,7 @@ __global__ void bce_loss_backward_kernel(const float* __restrict__ y_true,
 }
 
 float compute_bce_loss_cuda(const float* y_true, const float* y_pred, int size) {
-    if (size <= 0) return NAN;
+    if (size <= 0) return 0.f;
 
     float *d_sum = nullptr;
     CUDA_CHECK(cudaMalloc(&d_sum, sizeof(float)));
@@ -216,14 +211,16 @@ void launch_bce_loss_backward(const float* y_true, const float* y_pred,
                               float* grad_out, int size, int batch_size,
                               cudaStream_t stream)
 {
+    if (size <= 0) return;
     const int threads = 256;
-    const int blocks  = (size + threads - 1) / threads;
+    int blocks  = (size + threads - 1) / threads;
+    if (blocks < 1) blocks = 1;
     bce_loss_backward_kernel<<<blocks, threads, 0, stream>>>(y_true, y_pred, grad_out, size, batch_size);
     CUDA_CHECK(cudaGetLastError());
 }
 
 // ======================================================================
-// CCE (softmax probs) forward / backward
+/* CCE (softmax probs) forward / backward) */
 // ======================================================================
 __global__ void cce_per_sample_kernel(const float* __restrict__ y_true,
                                       const float* __restrict__ y_pred,
@@ -269,16 +266,20 @@ float compute_cce_loss_cuda(const float* y_true, const float* y_pred,
 {
     const int B = batch_size;
     const int C = num_classes;
+    if (B <= 0 || C <= 0) return 0.f;
 
     float* d_per_sample = nullptr; // [B]
     CUDA_CHECK(cudaMalloc(&d_per_sample, B * sizeof(float)));
-    cce_per_sample_kernel<<<B, 1>>>(y_true, y_pred, d_per_sample, B, C);
+
+    int blocks = B;
+    if (blocks < 1) blocks = 1;
+    cce_per_sample_kernel<<<blocks, 1>>>(y_true, y_pred, d_per_sample, B, C);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
     float sum = reduce_sum_device(d_per_sample, B);
     CUDA_CHECK(cudaFree(d_per_sample));
-    return sum / (float)B; // batch mean
+    return (B > 0) ? (sum / (float)B) : 0.f; // batch mean
 }
 
 void launch_cce_loss_backward(const float* y_true, const float* y_pred,
@@ -287,13 +288,18 @@ void launch_cce_loss_backward(const float* y_true, const float* y_pred,
 {
     const int B = batch_size, C = num_classes;
     const int N = B * C;
+    if (N <= 0) return;
+
     const int threads = 256;
-    const int blocks  = (N + threads - 1) / threads;
+    int blocks  = (N + threads - 1) / threads;
+    if (blocks < 1) blocks = 1;
     cce_loss_backward_kernel<<<blocks, threads, 0, stream>>>(y_true, y_pred, grad_out, B, C);
     CUDA_CHECK(cudaGetLastError());
 }
 
-// ===== softmax ⊗ cross-entropy fused backward: grad_z = (p - y)/B =====
+// ======================================================================
+// softmax ⊗ cross-entropy fused backward: grad_z = (p - y)/B
+// ======================================================================
 __global__ void softmax_xent_fused_backward_kernel(const float* __restrict__ p,
                                                    const float* __restrict__ y,
                                                    float* __restrict__ grad_z,
@@ -313,8 +319,11 @@ void launch_softmax_xent_fused_backward(const float* y_prob,
 {
     const int B = batch_size, C = num_classes;
     const int N = B * C;
+    if (N <= 0) return;
+
     const int threads = 256;
-    const int blocks  = (N + threads - 1) / threads;
+    int blocks  = (N + threads - 1) / threads;
+    if (blocks < 1) blocks = 1;
     softmax_xent_fused_backward_kernel<<<blocks, threads, 0, stream>>>(
         y_prob, y_true, grad_z, B, C
     );

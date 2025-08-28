@@ -1,4 +1,4 @@
-// bindings.cpp (revised)
+// bindings.cpp (revised, backward-compatible)
 
 #include <cuda_runtime.h>
 #include <pybind11/pybind11.h>
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include <stdexcept>  // added
+#include <stdexcept>
 
 #include "loss/loss_kernels.cuh"
 #include "executor/run_graph.cuh"
@@ -28,7 +28,6 @@
 #ifndef GLOBAL_NORM_CLIP_ENABLE
 #define GLOBAL_NORM_CLIP_ENABLE 0
 #endif
-// Optional debug knobs:
 // #define GE_DEBUG_SYNC 1
 // #define GE_VERBOSE 1
 
@@ -37,7 +36,6 @@
 
 namespace py = pybind11;
 
-// ---- CUDA error guard ----
 #define CUDA_CHECK(stmt)                                                     \
     do {                                                                     \
         cudaError_t _e = (stmt);                                             \
@@ -47,7 +45,6 @@ namespace py = pybind11;
         }                                                                    \
     } while (0)
 
-// ---- safe cast ----
 static inline OptimizerType to_opt(int v) {
     switch (v) {
         case 0: return OptimizerType::SGD;
@@ -57,18 +54,41 @@ static inline OptimizerType to_opt(int v) {
     }
 }
 
-// ===================== Entrypoints =====================
+/* ------------------------ helpers: legacy -> vector ------------------------ */
+static inline void normalize_legacy(OpStruct& n) {
+    // 기존 단일 필드를 썼다면 벡터로 이관
+    if (!n.input_id.empty() && n.inputs.empty())  n.inputs.push_back(n.input_id);
+    if (!n.param_id.empty() && n.params.empty())  n.params.push_back(n.param_id);
+}
+
+static inline std::vector<OpStruct> normalize_graph(const std::vector<OpStruct>& E) {
+    std::vector<OpStruct> out; out.reserve(E.size());
+    for (auto n : E) { normalize_legacy(n); out.push_back(std::move(n)); }
+    return out;
+}
+
+static inline std::string loss_pred_input_id(const std::vector<OpStruct>& E) {
+    if (E.empty()) return "";
+    const OpStruct& last = E.back();
+    if (last.op_type != OpType::LOSS) return "";
+    // LOSS 노드의 예측 입력은 inputs[0] 우선, 없으면 레거시 input_id
+    if (!last.inputs.empty()) return last.inputs[0];
+    return last.input_id;
+}
+
+/* =============================== Entrypoints =============================== */
 
 // Forward-only
 void run_graph_forward_entry(
-    const std::vector<OpStruct>& E,
+    const std::vector<OpStruct>& E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     py::array_t<float> out_host,
     const std::string& final_output_id,
     int batch_size)
 {
-    if (E.empty()) throw std::runtime_error("empty graph");
+    if (E_in.empty()) throw std::runtime_error("empty graph");
+    const auto E = normalize_graph(E_in);
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
@@ -88,7 +108,7 @@ void run_graph_forward_entry(
 
 // Forward + Loss
 float run_graph_with_loss_entry(
-    const std::vector<OpStruct>& E,
+    const std::vector<OpStruct>& E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     const std::string& final_output_id,
@@ -96,7 +116,8 @@ float run_graph_with_loss_entry(
     const std::string& loss_type,
     int batch_size)
 {
-    if (E.empty()) throw std::runtime_error("empty graph");
+    if (E_in.empty()) throw std::runtime_error("empty graph");
+    const auto E = normalize_graph(E_in);
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
@@ -119,14 +140,15 @@ float run_graph_with_loss_entry(
 
 // Backward
 py::dict run_graph_backward_entry(
-    const std::vector<OpStruct>& E,
+    const std::vector<OpStruct>& E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     const std::unordered_map<std::string, uintptr_t>& /*gradient_ptrs_unused*/,
     const std::string& final_output_id,
     int batch_size)
 {
-    if (E.empty()) throw std::runtime_error("empty graph");
+    if (E_in.empty()) throw std::runtime_error("empty graph");
+    const auto E = normalize_graph(E_in);
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
@@ -135,8 +157,10 @@ py::dict run_graph_backward_entry(
 
     // If final node is LOSS, we also need its input (y_pred) to exist on device
     std::string pred_id = final_output_id;
-    if (!E.empty() && E.back().op_type == OpType::LOSS)
-        pred_id = E.back().input_id;
+    if (!E.empty() && E.back().op_type == OpType::LOSS) {
+        const auto cand = loss_pred_input_id(E);
+        if (!cand.empty()) pred_id = cand;
+    }
 
     std::unordered_map<std::string, float*> gradients;
     {
@@ -163,7 +187,7 @@ py::dict run_graph_backward_entry(
 
 // Train step (Fwd+Loss -> Bwd -> Optimizer)
 float train_step_entry(
-    const std::vector<OpStruct>& E,
+    const std::vector<OpStruct>& E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     const std::string& final_output_id,
@@ -187,7 +211,8 @@ float train_step_entry(
 #endif
 )
 {
-    if (E.empty()) throw std::runtime_error("empty graph");
+    if (E_in.empty()) throw std::runtime_error("empty graph");
+    const auto E = normalize_graph(E_in);
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
@@ -197,22 +222,23 @@ float train_step_entry(
     float loss = 0.f;
     std::unordered_map<std::string, float*> gradients;
 
-    {   // ---- Forward (keep intermediates) ----
+    {
         py::gil_scoped_release nogil;
 
-        // final_output_id가 LOSS라면 그 입력이 y_pred
         std::string pred_id = final_output_id;
-        if (!E.empty() && E.back().op_type == OpType::LOSS)
-            pred_id = E.back().input_id;
+        if (!E.empty() && E.back().op_type == OpType::LOSS) {
+            const auto cand = loss_pred_input_id(E);
+            if (!cand.empty()) pred_id = cand;
+        }
 
-        // Forward 실행. out_host=nullptr → 호스트 복사 없음. 중간 텐서 유지.
+        // Forward (no host copy; keep intermediates)
         run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
 #ifdef GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
 
-        // ---- Loss 계산 ----
+        // ---- Loss ----
         auto it_pred = tensors.find(pred_id);
         auto it_true = tensors.find(label_tensor_id);
         auto it_pshp = shapes.find(pred_id);
@@ -223,8 +249,8 @@ float train_step_entry(
 
         float* y_pred = it_pred->second;
         float* y_true = it_true->second;
-        const Shape sp = it_pshp->second; // per-sample
-        const Shape st = it_tshp->second; // per-sample
+        const Shape sp = it_pshp->second;
+        const Shape st = it_tshp->second;
 
         const int rows_per_sample = sp.rows; // may be 1 or seq_len
         const int C = sp.cols;
@@ -240,21 +266,9 @@ float train_step_entry(
                 throw std::runtime_error("loss(bce): y_true size mismatch");
             loss = compute_bce_loss_cuda(y_true, y_pred, N);
         } else if (loss_type == "cce") {
-            // Cross-Entropy (one-hot). Per-sample shape rule:
-            //   y_pred: rows_per_sample x C   (per sample)
-            //   y_true: rows_per_sample x C   (per sample)
-            // Effective batch B = batch_size * rows_per_sample
             if (st.rows != rows_per_sample || st.cols != C) {
-                std::ostringstream oss;
-                oss << "[LOSS] size mismatch for CCE: "
-                    << "pred(B=" << B << ",C=" << C << "), "
-                    << "expected y_true per-sample=(" << rows_per_sample << "," << C << ") "
-                    << "but got (" << st.rows << "," << st.cols << ")";
-                throw std::runtime_error(oss.str());
+                throw std::runtime_error("loss(cce): y_true per-sample shape mismatch");
             }
-
-            // NOTE: compute_cce_loss_cuda should consume B x C elements from y_true/y_pred.
-            // (Kernel should handle numerical stability internally, e.g., epsilon clamp.)
             loss = compute_cce_loss_cuda(y_true, y_pred, B, C);
         } else {
             throw std::runtime_error("loss: unsupported type");
@@ -264,18 +278,22 @@ float train_step_entry(
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
 
-        // ---- Backward (중간 텐서 해제 금지) ----
+        // ---- Backward ----
         run_graph_backward(E, tensors, shapes, gradients, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
 #ifdef GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
 
-        // ---- Optimizer 업데이트 ----
+        // ---- Optimizer ----
         std::set<std::string> trainable_params;
         for (const auto& op : E) {
-            if (!op.param_id.empty())
+            // 벡터/레거시 모두에서 파라미터 수집
+            if (!op.params.empty()) {
+                trainable_params.insert(op.params.begin(), op.params.end());
+            } else if (!op.param_id.empty()) {
                 trainable_params.insert(op.param_id);
+            }
         }
 
         for (const auto& name : trainable_params) {
@@ -325,7 +343,7 @@ float train_step_entry(
 #endif
         }
 
-        // ---- grad 버퍼만 free ----
+        // free grad buffers
         std::unordered_set<const float*> freed;
         for (const auto& kv : gradients) {
             const float* p = kv.second;
@@ -336,10 +354,11 @@ float train_step_entry(
     return loss;
 }
 
-// ===================== Pybind11 module =====================
+/* =============================== Pybind Module ============================= */
 
 PYBIND11_MODULE(graph_executor, m) {
     // Enums
+    // PYBIND11_MODULE(...) 내부의 OpType enum 바인딩에 한 줄 추가
     py::enum_<OpType>(m, "OpType")
         .value("MATMUL", OpType::MATMUL)
         .value("ADD", OpType::ADD)
@@ -354,9 +373,14 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("GELU", OpType::GELU)
         .value("SILU", OpType::SILU)
         .value("SOFTMAX", OpType::SOFTMAX)
-        // 👇 추가
         .value("POOL_MAX", OpType::POOL_MAX)
         .value("POOL_AVG", OpType::POOL_AVG)
+        .value("ADD_BIAS", OpType::ADD_BIAS)
+        .value("SLICE_TIME", OpType::SLICE_TIME)
+        .value("CONCAT_TIME", OpType::CONCAT_TIME)
+        .value("FILL_ZERO", OpType::FILL_ZERO)
+        // 👇 여기 추가
+        .value("RNN", OpType::RNN)
         .export_values();
 
 
@@ -369,15 +393,8 @@ PYBIND11_MODULE(graph_executor, m) {
     py::class_<OpExtraParams>(m, "OpExtraParams")
         .def(py::init([](){
             OpExtraParams e{};
-            // 기존 기본값
-            e.alpha = 0.01f;
-            e.gelu_tanh = 1;
-            e.temperature = 1.0f;
-            e.axis = 1;
-            // 👇 새 필드 기본값(구조체에도 기본값 있지만, 가독성 위해 중복 명시 OK)
-            e.dilation_h = 1;
-            e.dilation_w = 1;
-            e.count_include_pad = false;
+            e.alpha = 0.01f; e.gelu_tanh = 1; e.temperature = 1.0f; e.axis = 1;
+            e.dilation_h = 1; e.dilation_w = 1; e.count_include_pad = false;
             return e;
         }))
         .def_readwrite("kernel_h", &OpExtraParams::kernel_h)
@@ -386,45 +403,52 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("stride_w", &OpExtraParams::stride_w)
         .def_readwrite("padding_h", &OpExtraParams::padding_h)
         .def_readwrite("padding_w", &OpExtraParams::padding_w)
-        // 👇 새 필드 바인딩
         .def_readwrite("dilation_h", &OpExtraParams::dilation_h)
         .def_readwrite("dilation_w", &OpExtraParams::dilation_w)
         .def_readwrite("count_include_pad", &OpExtraParams::count_include_pad)
-        // 입력/출력 메타
         .def_readwrite("input_h", &OpExtraParams::input_h)
         .def_readwrite("input_w", &OpExtraParams::input_w)
         .def_readwrite("input_c", &OpExtraParams::input_c)
         .def_readwrite("output_c", &OpExtraParams::output_c)
         .def_readwrite("batch_size", &OpExtraParams::batch_size)
-        // RNN/기타
         .def_readwrite("time_steps", &OpExtraParams::time_steps)
         .def_readwrite("hidden_size", &OpExtraParams::hidden_size)
         .def_readwrite("num_layers", &OpExtraParams::num_layers)
         .def_readwrite("use_bias", &OpExtraParams::use_bias)
-        // Loss
         .def_readwrite("label_id", &OpExtraParams::label_id)
         .def_readwrite("loss_type", &OpExtraParams::loss_type)
-        // Activ / Softmax
         .def_readwrite("alpha", &OpExtraParams::alpha)
         .def_readwrite("gelu_tanh", &OpExtraParams::gelu_tanh)
         .def_readwrite("temperature", &OpExtraParams::temperature)
-        .def_readwrite("axis", &OpExtraParams::axis);
-
-    py::class_<OpStruct>(m, "OpStruct")
-        .def(py::init<>())
-        .def(py::init<OpType, std::string, std::string, std::string, OpExtraParams>(),
-             py::arg("op_type"), py::arg("input_id"), py::arg("param_id"),
-             py::arg("output_id"), py::arg("extra_params"))
-        .def_readwrite("op_type", &OpStruct::op_type)
-        .def_readwrite("input_id", &OpStruct::input_id)
-        .def_readwrite("param_id", &OpStruct::param_id)
-        .def_readwrite("output_id", &OpStruct::output_id)
-        .def_readwrite("extra_params", &OpStruct::extra_params);
+        .def_readwrite("axis", &OpExtraParams::axis)
+        // time utils
+        .def_readwrite("time_index", &OpExtraParams::time_index)
+        .def_readwrite("concat_count", &OpExtraParams::concat_count);
 
     py::class_<Shape>(m, "Shape")
         .def(py::init<int, int>())
         .def_readwrite("rows", &Shape::rows)
         .def_readwrite("cols", &Shape::cols);
+
+    // OpStruct: legacy + vector API 모두 노출
+    py::class_<OpStruct>(m, "OpStruct")
+        .def(py::init<>())
+        // legacy ctor (single input/param)
+        .def(py::init<OpType, std::string, std::string, std::string, OpExtraParams>(),
+             py::arg("op_type"), py::arg("input_id"), py::arg("param_id"),
+             py::arg("output_id"), py::arg("extra_params") = OpExtraParams())
+        // vector ctor
+        .def(py::init<OpType, std::vector<std::string>, std::vector<std::string>, std::string, OpExtraParams>(),
+             py::arg("op_type"), py::arg("inputs"), py::arg("params"),
+             py::arg("output_id"), py::arg("extra_params") = OpExtraParams())
+        // fields
+        .def_readwrite("op_type", &OpStruct::op_type)
+        .def_readwrite("input_id", &OpStruct::input_id)   // legacy
+        .def_readwrite("param_id", &OpStruct::param_id)   // legacy
+        .def_readwrite("inputs",   &OpStruct::inputs)
+        .def_readwrite("params",   &OpStruct::params)
+        .def_readwrite("output_id",&OpStruct::output_id)
+        .def_readwrite("extra_params", &OpStruct::extra_params);
 
     // Graph APIs
     m.def("run_graph_forward_entry", &run_graph_forward_entry,
