@@ -1,354 +1,392 @@
+# ml/preprocessing/preprocessing.py
+from __future__ import annotations
 import numpy as np
-from itertools import combinations, combinations_with_replacement
+from typing import Optional, Literal, List, Any, Sequence
+from backend import CPUBackend
+
+try:
+    import cupy as cp
+except Exception:
+    cp = None
 
 
-# ------------------------
-# Scaling / Normalization
-# ------------------------
+# -------------------------
+# 공통 헬퍼
+# -------------------------
+def _check_backend(be):
+    return be or CPUBackend()
 
+def _is_cupy_array(x) -> bool:
+    if cp is None:
+        return False
+    return isinstance(x, cp.ndarray)
+
+def _to_host(x):
+    if _is_cupy_array(x):
+        return cp.asnumpy(x)
+    return x
+
+def _to_device(be, x):
+    return be.to_device(x)
+
+def _xp_of(x):
+    """x가 cupy면 cp, 아니면 np 반환"""
+    return cp if _is_cupy_array(x) else np
+
+def _ensure_2d(X):
+    if X.ndim == 1:
+        return X.reshape(-1, 1)
+    return X
+
+def _is_object_like(X) -> bool:
+    """dtype이 object 또는 문자열/파이썬 객체성분이면 True"""
+    # cupy는 object dtype을 지원하지 않으니 host에서 판정
+    Xh = _to_host(X)
+    return Xh.dtype == object
+
+def _nan_mask(x):
+    xp = _xp_of(x)
+    # object/문자 문자열은 여기 안 옴(숫자 전용)
+    return xp.isnan(x)
+
+def _safe_unique(x):
+    """cupy/numpy 공통 unique"""
+    xp = _xp_of(x)
+    return xp.unique(x)
+
+def _hstack(blocks: List[Any]):
+    """cupy/numpy 공통 hstack"""
+    if any(_is_cupy_array(b) for b in blocks):
+        if cp is None:
+            # 이론상 오지 않지만, 안전망
+            return np.hstack([_to_host(b) for b in blocks])
+        return cp.hstack([_to_device(CPUBackend(), b) if not _is_cupy_array(b) else b for b in blocks])
+    return np.hstack(blocks)
+
+def _concat_colwise(blocks: List[Any]):
+    if any(_is_cupy_array(b) for b in blocks):
+        return cp.concatenate(blocks, axis=1)
+    return np.concatenate(blocks, axis=1)
+
+
+# ============================================================
+# SimpleImputer (GPU: 숫자형 mean/constant, CPU fallback: most_frequent/객체형)
+# ============================================================
+class SimpleImputer:
+    """
+    strategy: "mean" | "most_frequent" | "constant"
+      - 숫자형 + mean/constant 는 GPU 지원 (cupy)
+      - most_frequent 또는 객체/문자 데이터는 CPU 경로에서 처리
+    fill_value: strategy="constant" 일 때 채울 값
+    """
+    def __init__(self,
+                 strategy: Literal["mean", "most_frequent", "constant"] = "mean",
+                 fill_value: Optional[Any] = None,
+                 backend=None):
+        self.strategy = strategy
+        self.fill_value = fill_value
+        self.backend = _check_backend(backend)
+        # learned
+        self.statistics_ = None  # (n_features,)
+        self.is_numeric_ = True
+
+    def fit(self, X, y=None):
+        be = self.backend
+        X = _ensure_2d(X)
+        # 객체/문자형 또는 most_frequent → CPU 경로
+        if self.strategy == "most_frequent" or _is_object_like(X):
+            Xh = _to_host(X)
+            stats = []
+            for j in range(Xh.shape[1]):
+                col = Xh[:, j]
+                # 결측 취급: None 또는 np.nan
+                col = np.array([c for c in col if c is not None and not (isinstance(c, float) and np.isnan(c))],
+                               dtype=object)
+                if col.size == 0:
+                    stats.append(self.fill_value if self.fill_value is not None else 0)
+                else:
+                    # 최빈값
+                    vals, counts = np.unique(col, return_counts=True)
+                    stats.append(vals[np.argmax(counts)])
+            self.statistics_ = np.asarray(stats, dtype=object)
+            self.is_numeric_ = False
+            return self
+
+        # 숫자형 & mean/constant (GPU 가능)
+        xp = _xp_of(X)
+        if self.strategy == "mean":
+            # NaN 무시 평균
+            stats = xp.nanmean(X, axis=0)
+        elif self.strategy == "constant":
+            fill = self.fill_value if self.fill_value is not None else 0.0
+            stats = xp.array([fill] * X.shape[1], dtype=X.dtype)
+        else:
+            raise ValueError(f"Unsupported strategy for numeric: {self.strategy}")
+
+        self.statistics_ = stats
+        self.is_numeric_ = True
+        return self
+
+    def transform(self, X):
+        assert self.statistics_ is not None, "Call fit() first."
+        X = _ensure_2d(X)
+        # CPU 경로 (객체/문자형 또는 most_frequent)
+        if not self.is_numeric_:
+            Xh = _to_host(X).copy()
+            stats = self.statistics_
+            for j in range(Xh.shape[1]):
+                stat = stats[j]
+                col = Xh[:, j]
+                for i, v in enumerate(col):
+                    if v is None or (isinstance(v, float) and np.isnan(v)):
+                        Xh[i, j] = stat
+            return Xh
+
+        # 숫자형(GPU 가능)
+        xp = _xp_of(X)
+        Xc = X.copy()
+        m = xp.isnan(Xc)
+        if m.any():
+            Xc[m] = xp.take(self.statistics_, xp.nonzero(m)[1])
+        return Xc
+
+    def fit_transform(self, X, y=None):
+        return self.fit(X, y).transform(X)
+
+
+# ============================================================
+# StandardScaler (GPU 지원, 숫자형 전용 / 객체형은 CPU로 내려 처리)
+# ============================================================
 class StandardScaler:
-    """평균=0, 표준편차=1 로 표준화"""
-    def __init__(self, with_mean=True, with_std=True):
+    """
+    with_mean: 평균 제거
+    with_std : 표준편차 나눔(0이면 1로 클리핑)
+    """
+    def __init__(self, with_mean: bool = True, with_std: bool = True, backend=None):
         self.with_mean = with_mean
         self.with_std = with_std
+        self.backend = _check_backend(backend)
+
         self.mean_ = None
         self.scale_ = None
 
-    def fit(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        self.mean_ = X.mean(axis=0) if self.with_mean else np.zeros(X.shape[1])
+    def fit(self, X, y=None):
+        X = _ensure_2d(X)
+        if _is_object_like(X):
+            # CPU 경로: 객체형은 스케일링 대상 아님 → 0/1로 세팅, 패스스루
+            Xh = _to_host(X).astype(object)
+            self.mean_ = np.zeros(Xh.shape[1], dtype=float)
+            self.scale_ = np.ones(Xh.shape[1], dtype=float)
+            return self
+
+        xp = _xp_of(X)
+        mean = xp.nanmean(X, axis=0) if self.with_mean else xp.zeros(X.shape[1], dtype=X.dtype)
+        var = xp.nanvar(X, axis=0) if self.with_std else xp.zeros(X.shape[1], dtype=X.dtype)
+        scale = xp.sqrt(var)
+        # 0 division 보호
+        if _is_cupy_array(scale):
+            scale = cp.where(scale == 0, 1.0, scale)
+        else:
+            scale = np.where(scale == 0, 1.0, scale)
+        self.mean_ = mean
+        self.scale_ = scale
+        return self
+
+    def transform(self, X):
+        assert self.mean_ is not None and self.scale_ is not None, "Call fit() first."
+        X = _ensure_2d(X)
+        if _is_object_like(X):
+            return _to_host(X)  # 객체형은 그대로 반환
+        xp = _xp_of(X)
+        Z = X
+        if self.with_mean:
+            Z = Z - self.mean_
         if self.with_std:
-            scale = X.std(axis=0, ddof=0)
-            scale[scale == 0] = 1.0
-            self.scale_ = scale
-        else:
-            self.scale_ = np.ones(X.shape[1])
-        return self
-
-    def transform(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        return (X - self.mean_) / self.scale_
-
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
-
-
-class MinMaxScaler:
-    """데이터를 [min, max] 구간으로 선형 스케일"""
-    def __init__(self, feature_range=(0, 1)):
-        self.feature_range = feature_range
-        self.min_ = None
-        self.scale_ = None
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        dmin = X.min(axis=0)
-        dmax = X.max(axis=0)
-        drange = dmax - dmin
-        drange[drange == 0] = 1.0
-        self.min_ = dmin
-        self.scale_ = drange
-        return self
-
-    def transform(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        X_std = (X - self.min_) / self.scale_
-        a, b = self.feature_range
-        return X_std * (b - a) + a
-
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
-
-
-class RobustScaler:
-    """중앙값 + IQR 기반 스케일링 (이상치에 강건)"""
-    def __init__(self, with_centering=True, with_scaling=True):
-        self.with_centering = with_centering
-        self.with_scaling = with_scaling
-        self.center_ = None
-        self.scale_ = None
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        self.center_ = np.median(X, axis=0) if self.with_centering else np.zeros(X.shape[1])
-        if self.with_scaling:
-            q75, q25 = np.percentile(X, [75, 25], axis=0)
-            iqr = q75 - q25
-            iqr[iqr == 0] = 1.0
-            self.scale_ = iqr
-        else:
-            self.scale_ = np.ones(X.shape[1])
-        return self
-
-    def transform(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        return (X - self.center_) / self.scale_
-
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
-
-
-class Normalizer:
-    """샘플 단위 정규화 (L1, L2, max)"""
-    def __init__(self, norm="l2"):
-        assert norm in ("l1", "l2", "max")
-        self.norm = norm
-
-    def fit(self, X):
-        return self  # 학습 파라미터 없음
-
-    def transform(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        if self.norm == "l1":
-            norms = np.sum(np.abs(X), axis=1, keepdims=True)
-        elif self.norm == "l2":
-            norms = np.sqrt(np.sum(X**2, axis=1, keepdims=True))
-        else:  # max
-            norms = np.max(np.abs(X), axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        return X / norms
-
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
-
-
-# ------------------------
-# Imputation
-# ------------------------
-
-class SimpleImputer:
-    """
-    결측치 대치: strategy in {'mean','median','most_frequent','constant'}
-    - numeric에 mean/median 권장
-    - constant는 fill_value 사용
-    """
-    def __init__(self, strategy="mean", fill_value=None):
-        assert strategy in ("mean", "median", "most_frequent", "constant")
-        self.strategy = strategy
-        self.fill_value = fill_value
-        self.statistics_ = None  # 각 컬럼별 대치값
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=object)  # 숫자/문자 혼재 가능성
-        n_features = X.shape[1]
-        stats = []
-
-        for j in range(n_features):
-            col = X[:, j]
-            mask = self._isnan(col)
-            valid = col[~mask]
-
-            if self.strategy == "mean":
-                valid_num = valid.astype(np.float64)
-                stats.append(np.nan if valid_num.size == 0 else np.mean(valid_num))
-            elif self.strategy == "median":
-                valid_num = valid.astype(np.float64)
-                stats.append(np.nan if valid_num.size == 0 else np.median(valid_num))
-            elif self.strategy == "most_frequent":
-                if valid.size == 0:
-                    stats.append(np.nan)
-                else:
-                    # 최빈값 (동률 시 첫 번째)
-                    values, counts = np.unique(valid, return_counts=True)
-                    stats.append(values[np.argmax(counts)])
-            else:  # constant
-                stats.append(self.fill_value)
-
-        # NaN 남아있으면 0/"" 등으로 보수적으로 처리
-        for i, v in enumerate(stats):
-            if isinstance(v, float) and np.isnan(v):
-                stats[i] = 0.0
-            if v is None:
-                stats[i] = 0.0
-
-        self.statistics_ = np.array(stats, dtype=object)
-        return self
-
-    def transform(self, X):
-        X = np.asarray(X, dtype=object)
-        X_out = X.copy()
-        for j in range(X.shape[1]):
-            col = X_out[:, j]
-            mask = self._isnan(col)
-            if np.any(mask):
-                col[mask] = self.statistics_[j]
-                X_out[:, j] = col
-        return X_out
-
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
-
-    @staticmethod
-    def _isnan(col):
-        # 숫자/문자 혼재 호환: None 또는 np.nan
-        return np.array([ (c is None) or (isinstance(c, float) and np.isnan(c)) for c in col ])
-
-
-# ------------------------
-# Categorical Encoding
-# ------------------------
-
-class OneHotEncoder:
-    """
-    범주형 → 원-핫.
-    - handle_unknown: {'error', 'ignore'} (미학습 범주는 무시)
-    - categories: 'auto' 또는 각 열별 카테고리 리스트의 리스트
-    """
-    def __init__(self, handle_unknown="ignore", categories="auto", drop=None, dtype=np.float64):
-        assert handle_unknown in ("ignore", "error")
-        self.handle_unknown = handle_unknown
-        self.categories = categories
-        self.drop = drop  # ('first' 지원 또는 None). 특정 카테고리 드롭은 확장 가능.
-        self.dtype = dtype
-
-        self.categories_ = None   # 학습된 각 열별 카테고리 배열
-        self.feature_indices_ = None  # 출력에서 각 원-핫 블록 시작 인덱스
-
-    def fit(self, X):
-        X = self._to_2d_object(X)
-        n_features = X.shape[1]
-        cats = []
-
-        if self.categories == "auto":
-            for j in range(n_features):
-                col = X[:, j]
-                # None/NaN 제거 후 카테고리 수집
-                mask = SimpleImputer._isnan(col)
-                vals = col[~mask]
-                cats_j = np.unique(vals)
-                cats.append(cats_j)
-        else:
-            # 사용자가 직접 제공
-            assert isinstance(self.categories, (list, tuple)) and len(self.categories) == n_features
-            cats = [np.array(c) for c in self.categories]
-
-        # drop='first' 지원: 각 열에서 첫 카테고리 제거
-        if self.drop == "first":
-            cats = [c[1:] if len(c) > 0 else c for c in cats]
-
-        self.categories_ = cats
-
-        # 출력 feature 인덱스 누적합 기록
-        sizes = [len(c) for c in self.categories_]
-        self.feature_indices_ = np.cumsum([0] + sizes)
-        return self
-
-    def transform(self, X):
-        X = self._to_2d_object(X)
-        n_samples, n_features = X.shape
-        out_dim = self.feature_indices_[-1]
-        out = np.zeros((n_samples, out_dim), dtype=self.dtype)
-
-        for j in range(n_features):
-            cats_j = self.categories_[j]
-            if len(cats_j) == 0:
-                continue
-            start = self.feature_indices_[j]
-            end = self.feature_indices_[j+1]
-            span = end - start
-
-            col = X[:, j]
-            for i, val in enumerate(col):
-                if (val is None) or (isinstance(val, float) and np.isnan(val)):
-                    # 결측은 전부 0 (따로 Imputer 쓰는 걸 권장)
-                    continue
-                # 카테고리 매칭
-                idx = np.where(cats_j == val)[0]
-                if idx.size == 0:
-                    if self.handle_unknown == "error":
-                        raise ValueError(f"Unknown category {val} in column {j}")
-                    else:
-                        continue  # ignore → 전부 0
-                out[i, start + int(idx[0])] = 1
-        return out
-
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
-
-    @staticmethod
-    def _to_2d_object(X):
-        X = np.asarray(X, dtype=object)
-        if X.ndim == 1:
-            X = X.reshape(-1, 1)
-        return X
-
-
-# ------------------------
-# Feature Expansion
-# ------------------------
-
-class PolynomialFeatures:
-    """
-    다항 특성 확장.
-    - degree: 최대 차수
-    - include_bias: 상수항(1) 포함 여부
-    - interaction_only: 상호작용항만(제곱/세제곱 등 자기항 제외)
-    """
-    def __init__(self, degree=2, include_bias=True, interaction_only=False):
-        assert degree >= 1
-        self.degree = degree
-        self.include_bias = include_bias
-        self.interaction_only = interaction_only
-        self.n_input_features_ = None
-        self.n_output_features_ = None
-        self.powers_ = None  # 각 출력 특성의 지수 벡터 목록 (shape: [n_out, n_in])
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        if X.ndim == 1:
-            X = X.reshape(-1, 1)
-        n_features = X.shape[1]
-        self.n_input_features_ = n_features
-
-        # 지수 조합 생성
-        powers = []
-        if self.include_bias:
-            powers.append(np.zeros(n_features, dtype=int))  # bias term
-
-        # degree 1..d
-        if self.interaction_only:
-            # 각 차수 k에서 중복 없는 조합
-            for k in range(1, self.degree + 1):
-                for comb in combinations(range(n_features), k):
-                    p = np.zeros(n_features, dtype=int)
-                    for idx in comb:
-                        p[idx] += 1
-                    powers.append(p)
-        else:
-            # 중복 허용 조합 (자기항 제곱 등 포함)
-            for k in range(1, self.degree + 1):
-                for comb in combinations_with_replacement(range(n_features), k):
-                    p = np.zeros(n_features, dtype=int)
-                    for idx in comb:
-                        p[idx] += 1
-                    powers.append(p)
-
-        self.powers_ = np.vstack(powers) if len(powers) > 0 else np.zeros((0, n_features), dtype=int)
-        self.n_output_features_ = self.powers_.shape[0]
-        return self
-
-    def transform(self, X):
-        X = np.asarray(X, dtype=np.float64)
-        if X.ndim == 1:
-            X = X.reshape(-1, 1)
-        n_samples = X.shape[0]
-        Z = np.ones((n_samples, self.n_output_features_), dtype=np.float64)
-
-        for j, p in enumerate(self.powers_):
-            if np.all(p == 0):
-                Z[:, j] = 1.0  # bias
-            else:
-                # 각 입력 특성에 대해 거듭제곱 후 곱
-                cols = []
-                for f_idx, power in enumerate(p):
-                    if power == 0:
-                        continue
-                    cols.append(np.power(X[:, f_idx], power))
-                prod = cols[0]
-                for c in cols[1:]:
-                    prod = prod * c
-                Z[:, j] = prod
+            Z = Z / self.scale_
         return Z
 
-    def fit_transform(self, X):
-        return self.fit(X).transform(X)
+    def fit_transform(self, X, y=None):
+        return self.fit(X, y).transform(X)
+
+
+# ============================================================
+# OneHotEncoder (혼합 지원: 숫자형은 GPU 가능, 객체/문자형은 CPU에서 처리)
+# ============================================================
+class OneHotEncoder:
+    """
+    handle_unknown: "error" | "ignore"
+    categories: "auto" (열별로 unique 학습)
+    dtype: 출력 dtype (np.float32 권장)
+    device_output:
+        - None: 입력 배열의 장치에 맞춤 (GPU 입력이면 GPU 출력 시도)
+        - "host": 항상 numpy 반환
+        - "device": 가능하면 cupy 반환 (객체형/CPU 경로는 host)
+    """
+    def __init__(self,
+                 handle_unknown: Literal["error", "ignore"] = "ignore",
+                 categories: Literal["auto"] = "auto",
+                 dtype: Any = np.float32,
+                 device_output: Optional[Literal["host", "device"]] = None,
+                 backend=None):
+        self.handle_unknown = handle_unknown
+        self.categories = categories
+        self.dtype = dtype
+        self.device_output = device_output
+        self.backend = _check_backend(backend)
+
+        # learned
+        self.categories_: List[Any] = None   # per-column categories (np or cp arrays)
+        self.col_is_numeric_: List[bool] = None
+
+    def fit(self, X, y=None):
+        X = _ensure_2d(X)
+        n, d = X.shape
+        cats = []
+        col_is_num = []
+
+        for j in range(d):
+            col = X[:, j]
+            if _is_object_like(col):
+                # CPU: 문자열/객체
+                colh = _to_host(col).astype(object)
+                cj = np.unique(colh)
+                cats.append(cj)
+                col_is_num.append(False)
+            else:
+                # 숫자형: 입력이 GPU면 GPU에서 unique
+                xp = _xp_of(col)
+                cj = xp.unique(col)
+                cats.append(cj)
+                col_is_num.append(True)
+
+        self.categories_ = cats
+        self.col_is_numeric_ = col_is_num
+        return self
+
+    def transform(self, X):
+        assert self.categories_ is not None, "Call fit() first."
+        X = _ensure_2d(X)
+        n, d = X.shape
+
+        blocks = []
+        for j in range(d):
+            col = X[:, j]
+            Cj = self.categories_[j]
+            is_num = self.col_is_numeric_[j]
+
+            # --- CPU (객체/문자형) ---
+            if not is_num:
+                colh = _to_host(col).astype(object)
+                Cjh = _to_host(Cj).astype(object)
+
+                # 각 값 -> one-hot
+                Kj = len(Cjh)
+                Oj = np.zeros((n, Kj), dtype=self.dtype)
+                # 빠르게: 해시맵(카테고리 -> index)
+                idx = {val: k for k, val in enumerate(Cjh)}
+                for i, v in enumerate(colh):
+                    k = idx.get(v, -1)
+                    if k == -1:
+                        if self.handle_unknown == "error":
+                            raise ValueError(f"Unknown category {v} in column {j}")
+                        else:
+                            continue  # ignore -> all zeros
+                    Oj[i, k] = 1.0
+                blocks.append(Oj)
+                continue
+
+            # --- GPU/CPU 숫자형 ---
+            xp = _xp_of(col)
+            Cj_arr = Cj  # xp array(np or cp)
+            Kj = Cj_arr.shape[0]
+
+            # (n,1) vs (1,K) 브로드캐스팅 비교 → (n,K) bool
+            eq = (col.reshape(-1, 1) == Cj_arr.reshape(1, -1))
+            Oj = eq.astype(self.dtype)
+
+            # unknown 처리: eq에서 모두 False → all zeros (ignore), error이면 체크
+            if self.handle_unknown == "error":
+                row_has_one = eq.any(axis=1)
+                if bool(_to_host(row_has_one == False).any()):
+                    # 어떤 행이라도 매칭 없음
+                    raise ValueError(f"Unknown numeric category detected in column {j}")
+
+            blocks.append(Oj)
+
+        O = _concat_colwise(blocks)
+
+        # device_output 정책
+        if self.device_output == "host":
+            return _to_host(O)
+        if self.device_output == "device":
+            return _to_device(self.backend, O)
+        # None: 입력 장치에 맞춘다
+        if any(_is_cupy_array(X[:, j]) for j in range(X.shape[1])) or _is_cupy_array(X):
+            return _to_device(self.backend, O)
+        return _to_host(O)
+
+    def fit_transform(self, X, y=None):
+        return self.fit(X, y).transform(X)
+
+# --- Add to ml/preprocessing/preprocessing.py (StandardScaler 아래에 붙이기) ---
+
+class MinMaxScaler:
+    """
+    Scales each feature to a given range (default [0, 1]).
+    - 숫자형은 GPU(CuPy) 지원.
+    - 객체/문자형 컬럼은 변환하지 않고 그대로 통과합니다.
+    """
+    def __init__(self, feature_range=(0.0, 1.0), clip=False, backend=None):
+        assert len(feature_range) == 2
+        self.feature_range = (float(feature_range[0]), float(feature_range[1]))
+        self.clip = bool(clip)
+        self.backend = _check_backend(backend)
+
+        self.data_min_ = None
+        self.data_max_ = None
+        self.data_range_ = None  # max - min
+
+    def fit(self, X, y=None):
+        X = _ensure_2d(X)
+        if _is_object_like(X):
+            # 객체형은 스케일링 대상 아님 → 0..1로 가정, 그대로 통과
+            Xh = _to_host(X)
+            self.data_min_ = np.zeros(Xh.shape[1], dtype=float)
+            self.data_max_ = np.ones(Xh.shape[1], dtype=float)
+            self.data_range_ = self.data_max_ - self.data_min_
+            return self
+
+        xp = _xp_of(X)
+        self.data_min_ = xp.nanmin(X, axis=0)
+        self.data_max_ = xp.nanmax(X, axis=0)
+        self.data_range_ = self.data_max_ - self.data_min_
+        # 0 division 방지
+        if _is_cupy_array(self.data_range_):
+            self.data_range_ = cp.where(self.data_range_ == 0, 1.0, self.data_range_)
+        else:
+            self.data_range_ = np.where(self.data_range_ == 0, 1.0, self.data_range_)
+        return self
+
+    def transform(self, X):
+        assert self.data_min_ is not None, "Call fit() first."
+        X = _ensure_2d(X)
+
+        if _is_object_like(X):
+            return _to_host(X)  # 객체형은 그대로 반환
+
+        xp = _xp_of(X)
+        Xs = (X - self.data_min_) / self.data_range_
+
+        lo, hi = self.feature_range
+        if hi != 1.0 or lo != 0.0:
+            Xs = Xs * (hi - lo) + lo
+
+        if self.clip:
+            if _is_cupy_array(Xs):
+                Xs = cp.clip(Xs, lo, hi)
+            else:
+                Xs = np.clip(Xs, lo, hi)
+        return Xs
+
+    def fit_transform(self, X, y=None):
+        return self.fit(X, y).transform(X)

@@ -15,20 +15,47 @@ class CUDABackend(Backend):
     def __init__(self):
         if cp is None:
             raise ImportError("CuPy가 필요합니다. `pip install cupy-cuda12x` 등으로 설치하세요.")
+    
+    def _asdevice(self, a):
+        # 이미 cupy면 그대로
+        if isinstance(a, cp.ndarray):
+            return a
+        # numpy object 배열은 GPU 불가 → 호스트 유지
+        try:
+            import numpy as np
+            if isinstance(a, np.ndarray) and a.dtype == object:
+                return a
+        except Exception:
+            pass
+        # 가능하면 cupy로 올림, 실패하면 원본 유지
+        try:
+            return cp.asarray(a)
+        except Exception:
+            return a
 
-    # ---- BLAS-like ----
     def gemm(self, A, B, transA: bool = False, transB: bool = False):
+        A = self._asdevice(A)
+        B = self._asdevice(B)
         A = A.T if transA else A
         B = B.T if transB else B
-        return A @ B  # cuBLAS sgemm/dgemm 경유
+        return A @ B
 
     def gemv(self, A, x, transA: bool = False):
+        A = self._asdevice(A)
+        x = self._asdevice(x)
         A = A.T if transA else A
-        return A @ x  # cuBLAS gemv
+        return A @ x
+
 
     def axpy(self, a: float, x, y):
-        return a * x + y  # elementwise (커널 1회)
-
+        x = self._asdevice(x)
+        # y는 스칼라/배열 모두 지원. 배열이면 cupy로 승격 시도.
+        try:
+            y = self._asdevice(y)
+        except Exception:
+            pass
+        return a * x + y
+    
     def dot(self, x, y) -> float:
         return float(cp.dot(x, y).get())  # host float 반환
 
@@ -63,9 +90,21 @@ class CUDABackend(Backend):
     def prox_soft_threshold(self, w, tau: float):
         return cp.sign(w) * cp.maximum(cp.abs(w) - tau, 0.0)
 
-    # ---- device I/O ----
     def to_device(self, x):
-        return x if isinstance(x, cp.ndarray) else cp.asarray(x)
+        # 이미 cupy면 그대로
+        if isinstance(x, cp.ndarray):
+            return x
+        # numpy object 배열은 올리지 않음
+        try:
+            import numpy as np
+            if isinstance(x, np.ndarray) and x.dtype == object:
+                return x
+        except Exception:
+            pass
+        try:
+            return cp.asarray(x)
+        except Exception:
+            return x
 
     def to_host(self, x):
         return x if not isinstance(x, cp.ndarray) else cp.asnumpy(x)
