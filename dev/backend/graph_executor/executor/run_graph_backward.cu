@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <algorithm>          // std::max
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 
@@ -30,13 +31,19 @@
 #define TILE_WIDTH 16
 #endif
 
+/* ============================ Legacy→Vector normalize ============================ */
+
 static inline void normalize_legacy_local(OpStruct& n) {
     if (!n.input_id.empty() && n.inputs.empty())  n.inputs.push_back(n.input_id);
     if (!n.param_id.empty() && n.params.empty())  n.params.push_back(n.param_id);
 }
 static inline std::vector<OpStruct> normalize_graph_local(const std::vector<OpStruct>& E) {
     std::vector<OpStruct> out; out.reserve(E.size());
-    for (auto n : E) { normalize_legacy_local(n); out.push_back(std::move(n)); }
+    for (const auto& n_ref : E) {           // 복사 1회만 수행
+        OpStruct n = n_ref;
+        normalize_legacy_local(n);
+        out.emplace_back(std::move(n));
+    }
     return out;
 }
 static inline std::string A_of(const OpStruct& op) {
@@ -47,6 +54,8 @@ static inline std::string B_of(const OpStruct& op) {
     if (op.inputs.size() >= 2) return op.inputs[1];
     return op.param_id;
 }
+
+/* ========================== small helpers / utilities ========================== */
 
 // safer accumulate: sum rows of (B x KN) -> (KN)
 __global__ void sum_rows_kernel(const float* X, float* y, int B, int KN) {
@@ -67,6 +76,43 @@ static inline void reg_grad(std::unordered_map<std::string, float*>& G,
     if (!key.empty() && ptr) G[key] = ptr;
 }
 
+/* ============================== time utils (BW) ============================== */
+
+// SLICE_TIME backward: dY shape (B,1,D) -> dX shape (B,T,D) (t 위치로 scatter)
+__global__ void slice_time_bw_kernel(const float* __restrict__ dY,
+                                     float* __restrict__ dX,
+                                     int B, int T, int D, int t) {
+    int b = blockIdx.z;                                        // 배치는 z축
+    int i = blockIdx.x * blockDim.x + threadIdx.x;             // 0..D-1
+    if (b >= B || i >= D) return;
+    size_t off_y = ((size_t)b * 1 + 0) * D + i;
+    size_t off_x = ((size_t)b * T + t) * D + i;
+    dX[off_x] = dY[off_y];
+}
+
+// CONCAT_TIME backward: dY(B,t1+t2,D) -> dX1(B,t1,D), dX2(B,t2,D)
+__global__ void concat_time_bw_kernel(const float* __restrict__ dY,
+                                      float* __restrict__ dX1, int t1,
+                                      float* __restrict__ dX2, int t2,
+                                      int B, int D) {
+    int b = blockIdx.z;
+    int r = blockIdx.y;                                        // 0..t1+t2-1
+    int c = blockIdx.x * blockDim.x + threadIdx.x;             // 0..D-1
+    if (b >= B || c >= D) return;
+    int T = t1 + t2;
+    size_t y_off = ((size_t)b * T + r) * D + c;
+    if (r < t1) {
+        size_t x1_off = ((size_t)b * t1 + r) * D + c;
+        dX1[x1_off] = dY[y_off];
+    } else {
+        int r2 = r - t1;
+        size_t x2_off = ((size_t)b * t2 + r2) * D + c;
+        dX2[x2_off] = dY[y_off];
+    }
+}
+
+/* ================================== main ================================== */
+
 void run_graph_backward(
     const std::vector<OpStruct>& E_in,
     std::unordered_map<std::string, float*>& tensors,
@@ -81,7 +127,7 @@ void run_graph_backward(
     bool fused_softmax = false;
     std::string fused_softmax_in_id, fused_softmax_out_id;
 
-    // 1) LOSS backward
+    /* ------------------------------- 1) LOSS BW ------------------------------- */
     if (!E.empty() && E.back().op_type == LOSS) {
         const OpStruct& loss_op = E.back();
         const std::string loss_type = loss_op.extra_params.loss_type;
@@ -107,7 +153,7 @@ void run_graph_backward(
         const int N = B * C;
         cudaStream_t stream = 0;
 
-        // fused check
+        // softmax 바로 뒤 cce면 fused 경로 사용
         const OpStruct* prev = nullptr;
         if (E.size() >= 2) {
             const OpStruct& cand = E[E.size()-2];
@@ -133,7 +179,7 @@ void run_graph_backward(
         }
     }
 
-    // 2) others (reverse)
+    /* ------------------------------ 2) others BW ----------------------------- */
     for (auto it = E.rbegin(); it != E.rend(); ++it) {
         const OpStruct& op = *it;
         if (op.op_type == LOSS) continue;
@@ -163,6 +209,7 @@ void run_graph_backward(
         }
 
         switch (op.op_type) {
+        /* --------------------------------- GEMM --------------------------------- */
         case MATMUL: {
             if (!param) break;
 
@@ -197,11 +244,12 @@ void run_graph_backward(
             CUDA_CHECK(cudaFree(dW_tmp));
 
             // grad key를 param_id와 B_id 모두로 등록(옵티마이저 호환)
-            reg_grad(gradients, B_id,       dW);
+            reg_grad(gradients, B_id,        dW);
             reg_grad(gradients, op.param_id, dW);
             break;
         }
 
+        /* ---------------------------------- ADD --------------------------------- */
         case ADD: {
             if (!tensors.count(B_id) || !shapes.count(B_id)) {
                 std::fprintf(stderr, "[ADD/BWD] missing bias '%s'\n", B_id.c_str());
@@ -246,6 +294,29 @@ void run_graph_backward(
             break;
         }
 
+        /* ------------------------------- ADD_BIAS ------------------------------- */
+        case ADD_BIAS: {
+            if (!param || !shapes.count(B_id)) {
+                std::fprintf(stderr, "[ADD_BIAS/BWD] missing bias '%s'\n", B_id.c_str());
+                break;
+            }
+            const Shape outS = out_shape;
+            const int rowsB = batch_size * outS.rows;
+            const int C     = outS.cols;
+
+            // dX = dY
+            const size_t bytes = (size_t)rowsB * C * sizeof(float);
+            CUDA_CHECK(cudaMemcpy(grad_input_full, grad_out_full, bytes, cudaMemcpyDeviceToDevice));
+
+            // db = sum over rows
+            float* grad_bias = nullptr; CUDA_CHECK(cudaMalloc(&grad_bias, (size_t)C * sizeof(float)));
+            launch_reduce_over_rows(grad_out_full, grad_bias, rowsB, C);
+            reg_grad(gradients, B_id,        grad_bias);
+            reg_grad(gradients, op.param_id, grad_bias);
+            break;
+        }
+
+        /* ------------------------------- Activations ---------------------------- */
         case SIGMOID:
         case RELU:
         case TANH:
@@ -269,6 +340,7 @@ void run_graph_backward(
             break;
         }
 
+        /* --------------------------------- Softmax ------------------------------ */
         case SOFTMAX: {
             const int rowsB = batch_size * out_shape.rows;
             const int cols  = out_shape.cols;
@@ -281,11 +353,14 @@ void run_graph_backward(
             break;
         }
 
+        /* --------------------------------- Flatten ------------------------------ */
         case FLATTEN: {
+            // Pass-through
             gradients[A_id] = grad_out_full;
-            continue;
+            continue;  // grad_input_full 미할당이므로 공통 등록 스킵
         }
 
+        /* ---------------------------------- Conv -------------------------------- */
         case CONV2D: {
             const OpExtraParams& ex = op.extra_params;
             const int N=batch_size, Cin=ex.input_c, Hin=ex.input_h, Win=ex.input_w;
@@ -322,6 +397,7 @@ void run_graph_backward(
             break;
         }
 
+        /* ---------------------------------- Pool -------------------------------- */
         case POOL_MAX:
         case POOL_AVG: {
             const OpExtraParams& ex = op.extra_params;
@@ -365,6 +441,58 @@ void run_graph_backward(
             break;
         }
 
+        /* -------------------------------- SLICE_TIME ----------------------------- */
+        case SLICE_TIME: {
+            const Shape aS = shapes.count(A_id) ? shapes[A_id] : Shape{0,0}; // (T,D)
+            const int T = aS.rows;
+            const int D = aS.cols;
+            int t = op.extra_params.time_index;
+            if (t < 0) t = 0; if (t >= T) t = T - 1;
+
+            // dX = 0, 선택된 t 위치로만 scatter
+            const size_t bytesX = (size_t)batch_size * T * D * sizeof(float);
+            CUDA_CHECK(cudaMemset(grad_input_full, 0, bytesX));
+
+            const dim3 blk(256,1,1);
+            const dim3 grd((D + 255) / 256, 1, batch_size);
+            slice_time_bw_kernel<<<grd, blk>>>(grad_out_full, grad_input_full, batch_size, T, D, t);
+            CUDA_CHECK(cudaGetLastError());
+            break;
+        }
+
+        /* ------------------------------- CONCAT_TIME ----------------------------- */
+        case CONCAT_TIME: {
+            const Shape s1 = shapes.count(A_id) ? shapes[A_id] : Shape{0,0}; // (t1,D)
+            const Shape s2 = shapes.count(B_id) ? shapes[B_id] : Shape{0,0}; // (t2,D)
+            if (s1.cols != s2.cols) { std::fprintf(stderr,"[CONCAT_TIME/BWD] D mismatch\n"); break; }
+            const int t1 = s1.rows, t2 = s2.rows, D = s1.cols;
+
+            // dX1 = grad_input_full (이미 malloc됨: size=B*t1*D)
+            float* dX2 = nullptr; CUDA_CHECK(cudaMalloc(&dX2, (size_t)batch_size * t2 * D * sizeof(float)));
+
+            // zero-init
+            CUDA_CHECK(cudaMemset(grad_input_full, 0, (size_t)batch_size * t1 * D * sizeof(float)));
+            CUDA_CHECK(cudaMemset(dX2,            0, (size_t)batch_size * t2 * D * sizeof(float)));
+
+            const dim3 blk(256,1,1);
+            const dim3 grd((D + 255) / 256, t1 + t2, batch_size);
+            concat_time_bw_kernel<<<grd, blk>>>(grad_out_full, grad_input_full, t1, dX2, t2, batch_size, D);
+            CUDA_CHECK(cudaGetLastError());
+
+            // 등록 후, 공통 경로의 중복 등록을 피하려면 continue
+            gradients[A_id] = grad_input_full;
+            reg_grad(gradients, B_id, dX2);
+            continue;
+        }
+
+        /* -------------------------------- FILL_ZERO ------------------------------ */
+        case FILL_ZERO: {
+            // 생성 오퍼: 입력으로 전파 없음
+            if (grad_input_full) { CUDA_CHECK(cudaFree(grad_input_full)); grad_input_full = nullptr; }
+            continue;  // 공통 등록 스킵
+        }
+
+        /* ----------------------------------- RNN --------------------------------- */
         case RNN: {
             const OpExtraParams& ex = op.extra_params;
             const int B=batch_size;
@@ -435,7 +563,7 @@ void run_graph_backward(
 
             gradients[A_id] = dX;
             reg_grad(gradients, Wx_id,      dWx);
-            reg_grad(gradients, op.param_id, dWx); // 안전
+            reg_grad(gradients, op.param_id, dWx); // dual-key safety
             if (!Wh_id.empty()) reg_grad(gradients, Wh_id, dWh); else CUDA_CHECK(cudaFree(dWh));
             if (!b_id.empty())  reg_grad(gradients, b_id,  db);  else CUDA_CHECK(cudaFree(db));
             if (!h0_id.empty()) reg_grad(gradients, h0_id, dh0); else CUDA_CHECK(cudaFree(dh0));
@@ -445,6 +573,7 @@ void run_graph_backward(
         default: break;
         } // switch
 
+        // 공통: grad_input_full 등록 (FLATTEN/특수 continue 케이스 제외)
         if (op.op_type != FLATTEN) {
             if (!grad_input_full) {
                 std::fprintf(stderr, "[BW] grad_input_full null: op=%d\n", op.op_type);
@@ -452,5 +581,5 @@ void run_graph_backward(
                 gradients[A_id] = grad_input_full;
             }
         }
-    }
+    } // for
 }

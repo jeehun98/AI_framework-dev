@@ -189,7 +189,7 @@ def test_rnn_seq_parity():
 
     # 학습
     #  - RNN은 시퀀스 학습 난이도가 있으므로 에폭/러닝레이트는 적당히 조정
-    model.fit(x, y, epochs=5000, batch_size=B, verbose=1)
+    model.fit(x, y, epochs=1000, batch_size=B, verbose=1)
 
     # 학습 후 손실
     print("\n[AFTER] evaluate on full set")
