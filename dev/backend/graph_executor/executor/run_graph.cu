@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <cmath>
 
 #include "../quant/quant_types.cuh"
 #include "../quant/observers.cuh"
@@ -75,14 +76,15 @@ inline float* get_tensor_rw(std::unordered_map<std::string, float*>& tensors,
 
 /* ======================= Time utilities (simple kernels) ================== */
 // per-sample view: rows=T, cols=D  (물리 메모리: [B, rows, cols])
+// 1) slice_time_kernel 수정
 __global__ void slice_time_kernel(const float* __restrict__ X,
                                   float* __restrict__ Y,
                                   int B, int T, int D, int t) {
-    const int b = blockIdx.y;
-    const int i = blockIdx.x * blockDim.x + threadIdx.x; // 0..D-1
+    const int b = blockIdx.z;  // 통일: 배치는 z축
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (b >= B || i >= D) return;
     const size_t off_in  = ((size_t)b * T + t) * D;
-    const size_t off_out = ((size_t)b * 1 + 0) * D;      // (1,D)
+    const size_t off_out = ((size_t)b * 1 + 0) * D;
     Y[off_out + i] = X[off_in + i];
 }
 
@@ -112,9 +114,14 @@ static inline void normalize_legacy_local(OpStruct& n) {
     if (!n.input_id.empty() && n.inputs.empty())  n.inputs.push_back(n.input_id);
     if (!n.param_id.empty() && n.params.empty())  n.params.push_back(n.param_id);
 }
+// 2) normalize_graph_local 복사 최소화
 static inline std::vector<OpStruct> normalize_graph_local(const std::vector<OpStruct>& E) {
     std::vector<OpStruct> out; out.reserve(E.size());
-    for (auto n : E) { normalize_legacy_local(n); out.push_back(std::move(n)); }
+    for (const auto& n_ref : E) {
+        OpStruct n = n_ref;
+        normalize_legacy_local(n);
+        out.emplace_back(std::move(n));
+    }
     return out;
 }
 
@@ -545,6 +552,7 @@ void run_graph_cuda(
             const size_t bytes = (size_t)batch_size * itS->second.rows * itS->second.cols * sizeof(float);
             CUDA_CHECK(cudaMemsetAsync(Y, 0, bytes));
             CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaMemsetAsync(Y, 0, bytes /*, ge_stream() or 0 */));
             break;
         }
 

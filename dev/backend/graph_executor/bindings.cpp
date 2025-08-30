@@ -1,5 +1,4 @@
-// bindings.cpp (revised, backward-compatible)
-
+// bindings.cpp (revised, backward-compatible, enhanced)
 #include <cuda_runtime.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
@@ -11,6 +10,7 @@
 #include <vector>
 #include <iostream>
 #include <stdexcept>
+#include <memory>
 
 #include "loss/loss_kernels.cuh"
 #include "executor/run_graph.cuh"
@@ -18,7 +18,14 @@
 #include "executor/run_graph_with_loss.cuh"
 #include "op_structs.cuh"
 #include "optimizer/optimizer_types.cuh"
+#include "optimizer/optimizer_config.cuh"
+#include "optimizer/optimizer_kernels.cuh"
 
+using namespace pybind11::literals;  // <-- _a 리터럴 활성화
+
+namespace py = pybind11;
+
+/* ------------------------------ Build Flags ------------------------------ */
 #ifndef WEIGHT_DECAY_ENABLE
 #define WEIGHT_DECAY_ENABLE 0
 #endif
@@ -28,14 +35,33 @@
 #ifndef GLOBAL_NORM_CLIP_ENABLE
 #define GLOBAL_NORM_CLIP_ENABLE 0
 #endif
-// #define GE_DEBUG_SYNC 1
-// #define GE_VERBOSE 1
+#ifndef GE_DEBUG_SYNC
+// 1로 켜면 각 단계마다 cudaDeviceSynchronize()
+#define GE_DEBUG_SYNC 0
+#endif
+#ifndef GE_VERBOSE
+#define GE_VERBOSE 0
+#endif
+#ifndef GE_USE_NVTX
+#define GE_USE_NVTX 0
+#endif
 
-#include "optimizer/optimizer_config.cuh"
-#include "optimizer/optimizer_kernels.cuh"
+// NVTX 사용시 -DGE_USE_NVTX=1 로 빌드
+#if GE_USE_NVTX
+#include <nvtx3/nvToolsExt.h>
+#define NVTX_RANGE(name) nvtxRangePushA(name)
+#define NVTX_POP()       nvtxRangePop()
+#else
+#define NVTX_RANGE(name) do{}while(0)
+#define NVTX_POP()       do{}while(0)
+#endif
 
-namespace py = pybind11;
+// run_graph_backward가 반환한 gradient 버퍼를 바인딩에서 free할지 여부
+#ifndef GE_FREE_GRADS
+#define GE_FREE_GRADS 1
+#endif
 
+/* --------------------------------- CUDA ---------------------------------- */
 #define CUDA_CHECK(stmt)                                                     \
     do {                                                                     \
         cudaError_t _e = (stmt);                                             \
@@ -54,108 +80,199 @@ static inline OptimizerType to_opt(int v) {
     }
 }
 
+// 안전한 디바이스 포인터 캐스팅/검증
+static inline float* as_device_ptr(uintptr_t p, const char* name){
+    if (p == 0) throw std::runtime_error(std::string("null device ptr: ")+name);
+    cudaPointerAttributes attr{};
+    cudaError_t st = cudaPointerGetAttributes(&attr, reinterpret_cast<void*>(p));
+    if (st != cudaSuccess) {
+        throw std::runtime_error(std::string("bad device ptr (cudaPointerGetAttributes failed): ")+name);
+    }
+#if CUDART_VERSION >= 10000
+    if (attr.type != cudaMemoryTypeDevice && attr.type != cudaMemoryTypeManaged) {
+        throw std::runtime_error(std::string("not a device/managed ptr: ")+name);
+    }
+#else
+    if (attr.memoryType != cudaMemoryTypeDevice && attr.memoryType != cudaMemoryTypeManaged) {
+        throw std::runtime_error(std::string("not a device/managed ptr: ")+name);
+    }
+#endif
+    return reinterpret_cast<float*>(p);
+}
 /* ------------------------ helpers: legacy -> vector ------------------------ */
 static inline void normalize_legacy(OpStruct& n) {
-    // 기존 단일 필드를 썼다면 벡터로 이관
     if (!n.input_id.empty() && n.inputs.empty())  n.inputs.push_back(n.input_id);
     if (!n.param_id.empty() && n.params.empty())  n.params.push_back(n.param_id);
 }
 
-static inline std::vector<OpStruct> normalize_graph(const std::vector<OpStruct>& E) {
-    std::vector<OpStruct> out; out.reserve(E.size());
-    for (auto n : E) { normalize_legacy(n); out.push_back(std::move(n)); }
-    return out;
+// 값 복사 1회로 끝내고, 내부에서 in-place 정규화
+static inline std::vector<OpStruct> normalize_graph(std::vector<OpStruct> E) {
+    for (auto& n : E) normalize_legacy(n);
+    return E;
 }
 
 static inline std::string loss_pred_input_id(const std::vector<OpStruct>& E) {
     if (E.empty()) return "";
     const OpStruct& last = E.back();
     if (last.op_type != OpType::LOSS) return "";
-    // LOSS 노드의 예측 입력은 inputs[0] 우선, 없으면 레거시 input_id
     if (!last.inputs.empty()) return last.inputs[0];
     return last.input_id;
 }
 
+// 디버그 친화 메시지
+static inline void mismatch_throw(const char* tag, long long a, long long b) {
+    throw std::runtime_error(std::string(tag) + " mismatch: " + std::to_string(a) + " vs " + std::to_string(b));
+}
+
 /* =============================== Entrypoints =============================== */
 
-// Forward-only
+// Forward-only (out_host: None 허용, device_id: 옵션)
 void run_graph_forward_entry(
-    const std::vector<OpStruct>& E_in,
+    std::vector<OpStruct> E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
-    py::array_t<float> out_host,
+    py::object out_host,                         // None 또는 numpy.ndarray(float32)
     const std::string& final_output_id,
-    int batch_size)
-{
+    int batch_size,
+    int device_id = -1                           // 음수면 변경 안 함
+){
     if (E_in.empty()) throw std::runtime_error("empty graph");
-    const auto E = normalize_graph(E_in);
+    if (device_id >= 0) CUDA_CHECK(cudaSetDevice(device_id));
+
+    const auto E = normalize_graph(std::move(E_in));
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
-    for (const auto& kv : tensor_ptrs)
-        tensors[kv.first] = reinterpret_cast<float*>(kv.second);
+    for (const auto& kv : tensor_ptrs) {
+        tensors[kv.first] = as_device_ptr(kv.second, kv.first.c_str());
+    }
 
-    float* out_ptr = out_host.mutable_data();
+    // out_host가 None이면 디바이스 내에서만 유지
+    float* out_ptr = nullptr;
+    std::unique_ptr<py::array_t<float>> holder;
+    if (!out_host.is_none()) {
+        auto arr = out_host.cast<py::array_t<float>>();
+        out_ptr = const_cast<float*>(arr.data());
+        holder = std::make_unique<py::array_t<float>>(arr); // 라이프타임 보장
+    }
+
     {
         py::gil_scoped_release nogil;
-        run_graph_cuda(E, tensors, shapes, out_ptr, final_output_id, batch_size);
+        NVTX_RANGE("forward");
+        run_graph_cuda(E, tensors, shapes, /*out_host=*/out_ptr, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
     }
 }
 
-// Forward + Loss
+// Forward + Loss (device_id 옵션)
 float run_graph_with_loss_entry(
-    const std::vector<OpStruct>& E_in,
+    std::vector<OpStruct> E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     const std::string& final_output_id,
     const std::string& label_tensor_id,
     const std::string& loss_type,
-    int batch_size)
-{
+    int batch_size,
+    int device_id = -1
+){
     if (E_in.empty()) throw std::runtime_error("empty graph");
-    const auto E = normalize_graph(E_in);
+    if (device_id >= 0) CUDA_CHECK(cudaSetDevice(device_id));
+
+    const auto E = normalize_graph(std::move(E_in));
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
-    for (const auto& kv : tensor_ptrs)
-        tensors[kv.first] = reinterpret_cast<float*>(kv.second);
+    for (const auto& kv : tensor_ptrs) {
+        tensors[kv.first] = as_device_ptr(kv.second, kv.first.c_str());
+    }
 
     float loss = 0.f;
     {
         py::gil_scoped_release nogil;
-        loss = run_graph_with_loss_cuda(E, tensors, shapes,
-                                        final_output_id, label_tensor_id,
-                                        loss_type, batch_size);
+
+        NVTX_RANGE("forward(warm)+loss");
+
+        // LOSS가 마지막이면 예측 텐서 id 추적
+        std::string pred_id = final_output_id;
+        if (!E.empty() && E.back().op_type == OpType::LOSS) {
+            const auto cand = loss_pred_input_id(E);
+            if (!cand.empty()) pred_id = cand;
+        }
+
+        // forward (host copy 없음)
+        run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+
+        // ---- Loss ----
+        auto it_pred = tensors.find(pred_id);
+        auto it_true = tensors.find(label_tensor_id);
+        auto it_pshp = shapes.find(pred_id);
+        auto it_tshp = shapes.find(label_tensor_id);
+        if (it_pred == tensors.end() || it_true == tensors.end() ||
+            it_pshp == shapes.end()  || it_tshp == shapes.end())
+            throw std::runtime_error("loss: missing y_pred/y_true/shape");
+
+        float* y_pred = it_pred->second;
+        float* y_true = it_true->second;
+        const Shape sp = it_pshp->second;
+        const Shape st = it_tshp->second;
+
+        const int rows_per_sample = sp.rows; // 시퀀스면 >1
+        const int C = sp.cols;
+        const int B = batch_size * rows_per_sample;
+        const long long N = 1LL * B * C;
+
+        if (loss_type == "mse") {
+            const long long trueN = 1LL * st.rows * st.cols * batch_size;
+            if (trueN != N) mismatch_throw("loss(mse) total elements", trueN, N);
+            loss = compute_mse_loss_cuda(y_true, y_pred, (int)N);
+        } else if (loss_type == "binary_crossentropy" || loss_type == "bce") {
+            const long long trueN = 1LL * st.rows * st.cols * batch_size;
+            if (trueN != N) mismatch_throw("loss(bce) total elements", trueN, N);
+            loss = compute_bce_loss_cuda(y_true, y_pred, (int)N);
+        } else if (loss_type == "cce") {
+            if (st.rows != rows_per_sample || st.cols != C) {
+                throw std::runtime_error("loss(cce): y_true per-sample shape mismatch");
+            }
+            loss = compute_cce_loss_cuda(y_true, y_pred, B, C);
+        } else {
+            throw std::runtime_error("loss: unsupported type");
+        }
+        CUDA_CHECK(cudaGetLastError());
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
     }
     return loss;
 }
 
-// Backward
+// Backward (device_id 옵션, gradients 포인터 딕셔너리 반환)
 py::dict run_graph_backward_entry(
-    const std::vector<OpStruct>& E_in,
+    std::vector<OpStruct> E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     const std::unordered_map<std::string, uintptr_t>& /*gradient_ptrs_unused*/,
     const std::string& final_output_id,
-    int batch_size)
-{
+    int batch_size,
+    int device_id = -1
+){
     if (E_in.empty()) throw std::runtime_error("empty graph");
-    const auto E = normalize_graph(E_in);
+    if (device_id >= 0) CUDA_CHECK(cudaSetDevice(device_id));
+
+    const auto E = normalize_graph(std::move(E_in));
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
-    for (const auto& kv : tensor_ptrs)
-        tensors[kv.first] = reinterpret_cast<float*>(kv.second);
+    for (const auto& kv : tensor_ptrs) {
+        tensors[kv.first] = as_device_ptr(kv.second, kv.first.c_str());
+    }
 
-    // If final node is LOSS, we also need its input (y_pred) to exist on device
+    // LOSS의 입력(y_pred) id
     std::string pred_id = final_output_id;
     if (!E.empty() && E.back().op_type == OpType::LOSS) {
         const auto cand = loss_pred_input_id(E);
@@ -165,18 +282,22 @@ py::dict run_graph_backward_entry(
     std::unordered_map<std::string, float*> gradients;
     {
         py::gil_scoped_release nogil;
-        // Warm forward to produce y_pred on device only
+
+        NVTX_RANGE("forward(warm)");
         run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
 
+        NVTX_RANGE("backward");
         run_graph_backward(E, tensors, shapes, gradients, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
     }
 
     py::dict result;
@@ -185,9 +306,9 @@ py::dict run_graph_backward_entry(
     return result;
 }
 
-// Train step (Fwd+Loss -> Bwd -> Optimizer)
+// Train step: Fwd(warm)+Loss -> Bwd -> Optimizer (device_id 옵션)
 float train_step_entry(
-    const std::vector<OpStruct>& E_in,
+    std::vector<OpStruct> E_in,
     const std::unordered_map<std::string, uintptr_t>& tensor_ptrs,
     std::unordered_map<std::string, Shape>& shapes,
     const std::string& final_output_id,
@@ -209,15 +330,18 @@ float train_step_entry(
 #if AMSGRAD_ENABLE
    ,const std::unordered_map<std::string, uintptr_t>& vhat_max_ptrs = {}
 #endif
-)
-{
+   ,int device_id = -1
+){
     if (E_in.empty()) throw std::runtime_error("empty graph");
-    const auto E = normalize_graph(E_in);
+    if (device_id >= 0) CUDA_CHECK(cudaSetDevice(device_id));
+
+    const auto E = normalize_graph(std::move(E_in));
 
     std::unordered_map<std::string, float*> tensors;
     tensors.reserve(tensor_ptrs.size());
-    for (const auto& kv : tensor_ptrs)
-        tensors[kv.first] = reinterpret_cast<float*>(kv.second);
+    for (const auto& kv : tensor_ptrs) {
+        tensors[kv.first] = as_device_ptr(kv.second, kv.first.c_str());
+    }
 
     float loss = 0.f;
     std::unordered_map<std::string, float*> gradients;
@@ -225,20 +349,23 @@ float train_step_entry(
     {
         py::gil_scoped_release nogil;
 
+        // 예측 텐서 id 결정
         std::string pred_id = final_output_id;
         if (!E.empty() && E.back().op_type == OpType::LOSS) {
             const auto cand = loss_pred_input_id(E);
             if (!cand.empty()) pred_id = cand;
         }
 
-        // Forward (no host copy; keep intermediates)
+        NVTX_RANGE("forward(warm)");
         run_graph_cuda(E, tensors, shapes, /*out_host=*/nullptr, pred_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
 
         // ---- Loss ----
+        NVTX_RANGE("loss");
         auto it_pred = tensors.find(pred_id);
         auto it_true = tensors.find(label_tensor_id);
         auto it_pshp = shapes.find(pred_id);
@@ -252,19 +379,19 @@ float train_step_entry(
         const Shape sp = it_pshp->second;
         const Shape st = it_tshp->second;
 
-        const int rows_per_sample = sp.rows; // may be 1 or seq_len
+        const int rows_per_sample = sp.rows;
         const int C = sp.cols;
         const int B = batch_size * rows_per_sample;
-        const int N = B * C;
+        const long long N = 1LL * B * C;
 
         if (loss_type == "mse") {
-            if (st.rows * st.cols * batch_size != N)
-                throw std::runtime_error("loss(mse): y_true size mismatch");
-            loss = compute_mse_loss_cuda(y_true, y_pred, N);
+            const long long trueN = 1LL * st.rows * st.cols * batch_size;
+            if (trueN != N) mismatch_throw("loss(mse) total elements", trueN, N);
+            loss = compute_mse_loss_cuda(y_true, y_pred, (int)N);
         } else if (loss_type == "binary_crossentropy" || loss_type == "bce") {
-            if (st.rows * st.cols * batch_size != N)
-                throw std::runtime_error("loss(bce): y_true size mismatch");
-            loss = compute_bce_loss_cuda(y_true, y_pred, N);
+            const long long trueN = 1LL * st.rows * st.cols * batch_size;
+            if (trueN != N) mismatch_throw("loss(bce) total elements", trueN, N);
+            loss = compute_bce_loss_cuda(y_true, y_pred, (int)N);
         } else if (loss_type == "cce") {
             if (st.rows != rows_per_sample || st.cols != C) {
                 throw std::runtime_error("loss(cce): y_true per-sample shape mismatch");
@@ -274,21 +401,24 @@ float train_step_entry(
             throw std::runtime_error("loss: unsupported type");
         }
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
 
         // ---- Backward ----
+        NVTX_RANGE("backward");
         run_graph_backward(E, tensors, shapes, gradients, final_output_id, batch_size);
         CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
         CUDA_CHECK(cudaDeviceSynchronize());
 #endif
+        NVTX_POP();
 
         // ---- Optimizer ----
+        NVTX_RANGE("optimizer");
         std::set<std::string> trainable_params;
         for (const auto& op : E) {
-            // 벡터/레거시 모두에서 파라미터 수집
             if (!op.params.empty()) {
                 trainable_params.insert(op.params.begin(), op.params.end());
             } else if (!op.param_id.empty()) {
@@ -301,7 +431,7 @@ float train_step_entry(
             auto g_it = gradients.find(name);
             auto s_it = shapes.find(name);
             if (t_it == tensors.end() || g_it == gradients.end() || s_it == shapes.end()) {
-#ifdef GE_VERBOSE
+#if GE_VERBOSE
                 std::cerr << "[warn] missing tensor/grad/shape for param " << name << "\n";
 #endif
                 continue;
@@ -338,27 +468,58 @@ float train_step_entry(
                 size, opt_type, timestep
             );
             CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
             CUDA_CHECK(cudaDeviceSynchronize());
 #endif
         }
 
-        // free grad buffers
+#if GE_FREE_GRADS
+        // free grad buffers (중복 포인터 dedup)
         std::unordered_set<const float*> freed;
         for (const auto& kv : gradients) {
             const float* p = kv.second;
             if (p && freed.insert(p).second) CUDA_CHECK(cudaFree(const_cast<float*>(p)));
         }
+#endif
+        NVTX_POP();
     }
 
     return loss;
 }
 
+/* ============================ Pinned Host Utils ============================ */
+static py::array pinned_float_array_1d(py::ssize_t n) {
+    void* p = nullptr;
+    CUDA_CHECK(cudaHostAlloc(&p, n * sizeof(float), cudaHostAllocPortable));
+    auto capsule = py::capsule(p, [](void* ptr){ cudaFreeHost(ptr); });
+
+    // buffer_info 생성 시에도 py::ssize_t 사용
+    return py::array(py::buffer_info(
+        p,
+        sizeof(float),
+        py::format_descriptor<float>::format(),
+        1,
+        { n },                              // std::initializer_list<py::ssize_t>
+        { static_cast<py::ssize_t>(sizeof(float)) }
+    ), capsule);
+}
+
 /* =============================== Pybind Module ============================= */
 
 PYBIND11_MODULE(graph_executor, m) {
+    // 빌드 옵션 노출 (디버깅 편의)
+    {
+        py::dict flags;
+        // 매크로가 정수형이 아닐 수도 있으니 안전하게 (int) 캐스팅
+        flags["WEIGHT_DECAY_ENABLE"]      = (int)WEIGHT_DECAY_ENABLE;
+        flags["AMSGRAD_ENABLE"]           = (int)AMSGRAD_ENABLE;
+        flags["GLOBAL_NORM_CLIP_ENABLE"]  = (int)GLOBAL_NORM_CLIP_ENABLE;
+        flags["GE_DEBUG_SYNC"]            = (int)GE_DEBUG_SYNC;
+        flags["GE_USE_NVTX"]              = (int)GE_USE_NVTX;
+
+        m.attr("_build_flags") = std::move(flags);
+    }
     // Enums
-    // PYBIND11_MODULE(...) 내부의 OpType enum 바인딩에 한 줄 추가
     py::enum_<OpType>(m, "OpType")
         .value("MATMUL", OpType::MATMUL)
         .value("ADD", OpType::ADD)
@@ -379,10 +540,8 @@ PYBIND11_MODULE(graph_executor, m) {
         .value("SLICE_TIME", OpType::SLICE_TIME)
         .value("CONCAT_TIME", OpType::CONCAT_TIME)
         .value("FILL_ZERO", OpType::FILL_ZERO)
-        // 👇 여기 추가
         .value("RNN", OpType::RNN)
         .export_values();
-
 
     py::enum_<OptimizerType>(m, "OptimizerType")
         .value("SGD", OptimizerType::SGD)
@@ -421,7 +580,6 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("gelu_tanh", &OpExtraParams::gelu_tanh)
         .def_readwrite("temperature", &OpExtraParams::temperature)
         .def_readwrite("axis", &OpExtraParams::axis)
-        // time utils
         .def_readwrite("time_index", &OpExtraParams::time_index)
         .def_readwrite("concat_count", &OpExtraParams::concat_count);
 
@@ -430,10 +588,10 @@ PYBIND11_MODULE(graph_executor, m) {
         .def_readwrite("rows", &Shape::rows)
         .def_readwrite("cols", &Shape::cols);
 
-    // OpStruct: legacy + vector API 모두 노출
+    // OpStruct: legacy + vector API
     py::class_<OpStruct>(m, "OpStruct")
         .def(py::init<>())
-        // legacy ctor (single input/param)
+        // legacy ctor
         .def(py::init<OpType, std::string, std::string, std::string, OpExtraParams>(),
              py::arg("op_type"), py::arg("input_id"), py::arg("param_id"),
              py::arg("output_id"), py::arg("extra_params") = OpExtraParams())
@@ -441,28 +599,48 @@ PYBIND11_MODULE(graph_executor, m) {
         .def(py::init<OpType, std::vector<std::string>, std::vector<std::string>, std::string, OpExtraParams>(),
              py::arg("op_type"), py::arg("inputs"), py::arg("params"),
              py::arg("output_id"), py::arg("extra_params") = OpExtraParams())
-        // fields
         .def_readwrite("op_type", &OpStruct::op_type)
-        .def_readwrite("input_id", &OpStruct::input_id)   // legacy
-        .def_readwrite("param_id", &OpStruct::param_id)   // legacy
+        .def_readwrite("input_id", &OpStruct::input_id)
+        .def_readwrite("param_id", &OpStruct::param_id)
         .def_readwrite("inputs",   &OpStruct::inputs)
         .def_readwrite("params",   &OpStruct::params)
         .def_readwrite("output_id",&OpStruct::output_id)
         .def_readwrite("extra_params", &OpStruct::extra_params);
 
-    // Graph APIs
+    /* ------------------------------- Graph APIs ------------------------------ */
+    // Forward (out_host: None 허용, device_id 옵션)
     m.def("run_graph_forward_entry", &run_graph_forward_entry,
-        py::arg("E"), py::arg("tensors"), py::arg("shapes"),
-        py::arg("out_host"), py::arg("final_output_id"), py::arg("batch_size"));
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("out_host"),                   // None 또는 numpy(float32)
+        py::arg("final_output_id"),
+        py::arg("batch_size"),
+        py::arg("device_id") = -1
+    );
 
+    // Forward + Loss
     m.def("run_graph_with_loss_entry", &run_graph_with_loss_entry,
-        py::arg("E"), py::arg("tensors"), py::arg("shapes"),
-        py::arg("final_output_id"), py::arg("label_tensor_id"),
-        py::arg("loss_type"), py::arg("batch_size"));
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("final_output_id"),
+        py::arg("label_tensor_id"),
+        py::arg("loss_type"),
+        py::arg("batch_size"),
+        py::arg("device_id") = -1
+    );
 
+    // Backward
     m.def("run_graph_backward_entry", &run_graph_backward_entry,
-        py::arg("E"), py::arg("tensors"), py::arg("shapes"),
-        py::arg("gradients"), py::arg("final_output_id"), py::arg("batch_size"));
+        py::arg("E"),
+        py::arg("tensors"),
+        py::arg("shapes"),
+        py::arg("gradients"),
+        py::arg("final_output_id"),
+        py::arg("batch_size"),
+        py::arg("device_id") = -1
+    );
 
     // Optimizer: enum version
     m.def("optimizer_update",
@@ -479,13 +657,13 @@ PYBIND11_MODULE(graph_executor, m) {
         ){
             py::gil_scoped_release nogil;
             optimizer_update_cuda(
-                reinterpret_cast<float*>(param_ptr),
-                reinterpret_cast<const float*>(grad_ptr),
-                reinterpret_cast<float*>(velocity_ptr),
-                reinterpret_cast<float*>(m_ptr),
-                reinterpret_cast<float*>(v_ptr),
+                as_device_ptr(param_ptr, "param"),
+                reinterpret_cast<const float*>(as_device_ptr(grad_ptr, "grad")),
+                velocity_ptr ? as_device_ptr(velocity_ptr, "velocity") : nullptr,
+                m_ptr ? as_device_ptr(m_ptr, "m") : nullptr,
+                v_ptr ? as_device_ptr(v_ptr, "v") : nullptr,
 #if AMSGRAD_ENABLE
-                reinterpret_cast<float*>(vhat_max_ptr),
+                vhat_max_ptr ? as_device_ptr(vhat_max_ptr, "vhat_max") : nullptr,
 #endif
                 lr, beta1, beta2, eps,
 #if WEIGHT_DECAY_ENABLE
@@ -494,7 +672,7 @@ PYBIND11_MODULE(graph_executor, m) {
                 size, opt_type, timestep
             );
             CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
             CUDA_CHECK(cudaDeviceSynchronize());
 #endif
         },
@@ -526,13 +704,13 @@ PYBIND11_MODULE(graph_executor, m) {
             const OptimizerType opt_type = to_opt(opt_type_int);
             py::gil_scoped_release nogil;
             optimizer_update_cuda(
-                reinterpret_cast<float*>(param_ptr),
-                reinterpret_cast<const float*>(grad_ptr),
-                reinterpret_cast<float*>(velocity_ptr),
-                reinterpret_cast<float*>(m_ptr),
-                reinterpret_cast<float*>(v_ptr),
+                as_device_ptr(param_ptr, "param"),
+                reinterpret_cast<const float*>(as_device_ptr(grad_ptr, "grad")),
+                velocity_ptr ? as_device_ptr(velocity_ptr, "velocity") : nullptr,
+                m_ptr ? as_device_ptr(m_ptr, "m") : nullptr,
+                v_ptr ? as_device_ptr(v_ptr, "v") : nullptr,
 #if AMSGRAD_ENABLE
-                reinterpret_cast<float*>(vhat_max_ptr),
+                vhat_max_ptr ? as_device_ptr(vhat_max_ptr, "vhat_max") : nullptr,
 #endif
                 lr, beta1, beta2, eps,
 #if WEIGHT_DECAY_ENABLE
@@ -541,7 +719,7 @@ PYBIND11_MODULE(graph_executor, m) {
                 size, opt_type, timestep
             );
             CUDA_CHECK(cudaGetLastError());
-#ifdef GE_DEBUG_SYNC
+#if GE_DEBUG_SYNC
             CUDA_CHECK(cudaDeviceSynchronize());
 #endif
         },
@@ -581,5 +759,11 @@ PYBIND11_MODULE(graph_executor, m) {
 #if AMSGRAD_ENABLE
        ,py::arg("vhat_max_ptrs") = std::unordered_map<std::string, uintptr_t>{}
 #endif
+       ,py::arg("device_id") = -1
     );
+
+    /* --------------------------- Pinned Host Utils -------------------------- */
+    m.def("pinned_float_array_1d", &pinned_float_array_1d,
+          py::arg("n"),
+          "Allocate 1D float32 NumPy array in pinned host memory.");
 }
