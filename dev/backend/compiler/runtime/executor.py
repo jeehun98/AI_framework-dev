@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Tuple, List
 import importlib
 import os
+import sys
 
 from ..ir.nodes import Graph, Tensor, Op
 from ..passes.pass_manager import PassManager
@@ -14,22 +15,40 @@ from ..kernels.selector import pick_kernel
 # 네이티브 바인딩 선택: v2 우선, 없으면 v1 폴백. 환경변수로 강제 가능.
 # ---------------------------------------------------------------------
 PREFERRED = os.environ.get("GE_NATIVE", "graph_executor_v2")
-CANDIDATES = (PREFERRED, "graph_executor_v2", "graph_executor")
+
+# 현재 .pyd 위치를 고려해 import 후보를 확장
+CANDIDATES = (
+    PREFERRED,
+    "graph_executor_v2",
+    "graph_executor",
+    "backend.graph_executor_v2",
+    "backend.graph_executor_v2.graph_executor_v2",
+)
 
 _native = None
 _chosen = None
 _last_err: Exception | None = None
-for _mod in CANDIDATES:
-    try:
-        _native = importlib.import_module(_mod)
-        _chosen = _mod
-        break
-    except Exception as e:
-        _last_err = e
-        _native = None
+
+
+def _import_first(modnames):
+    last = None
+    for name in modnames:
+        try:
+            m = importlib.import_module(name)
+            # 호환성을 위해 "graph_executor" 별칭 등록
+            sys.modules.setdefault("graph_executor", m)
+            return name, m, None
+        except Exception as e:
+            last = e
+    return None, None, last
+
+
+_chosen, _native, _last_err = _import_first(CANDIDATES)
 
 _HAS_LAUNCH = hasattr(_native, "launch_kernel") if _native else False
-_HAS_QUERY = hasattr(_native, "query_capability") if _native else False
+_HAS_QUERY = any(
+    hasattr(_native, n) for n in ("query_capability", "query_kernels")
+) if _native else False
 
 
 def _debug_backend() -> Dict[str, object]:
@@ -49,6 +68,7 @@ class ExecutorV2:
     - stream: cudaStream_t를 정수(uintptr)로 전달 (옵션)
     - dry_run: True면 커널 선택/플랜만 출력하고 launch는 생략
     """
+
     def __init__(
         self,
         device_caps: Dict[str, bool] | None = None,
@@ -63,7 +83,9 @@ class ExecutorV2:
         # 주입 모듈이 있으면 그걸 사용 (테스트 안정화용)
         self.native = native_module or _native
         self.has_launch = hasattr(self.native, "launch_kernel") if self.native else False
-        self.has_query = hasattr(self.native, "query_capability") if self.native else False
+        self.has_query = any(
+            hasattr(self.native, n) for n in ("query_capability", "query_kernels")
+        ) if self.native else False
 
     def run(self, graph: Graph):
         # 1) 패스 파이프라인
@@ -103,6 +125,7 @@ class ExecutorV2:
         - descs: {'buffers': [{'shape':[...], 'dtype':'f16', 'layout':'rowmajor', 'device':'cuda'}, ...]}
         실제 환경에서는 CuPy/torch 텐서에서 device pointer를 추출해 넣으면 된다.
         """
+
         def _to_desc(t: Tensor) -> Dict:
             return {
                 "shape": list(t.shape),
@@ -111,8 +134,8 @@ class ExecutorV2:
                 "device": t.device,
             }
 
-        # NOTE: 현재는 포인터 없음(드라이런/스켈레톤). 통합 시:
-        # bufs = [int(x.data.ptr), int(w.data.ptr), ..., int(y.data.ptr)]
-        bufs: List[int] = []
+        bufs: List[int] = []  # 아직 포인터 없음(스켈레톤)
         descs = {"buffers": [_to_desc(t) for t in (op.inputs + op.outputs)]}
         return bufs, descs
+
+
