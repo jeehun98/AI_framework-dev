@@ -1,8 +1,13 @@
-# --- add project paths ---
+# --- add paths (project + build) ---
 import os, sys
-DEV_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.insert(0, DEV_DIR)  # 이제 dev/가 sys.path에 올라감
-# --------------------------
+HERE = os.path.dirname(__file__)  # .../dev/backend/graph_executor_v2
+DEV_DIR = os.path.abspath(os.path.join(HERE, "..", ".."))            # .../dev
+BUILD_DIR = os.path.join(HERE, "build")                               # Ninja 기본 출력
+if not os.path.isdir(BUILD_DIR):                                      # 혹시 Release 하위일 때
+    BUILD_DIR = os.path.join(HERE, "build", "Release")
+
+sys.path[:0] = [DEV_DIR, BUILD_DIR]   # utils용 DEV_DIR, .pyd용 BUILD_DIR
+# -----------------------------------
 
 from utils.load_cuda import ensure_cuda_dlls
 ensure_cuda_dlls()
