@@ -215,39 +215,43 @@ void run_graph_backward(
 
             // dX = dY · W^T
             gemm_rm_strided_batched_tf32(
-                h, false, true,
+                h, /*transA=*/false, /*transB=*/true,
                 /*M=*/M, /*N=*/K, /*K=*/N,
                 /*A=*/grad_out_full,   /*lda=*/N, /*strideA=*/(long long)M * N,
                 /*B=*/param,           /*ldb=*/N, /*strideB=*/0LL,
                 /*C=*/grad_input_full, /*ldc=*/K, /*strideC=*/(long long)M * K,
                 /*batch=*/batch_size,
-                1.f, 0.f
+                /*alpha=*/1.f, /*beta=*/0.f
             );
 
-            // dW = sum_b (X_b^T · dY_b)
-            float* dW_tmp = nullptr; // (B, K, N) packed as (B, KN)
-            CUDA_CHECK(cudaMalloc(&dW_tmp, (size_t)batch_size * K * N * sizeof(float)));
-
-            gemm_rm_strided_batched_tf32(
-                h, true, false,
-                /*M=*/K, /*N=*/N, /*K=*/M,
-                /*A=*/input,         /*lda=*/K, /*strideA=*/(long long)M * K,
-                /*B=*/grad_out_full, /*ldb=*/N, /*strideB=*/(long long)M * N,
-                /*C=*/dW_tmp,        /*ldc=*/N, /*strideC=*/(long long)K * N,
-                /*batch=*/batch_size,
-                1.f, 0.f
-            );
-
-            float* dW = nullptr; // (K,N)
+            // dW = sum_b (X_b^T · dY_b)  --> 임시버퍼 없이 직접 누적
+            float* dW = nullptr; // (K, N)
             CUDA_CHECK(cudaMalloc(&dW, (size_t)K * N * sizeof(float)));
-            sum_rows(dW_tmp, dW, batch_size, K * N); // 안전 합산
-            CUDA_CHECK(cudaFree(dW_tmp));
+
+            for (int b = 0; b < batch_size; ++b) {
+                const float* Xb  = input + (long long)b * M * K;       // X_b:  (M,K)
+                const float* dYb = grad_out_full + (long long)b * M * N; // dY_b: (M,N)
+
+                // dW += X_b^T · dY_b
+                gemm_rm_tf32(
+                    h,
+                    /*transA=*/true,  /* A: X_b^T (K,M) */
+                    /*transB=*/false, /* B: dY_b  (M,N) */
+                    /*M=*/K, /*N=*/N, /*K=*/M,
+                    /*A=*/Xb,  /*lda=*/K,
+                    /*B=*/dYb, /*ldb=*/N,
+                    /*C=*/dW,  /*ldc=*/N,
+                    /*alpha=*/1.f,
+                    /*beta=*/(b == 0 ? 0.f : 1.f)  // 첫 배치는 덮어쓰기, 이후는 누적
+                );
+            }
 
             // grad key를 param_id와 B_id 모두로 등록(옵티마이저 호환)
             reg_grad(gradients, B_id,        dW);
             reg_grad(gradients, op.param_id, dW);
             break;
         }
+
 
         /* ---------------------------------- ADD --------------------------------- */
         case ADD: {
