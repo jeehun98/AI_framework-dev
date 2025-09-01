@@ -1,0 +1,8 @@
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "graph_executor_v2"
+version = "0.0.1"
+requires-python = ">=3.12"
