@@ -1,17 +1,26 @@
-# 커널 메타데이터를 간단히 등록/조회하는 전역 레지스트리
+# -*- coding: utf-8 -*-
+"""
+커널 메타데이터 전역 레지스트리 (Python-side)
+- selector 가 사용할 후보군을 선언적으로 보관
+- 네이티브 테이블(launch_table/capability)과 최종 매칭되어 동작
+"""
 
 from __future__ import annotations
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 KernelMeta = Dict[str, object]  # name, op_type, dtypes, flags, layouts ...
-
 _REGISTRY: List[KernelMeta] = []
 
+
 def register(meta: KernelMeta) -> None:
+    """커널 메타 등록"""
     _REGISTRY.append(meta)
 
+
 def query(op_type: str) -> List[KernelMeta]:
+    """op_type 로 후보 필터링"""
     return [m for m in _REGISTRY if m.get("op_type") == op_type]
+
 
 # 예시 등록: FP16 Tensor Core / FP32 일반 버전
 register({

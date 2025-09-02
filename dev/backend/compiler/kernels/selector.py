@@ -1,15 +1,23 @@
+# -*- coding: utf-8 -*-
+"""
+커널 선택기
+- 파이썬 레지스트리 + (있다면) 네이티브 capability 점수 합산으로 최종 선택
+"""
+
 from __future__ import annotations
-from typing import Dict
-from .registry import query
+from typing import Dict, List, Tuple
 import importlib
 
-# graph_executor(.pyd)가 query_capability 제공하면 활용하고, 없으면 휴리스틱
+from .registry import query as reg_query
+
+# 네이티브 query_capability 사용 여부 감지
 try:
     native = importlib.import_module("graph_executor")
     _HAS_QUERY = hasattr(native, "query_capability")
 except Exception:
     native = None
     _HAS_QUERY = False
+
 
 def _score_by_rules(op, km, caps: Dict[str, bool]) -> int:
     s = 0
@@ -19,23 +27,29 @@ def _score_by_rules(op, km, caps: Dict[str, bool]) -> int:
     mm = km.get("flags", {}).get("min_mnk", (0, 0, 0))
     if M >= mm[0] and N >= mm[1] and K >= mm[2]:
         s += 20
-    # dtype/레이아웃 체크는 스킵(스켈레톤)
+    # TODO: dtype/layout 호환성 체크
     return s
 
+
 def pick_kernel(op, device_caps: Dict[str, bool]) -> str:
-    candidates = query(op.op_type)
+    candidates = reg_query(op.op_type)
     if not candidates:
         raise RuntimeError(f"No kernel registered for op_type={op.op_type}")
-    # 네이티브가 점수 제공하면 합산
-    scores = []
+
+    scored: List[Tuple[int, str]] = []
+
+    native_scores: Dict[str, int] = {}
+    if _HAS_QUERY:
+        try:
+            ns = native.query_capability(op.op_type, {}, {})
+            native_scores = {str(k): int(v) for k, v in ns.items()}
+        except Exception:
+            native_scores = {}
+
     for km in candidates:
-        sc = _score_by_rules(op, km, device_caps)
-        if _HAS_QUERY:
-            try:
-                # 선택적으로 네이티브 점수(없으면 무시)
-                sc += int(native.query_capability(op.op_type, {}, {} ).get(km["name"], 0))  # 타입 단순화
-            except Exception:
-                pass
-        scores.append((sc, km["name"]))
-    scores.sort(reverse=True)
-    return scores[0][1]
+        kname = km["name"]
+        sc = _score_by_rules(op, km, device_caps) + native_scores.get(kname, 0)
+        scored.append((sc, kname))
+
+    scored.sort(reverse=True)
+    return scored[0][1]

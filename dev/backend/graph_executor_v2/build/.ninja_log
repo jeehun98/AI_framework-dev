@@ -1,6 +1,0 @@
-# ninja log v7
-32	511	7784323519654192	CMakeFiles/graph_executor_v2.dir/src/launch_table.cpp.obj	3e232eedbf556401
-21	2066	7784323519556204	CMakeFiles/graph_executor_v2.dir/src/bindings_min_api.cpp.obj	4e92fd0793f9b8f6
-41	3489	7784323519745814	CMakeFiles/graph_executor_v2.dir/src/my_kernels.cu.obj	a200386c18fe5acf
-3492	5632	7784323554265904	CMakeFiles/graph_executor_v2.dir/cmake_device_link.obj	a14f5c2dd05b2923
-5633	6864	7784323575667491	graph_executor_v2.cp312-win_amd64.pyd	684869d6392a2c2a

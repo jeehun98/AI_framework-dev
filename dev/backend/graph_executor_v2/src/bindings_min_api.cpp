@@ -1,49 +1,68 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <vector>
-#include <unordered_map>
+#include <stdexcept>
 #include <string>
-#include <cstdint>
+#include <unordered_map>
+#include <vector>
+#include "ge_v2_api.h"
+
+/**
+ * 노출 API:
+ *  - query_capability(op_type, in_descs, out_descs) -> {kernel_name: score}
+ *  - launch_kernel(kernel_name, buffers, descs, stream=0)
+ *  - query_kernels() -> [kernel_name, ...]
+ */
 
 namespace py = pybind11;
-
-using KernelFn = int(*)(const uintptr_t*, int, void*);
-
-// launch_table.cpp에서 제공
-const std::unordered_map<std::string, KernelFn>& ge_v2_kernel_table_raw();
-const std::unordered_map<std::string, int>&      ge_v2_capability_table_raw();
 
 static py::dict query_capability_py(const std::string& op_type,
                                     py::dict /*in_descs*/,
                                     py::dict /*out_descs*/) {
   py::dict scores;
   const auto& cap = ge_v2_capability_table_raw();
-  for (auto& kv : cap) {
-    const auto& key = kv.first; // "GEMM_BIAS_ACT__gemm_bias_act_tc_f16"
-    if (key.rfind(op_type + "__", 0) == 0) { // 접두 일치
-      scores[py::str(key.substr(op_type.size() + 2))] = kv.second;
+  const std::string prefix = op_type + "__";
+  for (const auto& kv : cap) {
+    if (kv.first.rfind(prefix, 0) == 0) {
+      const std::string kernel_name = kv.first.substr(prefix.size());
+      scores[py::str(kernel_name)] = kv.second;
     }
   }
   return scores;
 }
 
 static void launch_kernel_py(const std::string& kernel_name,
-                             std::vector<uintptr_t> buffers,
+                             std::vector<ge2_uintptr> buffers,
                              py::dict /*descs*/,
-                             std::uintptr_t stream_opaque) {
+                             ge2_uintptr stream_opaque = 0) {
   const auto& tab = ge_v2_kernel_table_raw();
   auto it = tab.find(kernel_name);
   if (it == tab.end()) throw std::runtime_error("unknown kernel: " + kernel_name);
-  KernelFn fn = it->second;
-  int rc = fn(buffers.data(), static_cast<int>(buffers.size()),
+
+  ge2_kernel_fn fn = it->second;
+  int rc = fn(buffers.data(),
+              static_cast<int>(buffers.size()),
               reinterpret_cast<void*>(stream_opaque));
-  if (rc != 0) throw std::runtime_error("kernel launch failed rc=" + std::to_string(rc));
+  if (rc != 0) {
+    throw std::runtime_error("kernel launch failed rc=" + std::to_string(rc));
+  }
+}
+
+static py::list query_kernels_py() {
+  py::list L;
+  for (const auto& kv : ge_v2_kernel_table_raw()) L.append(py::str(kv.first));
+  return L;
 }
 
 PYBIND11_MODULE(graph_executor_v2, m) {
   m.doc() = "V2 bridge (CUDA-ready) for Python compiler";
-  m.def("query_capability", &query_capability_py);
+  m.def("query_capability", &query_capability_py,
+        py::arg("op_type"), py::arg("in_descs") = py::dict(),
+        py::arg("out_descs") = py::dict());
+
   m.def("launch_kernel", &launch_kernel_py,
         py::arg("kernel_name"), py::arg("buffers"),
-        py::arg("descs"), py::arg("stream") = 0);
+        py::arg("descs") = py::dict(), py::arg("stream") = 0);
+
+  m.def("query_kernels", &query_kernels_py);
+  m.attr("GE2_API_VERSION") = GE2_API_VERSION;
 }
