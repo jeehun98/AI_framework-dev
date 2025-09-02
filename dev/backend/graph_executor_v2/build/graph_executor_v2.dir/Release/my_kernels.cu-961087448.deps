@@ -30,7 +30,6 @@ C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\sys\stat.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\sys\types.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\time.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\wchar.h
-C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\algorithm
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cctype
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cfloat
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\climits
@@ -79,9 +78,7 @@ C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.3443
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\yvals.h
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\yvals_core.h
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\__msvc_bit_utils.hpp
-C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\__msvc_heap_algorithms.hpp
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\__msvc_iter_core.hpp
-C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\__msvc_minmax.hpp
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\__msvc_sanitizer_annotate_container.hpp
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\__msvc_string_view.hpp
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\builtin_types.h
@@ -99,6 +96,11 @@ C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\crt\math_functi
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\crt\sm_70_rt.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\crt\sm_80_rt.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\crt\sm_90_rt.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cublasLt.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cublas_api.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuComplex.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_bf16.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_bf16.hpp
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_device_runtime_api.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_fp16.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_fp16.hpp
