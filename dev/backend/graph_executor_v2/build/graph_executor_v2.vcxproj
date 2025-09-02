@@ -1,0 +1,441 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{434D5DB4-226D-3FC8-A2BD-64A15DD37B56}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>graph_executor_v2</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.6.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">graph_executor_v2.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">graph_executor_v2.cp312-win_amd64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.pyd</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">graph_executor_v2.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">graph_executor_v2.cp312-win_amd64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.pyd</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">graph_executor_v2.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">graph_executor_v2.cp312-win_amd64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.pyd</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">graph_executor_v2.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">graph_executor_v2.cp312-win_amd64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.pyd</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include" /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;CMAKE_INTDIR="Debug";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <AdditionalUsingDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64</AdditionalUsingDirectories>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;CMAKE_INTDIR=\"Debug\";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <CudaCompile>
+      <Include>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(Include)</Include>
+      <Defines>%(Defines);_WINDOWS;CMAKE_INTDIR="Debug";graph_executor_v2_EXPORTS</Defines>
+      <AdditionalOptions>%(AdditionalOptions) -std=c++17 --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler="/EHsc -Ob0 -Zi /EHsc"</AdditionalOptions>
+      <CodeGeneration></CodeGeneration>
+      <CompileOut>$(IntDir)%(Filename).obj</CompileOut>
+      <CudaRuntime>Static</CudaRuntime>
+      <GPUDebugInfo>false</GPUDebugInfo>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <Optimization>O2</Optimization>
+      <Runtime>MD</Runtime>
+      <RuntimeChecks>RTC1</RuntimeChecks>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <UseHostInclude>false</UseHostInclude>
+    </CudaCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib;cudadevrt.lib;cudart_static.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/Debug/graph_executor_v2.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/Debug/graph_executor_v2.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+    <CudaLink>
+      <AdditionalOptions>-forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler=" -Ob0 -Od /RTC1" "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MDd -Xcompiler=-Zi</AdditionalOptions>
+      <PerformDeviceLink>true</PerformDeviceLink>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include" /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="Release";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <AdditionalUsingDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64</AdditionalUsingDirectories>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"Release\";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <CudaCompile>
+      <Include>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(Include)</Include>
+      <Defines>%(Defines);_WINDOWS;NDEBUG;CMAKE_INTDIR="Release";graph_executor_v2_EXPORTS</Defines>
+      <AdditionalOptions>%(AdditionalOptions) -std=c++17 --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler="/EHsc -Ob2 /EHsc"</AdditionalOptions>
+      <CodeGeneration></CodeGeneration>
+      <CompileOut>$(IntDir)%(Filename).obj</CompileOut>
+      <CudaRuntime>Static</CudaRuntime>
+      <GPUDebugInfo>false</GPUDebugInfo>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <Optimization>O2</Optimization>
+      <Runtime>MD</Runtime>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <UseHostInclude>false</UseHostInclude>
+    </CudaCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib;cudadevrt.lib;cudart_static.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/Release/graph_executor_v2.lib</ImportLibrary>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <ProgramDataBaseFile>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/Release/graph_executor_v2.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+    <CudaLink>
+      <AdditionalOptions>-forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets -Xcompiler=-LTCG -Xcompiler=-LTCG -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD</AdditionalOptions>
+      <PerformDeviceLink>true</PerformDeviceLink>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include" /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="MinSizeRel";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <AdditionalUsingDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64</AdditionalUsingDirectories>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"MinSizeRel\";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <CudaCompile>
+      <Include>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(Include)</Include>
+      <Defines>%(Defines);_WINDOWS;NDEBUG;CMAKE_INTDIR="MinSizeRel";graph_executor_v2_EXPORTS</Defines>
+      <AdditionalOptions>%(AdditionalOptions) -std=c++17 --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler="/EHsc -Ob1 /EHsc"</AdditionalOptions>
+      <CodeGeneration></CodeGeneration>
+      <CompileOut>$(IntDir)%(Filename).obj</CompileOut>
+      <CudaRuntime>Static</CudaRuntime>
+      <GPUDebugInfo>false</GPUDebugInfo>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <Optimization>O2</Optimization>
+      <Runtime>MD</Runtime>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <UseHostInclude>false</UseHostInclude>
+    </CudaCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib;cudadevrt.lib;cudart_static.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/MinSizeRel/graph_executor_v2.lib</ImportLibrary>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <ProgramDataBaseFile>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/MinSizeRel/graph_executor_v2.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+    <CudaLink>
+      <AdditionalOptions>-forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets -Xcompiler=-LTCG -Xcompiler=-LTCG -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O1 -Ob1" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD</AdditionalOptions>
+      <PerformDeviceLink>true</PerformDeviceLink>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Include" /external:I "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include" /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="RelWithDebInfo";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <AdditionalUsingDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64</AdditionalUsingDirectories>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"RelWithDebInfo\";graph_executor_v2_EXPORTS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <CudaCompile>
+      <Include>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(Include)</Include>
+      <Defines>%(Defines);_WINDOWS;NDEBUG;CMAKE_INTDIR="RelWithDebInfo";graph_executor_v2_EXPORTS</Defines>
+      <AdditionalOptions>%(AdditionalOptions) -std=c++17 --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler="/EHsc -Ob1 -Zi /EHsc"</AdditionalOptions>
+      <CodeGeneration></CodeGeneration>
+      <CompileOut>$(IntDir)%(Filename).obj</CompileOut>
+      <CudaRuntime>Static</CudaRuntime>
+      <GPUDebugInfo>false</GPUDebugInfo>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <Optimization>O2</Optimization>
+      <Runtime>MD</Runtime>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <UseHostInclude>false</UseHostInclude>
+    </CudaCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Include;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib;cudadevrt.lib;cudart_static.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/RelWithDebInfo/graph_executor_v2.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/RelWithDebInfo/graph_executor_v2.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+    <CudaLink>
+      <AdditionalOptions>-forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler=" -O2 -Ob1" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=-Zi</AdditionalOptions>
+      <PerformDeviceLink>true</PerformDeviceLink>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\bin\cmake.exe -SC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2 -BC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build --check-stamp-file C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCUDAInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindCUDAToolkit.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Common.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Config.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11ConfigVersion.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11NewTools.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Targets.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCUDACompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCXXCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeRCCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\bin\cmake.exe -SC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2 -BC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build --check-stamp-file C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCUDAInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindCUDAToolkit.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Common.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Config.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11ConfigVersion.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11NewTools.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Targets.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCUDACompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCXXCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeRCCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\bin\cmake.exe -SC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2 -BC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build --check-stamp-file C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCUDAInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindCUDAToolkit.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Common.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Config.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11ConfigVersion.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11NewTools.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Targets.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCUDACompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCXXCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeRCCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\bin\cmake.exe -SC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2 -BC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build --check-stamp-file C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCUDAInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\CheckCXXSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Compiler\NVIDIA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindCUDAToolkit.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckCompilerFlag.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows-NVIDIA-CUDA.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Common.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Config.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11ConfigVersion.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11NewTools.cmake;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11\pybind11Targets.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCUDACompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeCXXCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeRCCompiler.cmake;C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\4.0.2\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\src\bindings_min_api.cpp" />
+    <ClCompile Include="C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\src\launch_table.cpp" />
+    <CudaCompile Include="..\src\my_kernels.cu" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="C:\Users\owner\Desktop\AI_framework-dev\dev\backend\graph_executor_v2\build\ZERO_CHECK.vcxproj">
+      <Project>{C934663E-2D09-3302-896A-FAA09168793E}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.6.targets" />
+  </ImportGroup>
+</Project>
