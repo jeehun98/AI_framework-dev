@@ -27,6 +27,7 @@ def _score_by_rules(op, km, caps: Dict[str, bool]) -> int:
     mm = km.get("flags", {}).get("min_mnk", (0, 0, 0))
     if M >= mm[0] and N >= mm[1] and K >= mm[2]:
         s += 20
+    # TODO: dtype/layout 호환성 체크
     return s
 
 

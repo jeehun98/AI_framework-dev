@@ -3,11 +3,19 @@ project(graph_executor_v2 LANGUAGES CXX CUDA)
 
 # Python/pybind11/CUDA
 find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
-find_package(pybind11 CONFIG REQUIRED)
+find_package(pybind11 CONFIG QUIET)
+if (NOT pybind11_FOUND)
+  include(FetchContent)
+  FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11.git
+    GIT_TAG        v2.12.0
+  )
+  FetchContent_MakeAvailable(pybind11)
+endif()
 find_package(CUDAToolkit REQUIRED)
 
-# 아키텍처는 CMake 표준 변수로 지정 (86 = Ampere)
-# 여러 개면 세미콜론으로 나열: e.g. 75;86;89
+# CUDA 아키텍처(예: 86 = Ampere). 여러 개면 ;로 구분: 75;86;89
 set(CMAKE_CUDA_ARCHITECTURES 86)
 
 set(SRC
@@ -28,7 +36,7 @@ set_target_properties(graph_executor_v2 PROPERTIES
   OUTPUT_NAME "graph_executor_v2"
 )
 
-# MSVC 전용 옵션은 CXX에만 적용 (CUDA에는 직접 넣지 않음)
+# MSVC 전용 옵션은 CXX에만 적용 (CUDA에는 -Xcompiler 사용)
 if (MSVC)
   target_compile_options(graph_executor_v2 PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:/bigobj;/W3;/EHsc;/O2;/MD>
@@ -39,7 +47,7 @@ else()
   )
 endif()
 
-# CUDA 전용 호스트컴파일러 옵션은 -Xcompiler 로 전달
+# CUDA 전용 호스트컴파일러 옵션 전달
 target_compile_options(graph_executor_v2 PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/EHsc;-Xcompiler=/O2;-Xcompiler=/MD>
 )
@@ -49,17 +57,15 @@ target_link_libraries(graph_executor_v2 PRIVATE
   CUDA::cudart
   CUDA::cublas
   # CUDA::cublasLt  # 필요 시 활성화
-  # Python::Module  # 보통 pybind11_add_module이 처리하지만, 환경에 따라 필요할 수 있음
 )
 
 # 인클루드 경로
 target_include_directories(graph_executor_v2 PRIVATE
   ${CUDAToolkit_INCLUDE_DIRS}
   include
-  # ${Python_INCLUDE_DIRS}  # 보통 불필요. 남겨도 무방.
 )
 
-# 설치: 모듈(.pyd/.so) + 공개 헤더(ABI 명세)
+# 설치: 모듈(.pyd/.so) + 공개 ABI 헤더
 install(TARGETS graph_executor_v2
         LIBRARY DESTINATION .
         RUNTIME DESTINATION .

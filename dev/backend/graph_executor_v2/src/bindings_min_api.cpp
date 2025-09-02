@@ -7,12 +7,10 @@
 #include "ge_v2_api.h"
 
 /**
- * @file bindings_min_api.cpp
- * @brief 파이썬에서 호출하는 public API(pybind11)
- *
- * - query_capability(op_type, in_descs, out_descs) -> {kernel_name: score}
- * - launch_kernel(kernel_name, buffers, descs, stream=0) -> None(예외 on error)
- * - query_kernels() -> [kernel_name, ...]  # 디버그용
+ * 노출 API:
+ *  - query_capability(op_type, in_descs, out_descs) -> {kernel_name: score}
+ *  - launch_kernel(kernel_name, buffers, descs, stream=0)
+ *  - query_kernels() -> [kernel_name, ...]
  */
 
 namespace py = pybind11;
@@ -76,6 +74,5 @@ PYBIND11_MODULE(graph_executor_v2, m) {
         "Launch kernel by name with device pointers and optional stream.");
 
   m.def("query_kernels", &query_kernels_py, "List registered kernel names.");
-
   m.attr("GE2_API_VERSION") = GE2_API_VERSION;
 }
