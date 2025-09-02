@@ -1,12 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 커널 선택기
-- 레지스트리의 메타데이터(파이썬) + 네이티브 capability 점수(있다면)를 합산하여 최종 커널 이름을 선택
-- 룰 기반 점수 예시: tensor_core 가용 여부, 최소 MNK 충족 등
-
-주의:
-- native 모듈은 executor 에서 별칭으로 'graph_executor'로 등록될 수 있으므로,
-  여기서는 독립적으로 import 시도하되, 실패해도 휴리스틱만으로 동작 가능해야 함.
+- 파이썬 레지스트리 + (있다면) 네이티브 capability 점수 합산으로 최종 선택
 """
 
 from __future__ import annotations
@@ -14,7 +9,6 @@ from typing import Dict, List, Tuple
 import importlib
 
 from .registry import query as reg_query
-
 
 # 네이티브 query_capability 사용 여부 감지
 try:
@@ -26,12 +20,6 @@ except Exception:
 
 
 def _score_by_rules(op, km, caps: Dict[str, bool]) -> int:
-    """
-    간단 룰:
-      - tensor_core 플래그 + 디바이스 tensor_core True면 가산점
-      - 최소 MNK(있는 경우) 만족하면 가산점
-    dtype/layout 검증은 스켈레톤 단계에서는 생략(추후 확장)
-    """
     s = 0
     if km.get("flags", {}).get("tensor_core") and caps.get("tensor_core"):
         s += 30
@@ -43,23 +31,16 @@ def _score_by_rules(op, km, caps: Dict[str, bool]) -> int:
 
 
 def pick_kernel(op, device_caps: Dict[str, bool]) -> str:
-    """
-    @return 선택된 커널 이름 (launch_table 의 key 와 동일)
-    @raises RuntimeError 후보가 없으면 예외
-    """
     candidates = reg_query(op.op_type)
     if not candidates:
         raise RuntimeError(f"No kernel registered for op_type={op.op_type}")
 
     scored: List[Tuple[int, str]] = []
 
-    # 네이티브 점수(있다면) + 휴리스틱 합산
     native_scores: Dict[str, int] = {}
     if _HAS_QUERY:
         try:
-            # {"kernel_name": score, ...}
             ns = native.query_capability(op.op_type, {}, {})
-            # pybind dict -> py dict 로 가정
             native_scores = {str(k): int(v) for k, v in ns.items()}
         except Exception:
             native_scores = {}

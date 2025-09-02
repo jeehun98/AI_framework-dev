@@ -1,0 +1,10 @@
+^C:\USERS\OWNER\DESKTOP\AI_FRAMEWORK-DEV\DEV\BACKEND\GRAPH_EXECUTOR_V2\BUILD\CMAKEFILES\909D3F69E58F82918A50484780362144\GENERATE.STAMP.RULE
+setlocal
+C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\cmake\data\bin\cmake.exe -SC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2 -BC:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/graph_executor_v2.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
