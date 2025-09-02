@@ -15,7 +15,6 @@
 
 namespace py = pybind11;
 
-// 네이티브 capability에서 op_type에 해당하는 항목만 파싱
 static py::dict query_capability_py(const std::string& op_type,
                                     py::dict /*in_descs*/,
                                     py::dict /*out_descs*/) {
@@ -31,16 +30,13 @@ static py::dict query_capability_py(const std::string& op_type,
   return scores;
 }
 
-// 커널 이름으로 런치
 static void launch_kernel_py(const std::string& kernel_name,
                              std::vector<ge2_uintptr> buffers,
                              py::dict /*descs*/,
                              ge2_uintptr stream_opaque = 0) {
   const auto& tab = ge_v2_kernel_table_raw();
   auto it = tab.find(kernel_name);
-  if (it == tab.end()) {
-    throw std::runtime_error("unknown kernel: " + kernel_name);
-  }
+  if (it == tab.end()) throw std::runtime_error("unknown kernel: " + kernel_name);
 
   ge2_kernel_fn fn = it->second;
   int rc = fn(buffers.data(),
@@ -51,28 +47,22 @@ static void launch_kernel_py(const std::string& kernel_name,
   }
 }
 
-// 등록된 커널 이름 나열(디버그)
 static py::list query_kernels_py() {
   py::list L;
-  for (const auto& kv : ge_v2_kernel_table_raw()) {
-    L.append(py::str(kv.first));
-  }
+  for (const auto& kv : ge_v2_kernel_table_raw()) L.append(py::str(kv.first));
   return L;
 }
 
 PYBIND11_MODULE(graph_executor_v2, m) {
   m.doc() = "V2 bridge (CUDA-ready) for Python compiler";
-
   m.def("query_capability", &query_capability_py,
         py::arg("op_type"), py::arg("in_descs") = py::dict(),
-        py::arg("out_descs") = py::dict(),
-        "Return {kernel_name: score} filtered by op_type.");
+        py::arg("out_descs") = py::dict());
 
   m.def("launch_kernel", &launch_kernel_py,
         py::arg("kernel_name"), py::arg("buffers"),
-        py::arg("descs") = py::dict(), py::arg("stream") = 0,
-        "Launch kernel by name with device pointers and optional stream.");
+        py::arg("descs") = py::dict(), py::arg("stream") = 0);
 
-  m.def("query_kernels", &query_kernels_py, "List registered kernel names.");
+  m.def("query_kernels", &query_kernels_py);
   m.attr("GE2_API_VERSION") = GE2_API_VERSION;
 }

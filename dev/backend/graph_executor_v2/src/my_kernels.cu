@@ -1,95 +1,205 @@
 #include "ge_v2_api.h"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include <algorithm>
+#include <cublasLt.h>
 
-/**
- * 커널별 파라미터-블록(Host 메모리)에 대한 정의
- * - Python에서 ctypes로 동일한 레이아웃의 구조체를 만들어 마지막 buffers 항목으로 전달
- * - 이 블록은 Host 메모리이므로, 여기서 "런처 함수"가 읽어 grid/block/shape 결정에 사용
- */
+// -------------------------- 공통 파라미터 블록 --------------------------
 struct GemmBiasActParams {
-  int M;         // A: MxK, C: MxN
-  int N;         // B: KxN, C: MxN
-  int K;         // A: MxK, B: KxN
-  int has_bias;  // 0 or 1
-  int act;       // 0:none, 1:ReLU (확장 가능: 2:GELU 등)
+  int M;         // A: MxK, B: KxN, D: MxN
+  int N;
+  int K;
+  int has_bias;  // 0/1
+  int act;       // 0:none, 1:ReLU
 };
 
-// ======== 간단한 naive GEMM(+Bias+ReLU) f32 =========
+// Row-major 지정 헬퍼
+static inline void set_row_major(cublasLtMatrixLayout_t lay) {
+  cublasLtOrder_t order = CUBLASLT_ORDER_ROW;
+  cublasLtMatrixLayoutSetAttribute(
+      lay, CUBLASLT_MATRIX_LAYOUT_ORDER, &order, sizeof(order));
+}
 
+// -------------------------- f32 스모크용(유지) --------------------------
 __global__ void gemm_bias_act_f32_kernel(
-    float* __restrict__ C,
+    float* __restrict__ D,
     const float* __restrict__ A,
     const float* __restrict__ B,
     const float* __restrict__ bias,  // nullable
     int M, int N, int K,
     int has_bias, int act) {
-  int row = blockIdx.y * blockDim.y + threadIdx.y; // i
-  int col = blockIdx.x * blockDim.x + threadIdx.x; // j
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
   if (row >= M || col >= N) return;
-
-  // Row-major: A[i,k] = A[i*K + k], B[k,j] = B[k*N + j], C[i,j] = C[i*N + j]
   float acc = 0.f;
-  for (int k = 0; k < K; ++k) {
-    acc = fmaf(A[row * K + k], B[k * N + col], acc);
-  }
+  for (int k = 0; k < K; ++k) acc = fmaf(A[row*K + k], B[k*N + col], acc);
   if (has_bias && bias) acc += bias[col];
-
-  // Activation
-  if (act == 1) { // ReLU
-    acc = acc < 0.f ? 0.f : acc;
-  }
-  C[row * N + col] = acc;
+  if (act == 1 && acc < 0.f) acc = 0.f;
+  D[row*N + col] = acc;
 }
 
 static int launch_gemm_bias_act_f32(
     const ge2_uintptr* bufs, int n, cudaStream_t stream) {
-  // 규약: buffers 순서 = [A, B, (bias?), C, params_host_ptr]
-  if (n < 4) return -1; // 최소 A,B,C,params
+  if (n < 4) return -1;
+  const auto* p = reinterpret_cast<const GemmBiasActParams*>(bufs[n - 1]);
+  if (!p) return -1;
 
-  // 마지막은 항상 Host params
-  auto* params = reinterpret_cast<const GemmBiasActParams*>(bufs[n - 1]);
-  if (!params) return -1;
-
-  const int has_bias = params->has_bias ? 1 : 0;
-  const int act      = params->act;
-  const int M        = params->M;
-  const int N        = params->N;
-  const int K        = params->K;
-
-  const float* A = reinterpret_cast<const float*>(bufs[0]);
-  const float* B = reinterpret_cast<const float*>(bufs[1]);
-
+  const float* A = reinterpret_cast<const float*>(bufs[0]); // MxK
+  const float* B = reinterpret_cast<const float*>(bufs[1]); // KxN
   const float* bias = nullptr;
-  int idx_C;
-  if (has_bias) {
-    if (n < 5) return -1; // A,B,bias,C,params
-    bias = reinterpret_cast<const float*>(bufs[2]);
-    idx_C = 3;
+  int idxD;
+  if (p->has_bias) {
+    if (n < 5) return -1;
+    bias = reinterpret_cast<const float*>(bufs[2]); // N
+    idxD = 3;
   } else {
-    idx_C = 2;
+    idxD = 2;
   }
-  float* C = reinterpret_cast<float*>(bufs[idx_C]);
+  float* D = reinterpret_cast<float*>(bufs[idxD]); // MxN
 
-  // grid/block
-  dim3 block(16, 16);
-  dim3 grid((N + block.x - 1) / block.x,
-            (M + block.y - 1) / block.y);
-
-  gemm_bias_act_f32_kernel<<<grid, block, 0, stream>>>(C, A, B, bias, M, N, K, has_bias, act);
-  auto st = cudaGetLastError();
-  return (st == cudaSuccess) ? 0 : -2;
+  dim3 blk(16,16), grd((p->N+15)/16, (p->M+15)/16);
+  gemm_bias_act_f32_kernel<<<grd, blk, 0, stream>>>(D, A, B, bias,
+      p->M, p->N, p->K, p->has_bias, p->act);
+  return (cudaGetLastError() == cudaSuccess) ? 0 : -2;
 }
 
-// ======== (스텁) f16 버전: 아직 미구현 → -3 반환 =========
-// 필요 시 f16 read → f32 accumulate → f16 cast로 구현 가능
-extern "C" int ge2_launch_gemm_bias_act_tc_f16(const ge2_uintptr*, int, void*) {
-  return -3; // not implemented (향후 WMMA/cutlass로 교체 예정)
-}
-
-// ======== 외부 진입점(f32) =========
-extern "C" int ge2_launch_gemm_bias_act_f32(const ge2_uintptr* bufs, int n, void* stream) {
+extern "C" int ge2_launch_gemm_bias_act_f32(
+    const ge2_uintptr* bufs, int n, void* stream) {
   if (n < 4) return -1;
   return launch_gemm_bias_act_f32(bufs, n, reinterpret_cast<cudaStream_t>(stream));
+}
+
+// -------------------------- f16 + cuBLASLt ------------------------------
+// 후처리 커널: bias(N) + ReLU (열 기준)
+__global__ void add_bias_relu_fp16(
+    __half* __restrict__ D,          // [M,N] row-major
+    const float* __restrict__ bias,  // [N] fp32
+    int M, int N,
+    int has_bias, int act) {         // act: 0=none, 1=ReLU
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int size = M * N;
+  for (int idx = tid; idx < size; idx += blockDim.x * gridDim.x) {
+    int col = idx % N;
+    float v = __half2float(D[idx]);
+    if (has_bias && bias) v += bias[col];
+    if (act == 1 && v < 0.f) v = 0.f;
+    D[idx] = __float2half(v);
+  }
+}
+
+extern "C" int ge2_launch_gemm_bias_act_tc_f16(
+    const ge2_uintptr* bufs, int n, void* stream_opaque) {
+  if (n < 4) return -1; // 최소 A,B,D,params
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(stream_opaque);
+
+  const auto* p = reinterpret_cast<const GemmBiasActParams*>(bufs[n - 1]);
+  if (!p) return -1;
+
+  // 입력/출력 (fp16, row-major)
+  const __half* A = reinterpret_cast<const __half*>(bufs[0]); // MxK
+  const __half* B = reinterpret_cast<const __half*>(bufs[1]); // KxN
+  int idxD = p->has_bias ? 3 : 2;
+  __half* D = reinterpret_cast<__half*>(bufs[idxD]);          // MxN
+
+  // bias 포인터는 void*로 보관 (fp32 권장)
+  const void* biasDev = nullptr;
+  if (p->has_bias) {
+    if (n < 5) return -1;
+    biasDev = reinterpret_cast<const void*>(bufs[2]); // len=N, fp32
+  }
+
+  const int64_t M = p->M, N = p->N, K = p->K;
+  if (M <= 0 || N <= 0 || K <= 0) return -1;
+
+  // cuBLASLt 핸들/desc
+  cublasLtHandle_t handle = nullptr;
+  cublasStatus_t st = cublasLtCreate(&handle);
+  if (st != CUBLAS_STATUS_SUCCESS) return -2;
+
+  cublasLtMatmulDesc_t opDesc = nullptr;
+  st = cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F); // FP32 accum
+  if (st != CUBLAS_STATUS_SUCCESS) { cublasLtDestroy(handle); return -2; }
+
+  cublasOperation_t transN = CUBLAS_OP_N; // Row-major N,N
+  cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transN, sizeof(transN));
+  cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transN, sizeof(transN));
+
+  // (중요) 에필로그 미사용: bias/act는 후처리 커널로 처리
+
+  cublasLtMatrixLayout_t aDesc = nullptr, bDesc = nullptr, cDesc = nullptr, dDesc = nullptr;
+  cublasLtMatrixLayoutCreate(&aDesc, CUDA_R_16F, M, K, K); // ldA=K
+  cublasLtMatrixLayoutCreate(&bDesc, CUDA_R_16F, K, N, N); // ldB=N
+  cublasLtMatrixLayoutCreate(&cDesc, CUDA_R_16F, M, N, N); // ldC=N
+  cublasLtMatrixLayoutCreate(&dDesc, CUDA_R_16F, M, N, N); // ldD=N
+  set_row_major(aDesc); set_row_major(bDesc); set_row_major(cDesc); set_row_major(dDesc);
+
+  // Heuristic + workspace
+  cublasLtMatmulPreference_t pref = nullptr;
+  cublasLtMatmulPreferenceCreate(&pref);
+  size_t max_ws = 0;
+  cublasLtMatmulPreferenceSetAttribute(
+      pref, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &max_ws, sizeof(max_ws));
+
+  cublasLtMatmulHeuristicResult_t heur[8]; int returned = 0;
+  st = cublasLtMatmulAlgoGetHeuristic(
+      handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 8, heur, &returned);
+
+  void* ws = nullptr;
+  if (st != CUBLAS_STATUS_SUCCESS || returned == 0) {
+    // 0 WS에서 실패 → 16MB로 재시도
+    cublasLtMatmulPreferenceDestroy(pref);
+    size_t alt_ws = 16 << 20; // 16 MiB
+    cublasLtMatmulPreferenceCreate(&pref);
+    cublasLtMatmulPreferenceSetAttribute(
+        pref, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &alt_ws, sizeof(alt_ws));
+    st = cublasLtMatmulAlgoGetHeuristic(
+        handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 8, heur, &returned);
+    if (st != CUBLAS_STATUS_SUCCESS || returned == 0) {
+      cublasLtMatmulPreferenceDestroy(pref);
+      cublasLtMatrixLayoutDestroy(aDesc); cublasLtMatrixLayoutDestroy(bDesc);
+      cublasLtMatrixLayoutDestroy(cDesc); cublasLtMatrixLayoutDestroy(dDesc);
+      cublasLtMatmulDescDestroy(opDesc);
+      cublasLtDestroy(handle);
+      return -2;
+    }
+    if (heur[0].workspaceSize > 0) {
+      if (cudaMalloc(&ws, heur[0].workspaceSize) != cudaSuccess) ws = nullptr;
+    }
+  } else {
+    if (heur[0].workspaceSize > 0) {
+      if (cudaMalloc(&ws, heur[0].workspaceSize) != cudaSuccess) ws = nullptr;
+    }
+  }
+
+  float alpha = 1.0f, beta = 0.0f;
+  st = cublasLtMatmul(handle, opDesc,
+                      &alpha,
+                      A, aDesc,
+                      B, bDesc,
+                      &beta,
+                      /*C in*/ D, cDesc,
+                      /*D out*/ D, dDesc,
+                      &heur[0].algo,
+                      ws, (ws ? heur[0].workspaceSize : 0),
+                      stream);
+
+  if (ws) cudaFree(ws);
+
+  cublasLtMatmulPreferenceDestroy(pref);
+  cublasLtMatrixLayoutDestroy(aDesc); cublasLtMatrixLayoutDestroy(bDesc);
+  cublasLtMatrixLayoutDestroy(cDesc); cublasLtMatrixLayoutDestroy(dDesc);
+  cublasLtMatmulDescDestroy(opDesc);
+  cublasLtDestroy(handle);
+
+  if (st != CUBLAS_STATUS_SUCCESS) return -2;
+
+  // 후처리: bias(N, fp32) + ReLU
+  if (p->has_bias || p->act != 0) {
+    const float* bias_f32 = reinterpret_cast<const float*>(biasDev);
+    int threads = 256;
+    int blocks  = (int)((M * N + threads - 1) / threads);
+    add_bias_relu_fp16<<<blocks, threads, 0, stream>>>(D, bias_f32, (int)M, (int)N, p->has_bias, p->act);
+    if (cudaGetLastError() != cudaSuccess) return -2;
+  }
+
+  return 0;
 }
