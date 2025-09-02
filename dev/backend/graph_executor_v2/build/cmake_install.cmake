@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2
+# Install script for directory: C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -33,13 +33,25 @@ if(NOT DEFINED CMAKE_CROSSCOMPILING)
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/." TYPE MODULE FILES "C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/graph_executor_v2.cp312-win_amd64.pyd")
+  if(CMAKE_INSTALL_CONFIG_NAME MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/." TYPE MODULE FILES "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/Debug/graph_executor_v2.cp312-win_amd64.pyd")
+  elseif(CMAKE_INSTALL_CONFIG_NAME MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/." TYPE MODULE FILES "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/Release/graph_executor_v2.cp312-win_amd64.pyd")
+  elseif(CMAKE_INSTALL_CONFIG_NAME MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/." TYPE MODULE FILES "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/MinSizeRel/graph_executor_v2.cp312-win_amd64.pyd")
+  elseif(CMAKE_INSTALL_CONFIG_NAME MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/." TYPE MODULE FILES "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/RelWithDebInfo/graph_executor_v2.cp312-win_amd64.pyd")
+  endif()
+endif()
+
+if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/include" TYPE FILE FILES "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/include/ge_v2_api.h")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/install_local_manifest.txt"
+  file(WRITE "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -55,6 +67,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
