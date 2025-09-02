@@ -2,7 +2,7 @@
 """
 커널 메타데이터 전역 레지스트리 (Python-side)
 - selector 가 사용할 후보군을 선언적으로 보관
-- 네이티브 테이블(launch_table/capability)과 최종적으로 매칭되어 동작
+- 네이티브 테이블(launch_table/capability)과 최종 매칭되어 동작
 """
 
 from __future__ import annotations
