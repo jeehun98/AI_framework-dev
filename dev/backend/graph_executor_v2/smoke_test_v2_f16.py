@@ -41,4 +41,4 @@ if params.act == 1: ref = np.maximum(ref, 0.0)
 mx = float(np.max(np.abs(ref.astype(np.float16).astype(np.float32) - cp.asnumpy(C_out).astype(np.float32))))
 print("f16 max_err:", mx)
 assert mx < 1.0
-print("OK: f16 TC cuBLASLt smoke passed")
+print("OK: f16 TC cuBLASLt smoke passed", bufs[0])
