@@ -1,8 +1,22 @@
+// src/my_kernels.cu
 #include "ge_v2_api.h"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cublasLt.h>
 #include <mutex>
+#include <cstdio>      // printf logs
+#include <cstdlib>     // getenv, atoi
+
+// --------- Optional NVTX ---------
+#if defined(GE2_USE_NVTX) && GE2_USE_NVTX
+  #include <nvtx3/nvToolsExt.h>
+  #define NVTX_PUSH(msg) nvtxRangePushA(msg)
+  #define NVTX_POP()     nvtxRangePop()
+#else
+  #define NVTX_PUSH(msg) ((void)0)
+  #define NVTX_POP()     ((void)0)
+#endif
+// ---------------------------------
 
 // -------------------------- 공통 파라미터 블록 --------------------------
 struct GemmBiasActParams {
@@ -71,7 +85,7 @@ extern "C" int ge2_launch_gemm_bias_act_f32(
 
 // -------------------------- f16 + cuBLASLt ------------------------------
 
-// 후처리 커널들 (폴백용)
+// 후처리 커널들 (폴백/보조용)
 __global__ void add_bias_fp16(
     __half* __restrict__ D,
     const float* __restrict__ bias,
@@ -111,11 +125,15 @@ __global__ void add_bias_relu_fp16(
   }
 }
 
-// 핸들 캐싱
+// cuBLASLt 핸들 캐싱
 static cublasLtHandle_t get_lt_handle() {
   static cublasLtHandle_t handle = nullptr;
   static std::once_flag once;
-  std::call_once(once, [](){ cublasLtCreate(&handle); });
+  std::call_once(once, [](){
+    if (cublasLtCreate(&handle) != CUBLAS_STATUS_SUCCESS) {
+      handle = nullptr;
+    }
+  });
   return handle;
 }
 
@@ -127,15 +145,15 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
   const auto* p = reinterpret_cast<const GemmBiasActParams*>(bufs[n - 1]);
   if (!p) return -1;
 
-  const __half* A = reinterpret_cast<const __half*>(bufs[0]);
-  const __half* B = reinterpret_cast<const __half*>(bufs[1]);
+  const __half* A = reinterpret_cast<const __half*>(bufs[0]); // [M,K]
+  const __half* B = reinterpret_cast<const __half*>(bufs[1]); // [K,N]
   int idxD = p->has_bias ? 3 : 2;
-  __half* D = reinterpret_cast<__half*>(bufs[idxD]);
+  __half* D = reinterpret_cast<__half*>(bufs[idxD]);          // [M,N]
 
   const float* bias_f32 = nullptr;
   if (p->has_bias) {
     if (n < 5) return -1;
-    bias_f32 = reinterpret_cast<const float*>(bufs[2]);
+    bias_f32 = reinterpret_cast<const float*>(bufs[2]); // len=N
   }
 
   const int64_t M = p->M, N = p->N, K = p->K;
@@ -144,13 +162,12 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
   cublasLtHandle_t handle = get_lt_handle();
   if (!handle) return -2;
 
-  // 람다: GEMM 실행 (try_epilogue_bias=true이면 Bias/ReluBias 에필로그 시도)
   auto run_matmul = [&](bool try_epilogue_bias, cublasStatus_t& out_st) -> bool {
     cublasLtMatmulDesc_t opDesc = nullptr;
     out_st = cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
     if (out_st != CUBLAS_STATUS_SUCCESS) return false;
 
-    // pointer mode host
+    // host pointer mode (alpha/beta on host)
     cublasLtPointerMode_t pm = CUBLASLT_POINTER_MODE_HOST;
     cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_POINTER_MODE, &pm, sizeof(pm));
 
@@ -162,10 +179,11 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
       cublasLtEpilogue_t epi =
           (p->act == 1) ? CUBLASLT_EPILOGUE_RELU_BIAS : CUBLASLT_EPILOGUE_BIAS;
       cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epi, sizeof(epi));
-      const void* biasDev = reinterpret_cast<const void*>(bias_f32);
+      const void* biasDev = reinterpret_cast<const void*>(bias_f32); // device pointer to FP32 bias
       cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_BIAS_POINTER, &biasDev, sizeof(biasDev));
     }
 
+    // Layouts (ROW major)
     cublasLtMatrixLayout_t aDesc=nullptr, bDesc=nullptr, cDesc=nullptr, dDesc=nullptr;
     cublasLtMatrixLayoutCreate(&aDesc, CUDA_R_16F, M, K, K);
     cublasLtMatrixLayoutCreate(&bDesc, CUDA_R_16F, K, N, N);
@@ -173,6 +191,7 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
     cublasLtMatrixLayoutCreate(&dDesc, CUDA_R_16F, M, N, N);
     set_row_major(aDesc); set_row_major(bDesc); set_row_major(cDesc); set_row_major(dDesc);
 
+    // Heuristic (0 ws → 필요 시 16MB 재시도)
     cublasLtMatmulPreference_t pref = nullptr;
     cublasLtMatmulPreferenceCreate(&pref);
     size_t max_ws = 0;
@@ -184,21 +203,45 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
         handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 8, heur, &returned);
 
     void* ws = nullptr;
-    if (out_st == CUBLAS_STATUS_SUCCESS && returned > 0 && heur[0].workspaceSize > 0) {
-      cudaMalloc(&ws, heur[0].workspaceSize);
+    if (out_st != CUBLAS_STATUS_SUCCESS || returned == 0) {
+      cublasLtMatmulPreferenceDestroy(pref);
+      size_t alt_ws = 16 << 20; // 16 MiB
+      cublasLtMatmulPreferenceCreate(&pref);
+      cublasLtMatmulPreferenceSetAttribute(
+          pref, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &alt_ws, sizeof(alt_ws));
+      out_st = cublasLtMatmulAlgoGetHeuristic(
+          handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 8, heur, &returned);
+      if (out_st != CUBLAS_STATUS_SUCCESS || returned == 0) {
+        cublasLtMatmulPreferenceDestroy(pref);
+        if (aDesc) cublasLtMatrixLayoutDestroy(aDesc);
+        if (bDesc) cublasLtMatrixLayoutDestroy(bDesc);
+        if (cDesc) cublasLtMatrixLayoutDestroy(cDesc);
+        if (dDesc) cublasLtMatrixLayoutDestroy(dDesc);
+        cublasLtMatmulDescDestroy(opDesc);
+        return false;
+      }
+      if (heur[0].workspaceSize > 0) {
+        if (cudaMalloc(&ws, heur[0].workspaceSize) != cudaSuccess) ws = nullptr;
+      }
+    } else {
+      if (heur[0].workspaceSize > 0) {
+        if (cudaMalloc(&ws, heur[0].workspaceSize) != cudaSuccess) ws = nullptr;
+      }
     }
 
     float alpha = 1.0f, beta = 0.0f;
+    NVTX_PUSH(try_epilogue_bias ? "lt_gemm(epi)" : "lt_gemm(no-epi)");
     out_st = cublasLtMatmul(handle, opDesc,
                             &alpha,
                             A, aDesc,
                             B, bDesc,
                             &beta,
-                            D, cDesc,
-                            D, dDesc,
-                            (returned>0? &heur[0].algo: nullptr),
+                            /*C in*/ D, cDesc,
+                            /*D out*/ D, dDesc,
+                            &heur[0].algo,
                             ws, (ws ? heur[0].workspaceSize : 0),
                             stream);
+    NVTX_POP();
 
     if (ws) cudaFree(ws);
     cublasLtMatmulPreferenceDestroy(pref);
@@ -210,17 +253,32 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
     return (out_st == CUBLAS_STATUS_SUCCESS);
   };
 
+  // ----- 에필로그 시도/토글 -----
+  bool fused_try = (p->has_bias != 0);
+  if (const char* s = std::getenv("GE2_FORCE_NO_EPILOGUE")) {
+    if (std::atoi(s) != 0) fused_try = false;
+  }
+  if (fused_try) {
+    std::printf("[GE2] try epilogue: %s (M=%d N=%d K=%d)\n",
+                (p->act==1?"RELU_BIAS":"BIAS"), p->M, p->N, p->K);
+  } else {
+    std::printf("[GE2] epilogue disabled (try=no-epi) (M=%d N=%d K=%d)\n",
+                p->M, p->N, p->K);
+  }
+
   // 1) 에필로그 시도
   cublasStatus_t st = CUBLAS_STATUS_SUCCESS;
-  bool ok = run_matmul(p->has_bias, st);
+  bool ok = run_matmul(fused_try, st);
 
-  // 2) 실패 시 폴백: 에필로그 OFF + 후처리 커널
+  // 2) 실패 → 폴백: 에필로그 없이 GEMM + 후처리
   if (!ok) {
+    std::printf("[GE2] epilogue failed -> fallback(post)\n");
     ok = run_matmul(false, st);
     if (!ok) return -2;
 
     int threads = 256;
-    int blocks  = (int)((M * N + threads - 1) / threads);
+    int blocks  = static_cast<int>((M * N + threads - 1) / threads);
+    NVTX_PUSH("fallback_post");
     if (p->has_bias && p->act == 1) {
       add_bias_relu_fp16<<<blocks, threads, 0, stream>>>(D, bias_f32, (int)M, (int)N);
     } else if (p->has_bias && p->act == 0) {
@@ -228,16 +286,22 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
     } else if (!p->has_bias && p->act == 1) {
       relu_only_fp16<<<blocks, threads, 0, stream>>>(D, (int)M, (int)N);
     }
+    NVTX_POP();
     if (cudaGetLastError() != cudaSuccess) return -2;
     return 0;
   }
 
-  // 3) 에필로그 성공 + ReLU 단독 케이스
+  // 3) 에필로그 성공 + ReLU 단독 (has_bias=0, act=1) → post-activation
   if (!p->has_bias && p->act == 1) {
+    std::printf("[GE2] no-bias + relu-only (post-activation)\n");
     int threads = 256;
-    int blocks  = (int)((M * N + threads - 1) / threads);
+    int blocks  = static_cast<int>((M * N + threads - 1) / threads);
+    NVTX_PUSH("relu_only_post");
     relu_only_fp16<<<blocks, threads, 0, stream>>>(D, (int)M, (int)N);
+    NVTX_POP();
     if (cudaGetLastError() != cudaSuccess) return -2;
+  } else {
+    std::printf("[GE2] epilogue fused OK\n");
   }
 
   return 0;
