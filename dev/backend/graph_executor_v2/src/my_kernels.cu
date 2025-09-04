@@ -3,11 +3,13 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cublasLt.h>
+#include <cublas_v2.h>   // cublasCreate/cublasGetVersion
 #include <mutex>
-#include <cstdio>      // printf logs
-#include <cstdlib>     // getenv, atoi
+#include <cstdio>        // printf logs
+#include <cstdlib>       // getenv, atoi
+#include <cinttypes>
 
-// --------- Optional NVTX ---------
+// --------- Optional NVTX (build with -DGE2_USE_NVTX=1) ---------
 #if defined(GE2_USE_NVTX) && GE2_USE_NVTX
   #include <nvtx3/nvToolsExt.h>
   #define NVTX_PUSH(msg) nvtxRangePushA(msg)
@@ -16,7 +18,7 @@
   #define NVTX_PUSH(msg) ((void)0)
   #define NVTX_POP()     ((void)0)
 #endif
-// ---------------------------------
+// ---------------------------------------------------------------
 
 // -------------------------- 공통 파라미터 블록 --------------------------
 struct GemmBiasActParams {
@@ -32,6 +34,25 @@ static inline void set_row_major(cublasLtMatrixLayout_t lay) {
   cublasLtOrder_t order = CUBLASLT_ORDER_ROW;
   cublasLtMatrixLayoutSetAttribute(
       lay, CUBLASLT_MATRIX_LAYOUT_ORDER, &order, sizeof(order));
+}
+
+// 환경/버전 1회 로깅
+static void log_env_once() {
+  static std::once_flag once;
+  std::call_once(once, [](){
+    int cublas_ver = 0;
+    cublasHandle_t h = nullptr;
+    if (cublasCreate(&h) == CUBLAS_STATUS_SUCCESS) {
+      if (cublasGetVersion(h, &cublas_ver) != CUBLAS_STATUS_SUCCESS) cublas_ver = 0;
+      cublasDestroy(h);
+    }
+    int dev = 0; 
+    cudaGetDevice(&dev);
+    cudaDeviceProp prop{};
+    cudaGetDeviceProperties(&prop, dev);
+    std::printf("[GE2] cublas=%d, gpu=%s, cc=%d%d\n",
+                cublas_ver, prop.name, prop.major, prop.minor);
+  });
 }
 
 // -------------------------- f32 스모크용 --------------------------
@@ -137,9 +158,39 @@ static cublasLtHandle_t get_lt_handle() {
   return handle;
 }
 
+// (옵션) 에필로그 enum 이름 출력용
+static const char* epi_name(int v) {
+  switch (v) {
+    #ifdef CUBLASLT_EPILOGUE_DEFAULT
+      case CUBLASLT_EPILOGUE_DEFAULT: return "DEFAULT";
+    #endif
+    #ifdef CUBLASLT_EPILOGUE_RELU
+      case CUBLASLT_EPILOGUE_RELU: return "RELU";
+    #endif
+    #ifdef CUBLASLT_EPILOGUE_BIAS
+      case CUBLASLT_EPILOGUE_BIAS: return "BIAS";
+    #endif
+    #ifdef CUBLASLT_EPILOGUE_RELU_BIAS
+      case CUBLASLT_EPILOGUE_RELU_BIAS: return "RELU_BIAS";
+    #endif
+    #ifdef CUBLASLT_EPILOGUE_GELU
+      case CUBLASLT_EPILOGUE_GELU: return "GELU";
+    #endif
+    #ifdef CUBLASLT_EPILOGUE_GELU_BIAS
+      case CUBLASLT_EPILOGUE_GELU_BIAS: return "GELU_BIAS";
+    #endif
+    #ifdef CUBLASLT_EPILOGUE_BIAS_RELU
+      case CUBLASLT_EPILOGUE_BIAS_RELU: return "BIAS_RELU";
+    #endif
+  }
+  return "UNKNOWN";
+}
+
 extern "C" int ge2_launch_gemm_bias_act_tc_f16(
     const ge2_uintptr* bufs, int n, void* stream_opaque) {
   if (n < 4) return -1;
+  log_env_once();
+
   cudaStream_t stream = reinterpret_cast<cudaStream_t>(stream_opaque);
 
   const auto* p = reinterpret_cast<const GemmBiasActParams*>(bufs[n - 1]);
@@ -162,7 +213,9 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
   cublasLtHandle_t handle = get_lt_handle();
   if (!handle) return -2;
 
+  // ---- run_matmul: 에필로그 후보/여러 알고리즘 × WS 래더를 시도 ----
   auto run_matmul = [&](bool try_epilogue_bias, cublasStatus_t& out_st) -> bool {
+    // Matmul desc
     cublasLtMatmulDesc_t opDesc = nullptr;
     out_st = cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
     if (out_st != CUBLAS_STATUS_SUCCESS) return false;
@@ -175,82 +228,149 @@ extern "C" int ge2_launch_gemm_bias_act_tc_f16(
     cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transN, sizeof(transN));
     cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transN, sizeof(transN));
 
-    if (try_epilogue_bias && p->has_bias) {
-      cublasLtEpilogue_t epi =
-          (p->act == 1) ? CUBLASLT_EPILOGUE_RELU_BIAS : CUBLASLT_EPILOGUE_BIAS;
-      cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epi, sizeof(epi));
-      const void* biasDev = reinterpret_cast<const void*>(bias_f32); // device pointer to FP32 bias
-      cublasLtMatmulDescSetAttribute(opDesc, CUBLASLT_MATMUL_DESC_BIAS_POINTER, &biasDev, sizeof(biasDev));
+    // 에필로그 속성 후보 적용 (가능한 것 중 하나라도 받아들이면 OK)
+    auto set_epilogue_attrs = [&](cublasLtMatmulDesc_t desc, bool act1) -> bool {
+      if (!try_epilogue_bias || !p->has_bias) return false;
+
+      // 후보 목록(컴파일 환경이 지원하는 것만)
+      cublasLtEpilogue_t candidates[6]; int nCand = 0;
+      #ifdef CUBLASLT_EPILOGUE_RELU_BIAS
+        if (act1) candidates[nCand++] = CUBLASLT_EPILOGUE_RELU_BIAS;
+      #endif
+      #ifdef CUBLASLT_EPILOGUE_BIAS_RELU
+        if (act1) candidates[nCand++] = CUBLASLT_EPILOGUE_BIAS_RELU;
+      #endif
+      #ifdef CUBLASLT_EPILOGUE_BIAS
+        candidates[nCand++] = CUBLASLT_EPILOGUE_BIAS;
+      #endif
+      // 필요 시 has_bias=0에서 RELU만 fuse하려면 아래 활성화
+      // #ifdef CUBLASLT_EPILOGUE_RELU
+      //   if (!p->has_bias && act1) candidates[nCand++] = CUBLASLT_EPILOGUE_RELU;
+      // #endif
+
+      if (nCand == 0) return false;
+
+      // 에필로그 설정이 "성공"한 경우에만 bias 속성 지정
+      for (int c = 0; c < nCand; ++c) {
+        cublasStatus_t st_epi =
+          cublasLtMatmulDescSetAttribute(
+            desc, CUBLASLT_MATMUL_DESC_EPILOGUE, &candidates[c], sizeof(candidates[c]));
+        if (st_epi != CUBLAS_STATUS_SUCCESS) continue; // 이 후보 불가 → 다음 후보
+
+        // bias dtype 시도 순서: FP32 → FP16 (환경 차 대비)
+        cudaDataType_t bias_types[2] = { CUDA_R_32F, CUDA_R_16F };
+        const void* biasDev = reinterpret_cast<const void*>(bias_f32);
+        bool bias_ok = false;
+        for (int bt = 0; bt < 2; ++bt) {
+          #ifdef CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE
+            (void)cublasLtMatmulDescSetAttribute(
+                desc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &bias_types[bt], sizeof(bias_types[bt]));
+          #endif
+          cublasStatus_t st_bp = cublasLtMatmulDescSetAttribute(
+              desc, CUBLASLT_MATMUL_DESC_BIAS_POINTER, &biasDev, sizeof(biasDev));
+          if (st_bp == CUBLAS_STATUS_SUCCESS) {
+            std::printf("[GE2] epilogue accepted: %s  (bias_type=%s)\n",
+                        epi_name((int)candidates[c]),
+                        (bias_types[bt]==CUDA_R_32F?"fp32":"fp16"));
+            bias_ok = true;
+            break;
+          }
+        }
+        if (bias_ok) return true;  // 에필로그 + bias 포인터 설정 완료
+        // bias 속성까지는 거부 → 다음 후보 계속
+      }
+
+      // 어떤 후보도 완전하게(에필로그+바이어스) 세팅되지 않음
+      return false;
+    };
+
+    bool have_epi = set_epilogue_attrs(opDesc, p->act == 1);
+    if (try_epilogue_bias && !have_epi) {
+      // 에필로그를 시도했지만 어떤 조합도 수용되지 않음 → 이 run 실패로 간주(곧바로 폴백 유도)
+      std::printf("[GE2] epilogue not available on this config -> abort this try\n");
+      cublasLtMatmulDescDestroy(opDesc);
+      return false;
     }
 
     // Layouts (ROW major)
     cublasLtMatrixLayout_t aDesc=nullptr, bDesc=nullptr, cDesc=nullptr, dDesc=nullptr;
-    cublasLtMatrixLayoutCreate(&aDesc, CUDA_R_16F, M, K, K);
-    cublasLtMatrixLayoutCreate(&bDesc, CUDA_R_16F, K, N, N);
-    cublasLtMatrixLayoutCreate(&cDesc, CUDA_R_16F, M, N, N);
-    cublasLtMatrixLayoutCreate(&dDesc, CUDA_R_16F, M, N, N);
+    if (cublasLtMatrixLayoutCreate(&aDesc, CUDA_R_16F, M, K, K) != CUBLAS_STATUS_SUCCESS ||
+        cublasLtMatrixLayoutCreate(&bDesc, CUDA_R_16F, K, N, N) != CUBLAS_STATUS_SUCCESS ||
+        cublasLtMatrixLayoutCreate(&cDesc, CUDA_R_16F, M, N, N) != CUBLAS_STATUS_SUCCESS ||
+        cublasLtMatrixLayoutCreate(&dDesc, CUDA_R_16F, M, N, N) != CUBLAS_STATUS_SUCCESS) {
+      if (aDesc) cublasLtMatrixLayoutDestroy(aDesc);
+      if (bDesc) cublasLtMatrixLayoutDestroy(bDesc);
+      if (cDesc) cublasLtMatrixLayoutDestroy(cDesc);
+      if (dDesc) cublasLtMatrixLayoutDestroy(dDesc);
+      cublasLtMatmulDescDestroy(opDesc);
+      return false;
+    }
     set_row_major(aDesc); set_row_major(bDesc); set_row_major(cDesc); set_row_major(dDesc);
+    std::printf("[GE2] desc/layouts ready (M=%lld N=%lld K=%lld)\n",
+                (long long)M, (long long)N, (long long)K);
 
-    // Heuristic (0 ws → 필요 시 16MB 재시도)
-    cublasLtMatmulPreference_t pref = nullptr;
-    cublasLtMatmulPreferenceCreate(&pref);
-    size_t max_ws = 0;
-    cublasLtMatmulPreferenceSetAttribute(
-        pref, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &max_ws, sizeof(max_ws));
-
-    cublasLtMatmulHeuristicResult_t heur[8]; int returned = 0;
-    out_st = cublasLtMatmulAlgoGetHeuristic(
-        handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 8, heur, &returned);
-
-    void* ws = nullptr;
-    if (out_st != CUBLAS_STATUS_SUCCESS || returned == 0) {
-      cublasLtMatmulPreferenceDestroy(pref);
-      size_t alt_ws = 16 << 20; // 16 MiB
+    // 여러 알고리즘 × WS 래더 시도(0 → 16MB → 64MB)
+    auto try_with_ws_and_algo_list = [&](size_t ws_cap, cublasStatus_t& matmul_st) -> bool {
+      cublasLtMatmulPreference_t pref = nullptr;
       cublasLtMatmulPreferenceCreate(&pref);
       cublasLtMatmulPreferenceSetAttribute(
-          pref, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &alt_ws, sizeof(alt_ws));
-      out_st = cublasLtMatmulAlgoGetHeuristic(
-          handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 8, heur, &returned);
-      if (out_st != CUBLAS_STATUS_SUCCESS || returned == 0) {
-        cublasLtMatmulPreferenceDestroy(pref);
-        if (aDesc) cublasLtMatrixLayoutDestroy(aDesc);
-        if (bDesc) cublasLtMatrixLayoutDestroy(bDesc);
-        if (cDesc) cublasLtMatrixLayoutDestroy(cDesc);
-        if (dDesc) cublasLtMatrixLayoutDestroy(dDesc);
-        cublasLtMatmulDescDestroy(opDesc);
+          pref, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &ws_cap, sizeof(ws_cap));
+
+      cublasLtMatmulHeuristicResult_t heur[16]; int returned = 0;
+      matmul_st = cublasLtMatmulAlgoGetHeuristic(
+          handle, opDesc, aDesc, bDesc, cDesc, dDesc, pref, 16, heur, &returned);
+      cublasLtMatmulPreferenceDestroy(pref);
+
+      if (matmul_st != CUBLAS_STATUS_SUCCESS || returned == 0) {
+        std::printf("[GE2] heuristics none (ws=%zu)\n", ws_cap);
         return false;
       }
-      if (heur[0].workspaceSize > 0) {
-        if (cudaMalloc(&ws, heur[0].workspaceSize) != cudaSuccess) ws = nullptr;
-      }
-    } else {
-      if (heur[0].workspaceSize > 0) {
-        if (cudaMalloc(&ws, heur[0].workspaceSize) != cudaSuccess) ws = nullptr;
-      }
-    }
 
-    float alpha = 1.0f, beta = 0.0f;
-    NVTX_PUSH(try_epilogue_bias ? "lt_gemm(epi)" : "lt_gemm(no-epi)");
-    out_st = cublasLtMatmul(handle, opDesc,
-                            &alpha,
-                            A, aDesc,
-                            B, bDesc,
-                            &beta,
-                            /*C in*/ D, cDesc,
-                            /*D out*/ D, dDesc,
-                            &heur[0].algo,
-                            ws, (ws ? heur[0].workspaceSize : 0),
-                            stream);
-    NVTX_POP();
+      for (int i = 0; i < returned; ++i) {
+        void* ws = nullptr;
+        if (heur[i].workspaceSize > 0) {
+          if ((size_t)heur[i].workspaceSize > ws_cap) {
+            std::printf("[GE2] skip algo #%d (needs ws=%zu > cap=%zu)\n",
+                        i, (size_t)heur[i].workspaceSize, ws_cap);
+            continue;
+          }
+          if (cudaMalloc(&ws, heur[i].workspaceSize) != cudaSuccess) ws = nullptr;
+        }
+        float alpha = 1.0f, beta = 0.0f;
+        NVTX_PUSH("lt_gemm(run)");
+        matmul_st = cublasLtMatmul(handle, opDesc,
+                                   &alpha, A, aDesc, B, bDesc,
+                                   &beta, D, cDesc, D, dDesc,
+                                   &heur[i].algo,
+                                   ws, (ws ? heur[i].workspaceSize : 0),
+                                   stream);
+        NVTX_POP();
+        if (ws) cudaFree(ws);
 
-    if (ws) cudaFree(ws);
-    cublasLtMatmulPreferenceDestroy(pref);
+        if (matmul_st == CUBLAS_STATUS_SUCCESS) {
+          std::printf("[GE2] lt algo #%d ok (ws=%zu)\n", i, ws_cap);
+          return true;
+        }
+        std::printf("[GE2] lt algo #%d failed (ws=%zu, st=%d)\n", i, ws_cap, (int)matmul_st);
+      }
+      return false;
+    };
+
+    cublasStatus_t matmul_st = CUBLAS_STATUS_SUCCESS;
+    bool done = try_with_ws_and_algo_list(0, matmul_st) ||
+                try_with_ws_and_algo_list(16ull<<20, matmul_st) ||
+                try_with_ws_and_algo_list(64ull<<20, matmul_st);
+
+    if (!done) std::printf("[GE2] matmul failed across all algos/ws (st=%d)\n", (int)matmul_st);
+
+    // 정리
     if (aDesc) cublasLtMatrixLayoutDestroy(aDesc);
     if (bDesc) cublasLtMatrixLayoutDestroy(bDesc);
     if (cDesc) cublasLtMatrixLayoutDestroy(cDesc);
     if (dDesc) cublasLtMatrixLayoutDestroy(dDesc);
     cublasLtMatmulDescDestroy(opDesc);
-    return (out_st == CUBLAS_STATUS_SUCCESS);
+    out_st = matmul_st;
+    return done;
   };
 
   // ----- 에필로그 시도/토글 -----

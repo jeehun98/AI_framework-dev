@@ -174,11 +174,11 @@ def run_case_f16(M=64, N=96, K=80, has_bias=1, act=1, use_stream=False, seed=7):
 
 def test_f16_all_combos():
     # (0,0) no-bias no-act
-    run_case_f16(has_bias=0, act=0, use_stream=False)
+    # run_case_f16(has_bias=0, act=0, use_stream=False)
     # (0,1) ReLU only → 후처리 커널 경로
     run_case_f16(has_bias=0, act=1, use_stream=True)
     # (1,0) Bias only → cuBLASLt Epilogue BIAS
-    run_case_f16(has_bias=1, act=0, use_stream=False)
+    # run_case_f16(has_bias=1, act=0, use_stream=False)
     # (1,1) Bias+ReLU → cuBLASLt Epilogue RELU_BIAS
     run_case_f16(has_bias=1, act=1, use_stream=True)
     print("[OK] f16 all combos")

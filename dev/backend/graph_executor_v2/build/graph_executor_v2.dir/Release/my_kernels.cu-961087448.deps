@@ -21,6 +21,7 @@ C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\crtdbg.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\ctype.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\errno.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\float.h
+C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\inttypes.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\malloc.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\math.h
 C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\process.h
@@ -36,6 +37,7 @@ C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.3443
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cctype
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cerrno
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cfloat
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cinttypes
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\climits
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\cmath
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\include\concurrencysal.h
@@ -119,6 +121,7 @@ C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\crt\sm_80_rt.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\crt\sm_90_rt.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cublasLt.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cublas_api.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cublas_v2.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuComplex.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_bf16.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\cuda_bf16.hpp
