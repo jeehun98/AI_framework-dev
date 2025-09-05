@@ -46,9 +46,9 @@ int main(){
   for (auto& x:hA) x=U(rng); for(auto& x:hB) x=U(rng);
   for (auto& x:hC) x=U(rng); for(auto& x:hBias) x=U(rng);
 
-  // CPU ref
-  {
-    GemmBiasActParams pc=p; pc.A=hA.data(); pc.B=hB.data(); pc.C=hC.data(); pc.bias=hBias.data(); pc.D=hDref.data();
+  { // CPU ref
+    GemmBiasActParams pc=p;
+    pc.A=hA.data(); pc.B=hB.data(); pc.C=hC.data(); pc.bias=hBias.data(); pc.D=hDref.data();
     cpu_ref(pc,hA,hB,hC,hBias,hDref);
   }
 
