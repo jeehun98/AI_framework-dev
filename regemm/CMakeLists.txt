@@ -18,6 +18,7 @@ find_package(CUDAToolkit REQUIRED)
 
 add_library(regemm STATIC
   src/gemm_bias_act_smoke.cu
+  src/gemm_bias_act_tiled.cu
   src/launcher.cu
 )
 target_include_directories(regemm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

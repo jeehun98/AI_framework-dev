@@ -1,4 +1,7 @@
 #include <cuda_runtime.h>
+
+#include "regemm/nvtx_shim.h"
+
 #include "regemm/api.h"
 #include "regemm/activations.h"
 #include "regemm/bias.h"
