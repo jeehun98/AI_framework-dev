@@ -4,7 +4,7 @@
 :: 깨끗한 빌드
 cd C:\Users\owner\Desktop\AI_framework-dev\regemm
 rmdir /s /q build & mkdir build & cd build
-cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release  -DCMAKE_CUDA_ARCHITECTURES=86
 ninja
 ctest --output-on-failure
 
