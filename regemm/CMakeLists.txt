@@ -24,9 +24,11 @@ add_library(regemm STATIC
 target_include_directories(regemm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # 최적화 플래그
+
 target_compile_options(regemm PRIVATE
-  $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>
+  $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo;-Xptxas=-v>
 )
+
 
 # ★ regemm 사용자가 cudart 포함/링크를 자동으로 상속받도록 PUBLIC로 연결
 target_link_libraries(regemm PUBLIC CUDA::cudart)

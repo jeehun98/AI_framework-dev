@@ -9,4 +9,5 @@ ninja
 ctest --output-on-failure
 
 :: 벤치마크
-.\bench_regemm 2048 2048 2048 30
+.\build\bench_regemm 2048 2048 2048 50 1 0 0 0
+.\build\bench_regemm 2048 2048 1024 100 1 1 0 3
