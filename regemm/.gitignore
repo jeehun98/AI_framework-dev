@@ -1,0 +1,5 @@
+build/
+*.ptx
+*.nvprof
+*.ncu-rep
+.DS_Store
