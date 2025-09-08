@@ -2,12 +2,11 @@
 "%VSINSTALLDIR%Common7\Tools\VsDevCmd.bat" -arch=x64
 
 :: 깨끗한 빌드
-cd C:\Users\owner\Desktop\AI_framework-dev\regemm
+cd C:\Users\owner\Desktop\AI_framework-dev\regemm_epilogue
 rmdir /s /q build & mkdir build & cd build
 cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release  -DCMAKE_CUDA_ARCHITECTURES=86
 ninja
 ctest --output-on-failure
 
 :: 벤치마크
-.\build\bench_regemm 2048 2048 2048 50 1 0 0 0
-.\build\bench_regemm 2048 2048 1024 100 1 1 0 3
+.\bench_regemm 2048 2048 2048 30
