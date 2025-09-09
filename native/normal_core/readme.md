@@ -61,8 +61,7 @@ cmake --build build --config Release
 ### CUDA 포함 빌드
 
 ``` powershell
-cmake -S . -B build_cuda -G "Ninja" -DCMAKE_BUILD_TYPE=Release ^
-  -DNORMAL_WITH_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86
+cmake -S . -B build_cuda -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DNORMAL_WITH_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86
 cmake --build build_cuda --config Release -v
 ```
 
