@@ -74,7 +74,7 @@ cmake --build build_cuda --config Release -v
 ``` powershell
 cd build_cuda
 .
-ormal_example.exe
+normal_example.exe
 ```
 
 예상 출력:
