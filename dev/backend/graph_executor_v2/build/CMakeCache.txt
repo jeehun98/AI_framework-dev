@@ -17,16 +17,15 @@
 //Path to a program.
 CMAKE_AR:FILEPATH=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/lib.exe
 
+//Choose the type of build, options are: None Debug Release RelWithDebInfo
+// MinSizeRel ...
+CMAKE_BUILD_TYPE:STRING=Release
+
 //No help, variable specified on the command line.
-CMAKE_BUILD_TYPE:UNINITIALIZED=Release
+CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=86
 
-//Semicolon separated list of supported configuration types, only
-// supports Debug, Release, MinSizeRel, and RelWithDebInfo, anything
-// else will be ignored.
-CMAKE_CONFIGURATION_TYPES:STRING=Debug;Release;MinSizeRel;RelWithDebInfo
-
-//CUDA architectures
-CMAKE_CUDA_ARCHITECTURES:STRING=52
+//CUDA compiler
+CMAKE_CUDA_COMPILER:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/nvcc.exe
 
 //Flags used by the CUDA compiler during all build types.
 CMAKE_CUDA_FLAGS:STRING=-D_WINDOWS -Xcompiler=" /EHsc"
@@ -45,6 +44,9 @@ CMAKE_CUDA_FLAGS_RELWITHDEBINFO:STRING=-Xcompiler=" -O2 -Ob1" -DNDEBUG
 
 //Libraries linked by default with all CUDA applications.
 CMAKE_CUDA_STANDARD_LIBRARIES:STRING=kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+
+//CXX compiler
+CMAKE_CXX_COMPILER:FILEPATH=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/cl.exe
 
 //Flags used by the CXX compiler during all build types.
 CMAKE_CXX_FLAGS:STRING=/DWIN32 /D_WINDOWS /EHsc
@@ -79,6 +81,12 @@ CMAKE_EXE_LINKER_FLAGS_RELEASE:STRING=/INCREMENTAL:NO
 //Flags used by the linker during RELWITHDEBINFO builds.
 CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO:STRING=/debug /INCREMENTAL
 
+//Enable/Disable output of build database during the build.
+CMAKE_EXPORT_BUILD_DATABASE:BOOL=
+
+//Enable/Disable output of compile commands during generation.
+CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=
+
 //Value Computed by CMake.
 CMAKE_FIND_PACKAGE_REDIRECTS_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/CMakeFiles/pkgRedirects
 
@@ -87,6 +95,9 @@ CMAKE_INSTALL_PREFIX:PATH=C:/Program Files (x86)/graph_executor_v2
 
 //Path to a program.
 CMAKE_LINKER:FILEPATH=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/link.exe
+
+//Program used to build from build.ninja files.
+CMAKE_MAKE_PROGRAM:FILEPATH=C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe
 
 //Flags used by the linker during the creation of modules during
 // all build types.
@@ -109,7 +120,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELEASE:STRING=/INCREMENTAL:NO
 CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO:STRING=/debug /INCREMENTAL
 
 //Path to a program.
-CMAKE_MT:FILEPATH=CMAKE_MT-NOTFOUND
+CMAKE_MT:FILEPATH=C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/mt.exe
 
 //Value Computed by CMake
 CMAKE_PROJECT_DESCRIPTION:STATIC=
@@ -121,7 +132,7 @@ CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 CMAKE_PROJECT_NAME:STATIC=graph_executor_v2
 
 //RC compiler
-CMAKE_RC_COMPILER:FILEPATH=rc
+CMAKE_RC_COMPILER:FILEPATH=C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe
 
 //Flags for Windows Resource Compiler during all build types.
 CMAKE_RC_FLAGS:STRING=-DWIN32
@@ -416,6 +427,15 @@ CUDA_nvrtc_static_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit
 //Path to a library.
 CUDA_pcsamplingutil_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/extras/CUPTI/lib64/pcsamplingutil.lib
 
+//Integrate regemm_epilogue
+GE2_WITH_REGEMM:BOOL=ON
+
+//No help, variable specified on the command line.
+Python_EXECUTABLE:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
+
+//No help, variable specified on the command line.
+Python_ROOT_DIR:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312
+
 //Value Computed by CMake
 graph_executor_v2_BINARY_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build
 
@@ -427,6 +447,15 @@ graph_executor_v2_SOURCE_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/
 
 //No help, variable specified on the command line.
 pybind11_DIR:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11
+
+//Value Computed by CMake
+regemm_epilogue_BINARY_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/regemm_epilogue_build
+
+//Value Computed by CMake
+regemm_epilogue_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+regemm_epilogue_SOURCE_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/regemm_epilogue
 
 
 ########################
@@ -449,6 +478,8 @@ CMAKE_COMMAND:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Li
 CMAKE_CPACK_COMMAND:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/bin/cpack.exe
 //Path to ctest program executable.
 CMAKE_CTEST_COMMAND:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/bin/ctest.exe
+//ADVANCED property for variable: CMAKE_CUDA_COMPILER
+CMAKE_CUDA_COMPILER-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_CUDA_FLAGS
 CMAKE_CUDA_FLAGS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_CUDA_FLAGS_DEBUG
@@ -461,6 +492,8 @@ CMAKE_CUDA_FLAGS_RELEASE-ADVANCED:INTERNAL=1
 CMAKE_CUDA_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_CUDA_STANDARD_LIBRARIES
 CMAKE_CUDA_STANDARD_LIBRARIES-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: CMAKE_CXX_COMPILER
+CMAKE_CXX_COMPILER-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_CXX_FLAGS
 CMAKE_CXX_FLAGS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_CXX_FLAGS_DEBUG
@@ -473,6 +506,8 @@ CMAKE_CXX_FLAGS_RELEASE-ADVANCED:INTERNAL=1
 CMAKE_CXX_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_CXX_STANDARD_LIBRARIES
 CMAKE_CXX_STANDARD_LIBRARIES-ADVANCED:INTERNAL=1
+//Path to cache edit program executable.
+CMAKE_EDIT_COMMAND:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/bin/cmake-gui.exe
 //Executable file format
 CMAKE_EXECUTABLE_FORMAT:INTERNAL=Unknown
 //ADVANCED property for variable: CMAKE_EXE_LINKER_FLAGS
@@ -485,12 +520,16 @@ CMAKE_EXE_LINKER_FLAGS_MINSIZEREL-ADVANCED:INTERNAL=1
 CMAKE_EXE_LINKER_FLAGS_RELEASE-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO
 CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: CMAKE_EXPORT_BUILD_DATABASE
+CMAKE_EXPORT_BUILD_DATABASE-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: CMAKE_EXPORT_COMPILE_COMMANDS
+CMAKE_EXPORT_COMPILE_COMMANDS-ADVANCED:INTERNAL=1
 //Name of external makefile project generator.
 CMAKE_EXTRA_GENERATOR:INTERNAL=
 //Name of generator.
-CMAKE_GENERATOR:INTERNAL=Visual Studio 17 2022
+CMAKE_GENERATOR:INTERNAL=Ninja
 //Generator instance identifier.
-CMAKE_GENERATOR_INSTANCE:INTERNAL=C:/Program Files/Microsoft Visual Studio/2022/Community
+CMAKE_GENERATOR_INSTANCE:INTERNAL=
 //Name of generator platform.
 CMAKE_GENERATOR_PLATFORM:INTERNAL=
 //Name of generator toolset.
@@ -502,6 +541,8 @@ CMAKE_HOME_DIRECTORY:INTERNAL=C:/Users/owner/Desktop/AI_framework-dev/dev/backen
 CMAKE_LINKER-ADVANCED:INTERNAL=1
 //Name of CMakeLists files to read
 CMAKE_LIST_FILE_NAME:INTERNAL=CMakeLists.txt
+//ADVANCED property for variable: CMAKE_MAKE_PROGRAM
+CMAKE_MAKE_PROGRAM-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_MODULE_LINKER_FLAGS
 CMAKE_MODULE_LINKER_FLAGS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_MODULE_LINKER_FLAGS_DEBUG
@@ -515,7 +556,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_MT
 CMAKE_MT-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=1
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=2
 //Platform information initialized
 CMAKE_PLATFORM_INFO_INITIALIZED:INTERNAL=1
 //noop for ranlib
@@ -714,11 +755,11 @@ CUDA_pcsamplingutil_LIBRARY-ADVANCED:INTERNAL=1
 //Details about finding CUDAToolkit
 FIND_PACKAGE_MESSAGE_DETAILS_CUDAToolkit:INTERNAL=[C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include][C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64/cudart.lib][C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin][v12.6.85()]
 //Details about finding Python
-FIND_PACKAGE_MESSAGE_DETAILS_Python:INTERNAL=[C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe][C:/Users/owner/AppData/Local/Programs/Python/Python312/libs/python312.lib][C:/Users/owner/AppData/Local/Programs/Python/Python312/Include][found components: Interpreter Development.Module ][v3.12.4(3.12)]
+FIND_PACKAGE_MESSAGE_DETAILS_Python:INTERNAL=[C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe][C:/Users/owner/AppData/Local/Programs/Python/Python312/libs/python312.lib][C:/Users/owner/AppData/Local/Programs/Python/Python312/Include][found components: Interpreter Development.Module ][v3.12.4(3.8)]
 //Test HAS_MSVC_GL_LTCG
 HAS_MSVC_GL_LTCG:INTERNAL=1
 //Python executable during the last CMake run
-PYBIND11_PYTHON_EXECUTABLE_LAST:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe
+PYBIND11_PYTHON_EXECUTABLE_LAST:INTERNAL=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
 //Python debug status
 PYTHON_IS_DEBUG:INTERNAL=0
 PYTHON_MODULE_DEBUG_POSTFIX:INTERNAL=
@@ -727,18 +768,17 @@ _PYBIND11_CROSSCOMPILING:INTERNAL=OFF
 _Python:INTERNAL=Python
 //Compiler reason failure
 _Python_Compiler_REASON_FAILURE:INTERNAL=
-_Python_DEVELOPMENT_MODULE_SIGNATURE:INTERNAL=79349628d4bcccfffc5cd3077d0f420d
+_Python_DEVELOPMENT_MODULE_SIGNATURE:INTERNAL=8c8496d1bc111ee4406de19152aebcf5
 //Development reason failure
 _Python_Development_REASON_FAILURE:INTERNAL=
-//Path to a program.
-_Python_EXECUTABLE:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe
+_Python_EXECUTABLE:INTERNAL=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
 //Path to a program.
 _Python_EXECUTABLE_DEBUG:INTERNAL=_Python_EXECUTABLE_DEBUG-NOTFOUND
 //Path to a file.
 _Python_INCLUDE_DIR:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Include
 //Python Properties
 _Python_INTERPRETER_PROPERTIES:INTERNAL=Python;3;12;4;64;<none>;cp312-win_amd64;;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages
-_Python_INTERPRETER_SIGNATURE:INTERNAL=b6bda9de962f9b8c80d2529411c46a84
+_Python_INTERPRETER_SIGNATURE:INTERNAL=fa830f65925849b3b8498b7ed91e93ed
 //Interpreter reason failure
 _Python_Interpreter_REASON_FAILURE:INTERNAL=
 //Path to a library.

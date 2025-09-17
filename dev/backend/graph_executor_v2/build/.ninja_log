@@ -1,0 +1,20 @@
+# ninja log v5
+32	4562	7797818109677832	regemm_epilogue_build/CMakeFiles/bench_activations.dir/benchmarks/bench_activations.cu.obj	1feab1a252f85ea8
+17	222	7797818066470413	CMakeFiles/ge_v2_core.dir/src/launch_table.cpp.obj	1c0708dbddf5e253
+35	539	7797818069625481	regemm_epilogue_build/CMakeFiles/test_basic.dir/tests/test_basic.cpp.obj	e35d0866cda554ae
+26	15233	7797818216392545	regemm_epilogue_build/CMakeFiles/regemm_epilogue.dir/src/regemm_gemm_bias_act.cu.obj	3af75ef2a96d73d
+24	1749	7797818081727958	CMakeFiles/graph_executor_v2.dir/src/bindings_min_api.cpp.obj	507cd2b47cc63225
+29	4499	7797818109071042	regemm_epilogue_build/CMakeFiles/bench_gemm.dir/benchmarks/bench_gemm.cu.obj	f0b1273a389df220
+17568	18650	7797818250527294	graph_executor_v2.pyd	8415dfdfd984af35
+20	3446	7797818098533503	CMakeFiles/ge_v2_core.dir/src/my_kernels.cu.obj	f08f03bd1d9d6ca8
+15233	15269	7797818216915606	regemm_epilogue_build/regemm_epilogue.lib	9cb3de1acddb7833
+15269	15302	7797818217266359	ge_v2_core.lib	1534faec02ec90c2
+15274	15363	7797818217748909	regemm_epilogue_build/bench_gemm.exe	da6e1e39b98fb67d
+15278	15365	7797818217748909	regemm_epilogue_build/bench_activations.exe	322bead8b40dd8c3
+15282	15365	7797818217778890	regemm_epilogue_build/test_basic.exe	bcf9f1abf2781015
+15303	17568	7797818235537749	CMakeFiles/graph_executor_v2.dir/cmake_device_link.obj	569eb4496829c243
+30	1701	7797827024915039	CMakeFiles/graph_executor_v2.dir/src/bindings_min_api.cpp.obj	507cd2b47cc63225
+27	2667	7797827034462243	CMakeFiles/ge_v2_core.dir/src/my_kernels.cu.obj	f08f03bd1d9d6ca8
+2668	2706	7797827034943997	ge_v2_core.lib	1534faec02ec90c2
+2707	4862	7797827052384065	CMakeFiles/graph_executor_v2.dir/cmake_device_link.obj	569eb4496829c243
+4864	6115	7797827068784288	graph_executor_v2.pyd	8415dfdfd984af35
