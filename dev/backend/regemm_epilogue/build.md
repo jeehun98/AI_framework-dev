@@ -4,9 +4,10 @@
 :: 깨끗한 빌드
 cd C:\Users\owner\Desktop\AI_framework-dev\regemm_epilogue
 rmdir /s /q build & mkdir build & cd build
-cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release  -DCMAKE_CUDA_ARCHITECTURES=86
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=86
 ninja
 ctest --output-on-failure
 
 :: 벤치마크
+C:\Users\as042\Desktop\AI_framework-dev\dev\backend\regemm_epilogue\build>.\test_backward.exe
 .\bench_regemm 2048 2048 2048 30
