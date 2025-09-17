@@ -1,130 +1,70 @@
-// benchmarks/bench_gemm.cu
-#include <cstdio>
-#include <cstdlib>
-#include <vector>
-#include <string>
 #include <cuda_runtime.h>
+#include <cstdio>
+#include <vector>
+#include <random>
+#include <chrono>
+
 #include "regemm/api.h"
 
 using namespace regemm;
 
-static double tflops(double ms, long long M, long long N, long long K) {
-  // GEMM FLOPs (FMA = 2 FLOPs)
-  long double flops = 2.0L * M * N * K;
-  return double(flops / (ms * 1e-3) / 1e12);
+static void* dalloc(size_t bytes) {
+  void* p=nullptr; cudaMalloc(&p, bytes); return p;
 }
+static void h2d(void* dst, const void* src, size_t bytes){ cudaMemcpy(dst, src, bytes, cudaMemcpyHostToDevice); }
+static void d2h(void* dst, const void* src, size_t bytes){ cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost); }
 
-// 아주 러프한 메모리 트래픽 추정(바이트)
-// A: M*K, B: K*N, C: (beta!=0) M*N, bias: PerN→N / PerM→M / Scalar→1, D: M*N
-static double bytes_moved(long long M, long long N, long long K,
-                          bool useC, BiasKind bk, size_t sizeofT = sizeof(float)) {
-  long double bytes = 0;
-  bytes += (long double)M * K * sizeofT;   // A read
-  bytes += (long double)K * N * sizeofT;   // B read
-  if (useC) bytes += (long double)M * N * sizeofT; // C read
-  // bias read (rough; 실제 캐시 재사용은 더 적게 읽음)
-  if (bk == BiasKind::PerN) bytes += (long double)N * sizeofT;
-  else if (bk == BiasKind::PerM) bytes += (long double)M * sizeofT;
-  else if (bk == BiasKind::Scalar) bytes += (long double)1 * sizeofT;
-  // D write
-  bytes += (long double)M * N * sizeofT;
-  return double(bytes);
-}
+int main() {
+  const int M=1024, N=1024, K=1024;
+  std::vector<float> hA(M*K), hB(K*N), hC(M*N), hD(M*N), hBiasN(N, 0.1f);
 
-static void print_usage(const char* prog){
-  std::printf(
-    "Usage: %s M N K [reps=50] [alpha=1.0] [beta=0.0] [act=0:none|1:ReLU] [bias=0:none|1:perN|2:perM|3:scalar]\n"
-    "Example: %s 2048 2048 2048 30 1.0 0.0 0 1\n", prog, prog);
-}
+  std::mt19937 rng(123);
+  std::uniform_real_distribution<float> U(-1,1);
+  for (auto& x: hA) x = U(rng);
+  for (auto& x: hB) x = U(rng);
+  for (auto& x: hC) x = U(rng);
 
-int main(int argc, char** argv){
-  long long M=1024, N=1024, K=1024;
-  int reps=50; float alpha=1.f, beta=0.f;
-  int act_i=0, bias_i=0;
+  float *dA=(float*)dalloc(sizeof(float)*M*K);
+  float *dB=(float*)dalloc(sizeof(float)*K*N);
+  float *dC=(float*)dalloc(sizeof(float)*M*N);
+  float *dD=(float*)dalloc(sizeof(float)*M*N);
+  float *dBiasN=(float*)dalloc(sizeof(float)*N);
 
-  if (argc < 4) {
-    print_usage(argv[0]);
-    std::puts("Running default: 1024 1024 1024 reps=50 alpha=1 beta=0 act=0 bias=0");
-  } else {
-    M = std::atoll(argv[1]); N = std::atoll(argv[2]); K = std::atoll(argv[3]);
-    if (argc > 4) reps   = std::atoi(argv[4]);
-    if (argc > 5) alpha  = std::atof(argv[5]);
-    if (argc > 6) beta   = std::atof(argv[6]);
-    if (argc > 7) act_i  = std::atoi(argv[7]);
-    if (argc > 8) bias_i = std::atoi(argv[8]);
-  }
+  h2d(dA, hA.data(), sizeof(float)*M*K);
+  h2d(dB, hB.data(), sizeof(float)*K*N);
+  h2d(dC, hC.data(), sizeof(float)*M*N);
+  h2d(dD, hD.data(), sizeof(float)*M*N);
+  h2d(dBiasN, hBiasN.data(), sizeof(float)*N);
 
-  if (M<=0 || N<=0 || K<=0 || reps<=0){
-    std::fprintf(stderr, "Invalid args.\n");
-    return 1;
-  }
-
-  ActKind  act  = (act_i==1)? ActKind::ReLU : ActKind::None;
-  BiasKind bias = BiasKind::None;
-  if (bias_i==1) bias = BiasKind::PerN;
-  else if (bias_i==2) bias = BiasKind::PerM;
-  else if (bias_i==3) bias = BiasKind::Scalar;
-
-  // Host init (간단히 1/0.5로 채움; 성능 측정 목적)
-  size_t szA = size_t(M)*K, szB=size_t(K)*N, szC=size_t(M)*N, szD=szC;
-  std::vector<float> hA(szA, 1.f), hB(szB, 1.f), hC(szC, 0.5f);
-
-  // Device alloc
-  float *dA=nullptr,*dB=nullptr,*dC=nullptr,*dD=nullptr,*dBias=nullptr;
-  cudaMalloc(&dA, szA*sizeof(float));
-  cudaMalloc(&dB, szB*sizeof(float));
-  cudaMalloc(&dC, szC*sizeof(float));
-  cudaMalloc(&dD, szD*sizeof(float));
-
-  // bias 크기: 기본 perN(열). perM이면 M, scalar면 1.
-  size_t bias_len = 0;
-  if (bias == BiasKind::PerN) bias_len = size_t(N);
-  else if (bias == BiasKind::PerM) bias_len = size_t(M);
-  else if (bias == BiasKind::Scalar) bias_len = 1;
-  if (bias_len) cudaMalloc(&dBias, bias_len*sizeof(float));
-
-  // Upload
-  cudaMemcpy(dA, hA.data(), szA*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(dB, hB.data(), szB*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(dC, hC.data(), szC*sizeof(float), cudaMemcpyHostToDevice);
-  if (dBias) cudaMemset(dBias, 0, bias_len*sizeof(float)); // 0-bias
-
-  // Params
   GemmBiasActParams p{};
-  p.M=int(M); p.N=int(N); p.K=int(K);
-  p.alpha=alpha; p.beta=beta;
-  p.A=dA; p.B=dB; p.C=(beta!=0.f)? dC : nullptr; // beta==0이면 굳이 C 안 씀
-  p.D=dD;
-  p.lda=int(K); p.ldb=int(N); p.ldc=int(N); p.ldd=int(N);
-  p.bias=dBias; p.bias_kind=bias;
-  p.act=act; p.dtype=DType::F32;
+  p.M=M; p.N=N; p.K=K;
+  p.A=dA; p.lda=K;
+  p.B=dB; p.ldb=N;
+  p.C=dC; p.ldc=N;
+  p.D=dD; p.ldd=N;
+  p.alpha=1.f; p.beta=1.f;
+  p.bias=dBiasN; p.bias_kind=BiasKind::PerN;
+  p.act=ActKind::ReLU;
+
+  cudaStream_t s; cudaStreamCreate(&s);
 
   // Warmup
-  int warmup = (reps>5)? 5 : 1;
-  for (int i=0;i<warmup;i++) gemm_bias_act(p, nullptr);
-  cudaDeviceSynchronize();
+  for(int i=0;i<5;i++) launch_gemm_bias_act_f32_tiled(p, s);
+  cudaStreamSynchronize(s);
 
   // Timing
-  cudaEvent_t evs, eve; cudaEventCreate(&evs); cudaEventCreate(&eve);
-  cudaEventRecord(evs);
-  for (int i=0;i<reps;i++) gemm_bias_act(p, nullptr);
-  cudaEventRecord(eve); cudaEventSynchronize(eve);
-  float total_ms=0.f; cudaEventElapsedTime(&total_ms, evs, eve);
-  float avg_ms = total_ms / reps;
+  auto beg = std::chrono::high_resolution_clock::now();
+  for(int it=0; it<50; ++it) launch_gemm_bias_act_f32_tiled(p, s);
+  cudaStreamSynchronize(s);
+  auto end = std::chrono::high_resolution_clock::now();
+  double ms = std::chrono::duration<double, std::milli>(end-beg).count()/50.0;
 
-  // Metrics
-  double tf = tflops(avg_ms, M,N,K);
-  double bytes = bytes_moved(M,N,K, (beta!=0.f), bias);
-  double gbs = bytes / (avg_ms * 1e-3) / 1e9;
+  double flops = 2.0 * M * N * K; // FMA = 2 FLOPs
+  double tflops = flops / (ms*1e-3) / 1e12;
 
-  // Print
-  std::printf("path=auto (launcher selects)\n");
-  std::printf("M=%lld N=%lld K=%lld reps=%d alpha=%.3f beta=%.3f act=%d bias=%d\n",
-              M,N,K,reps,alpha,beta,act_i,bias_i);
-  std::printf("avg=%.3f ms  TFLOP/s=%.3f  approxGB/s=%.1f\n", avg_ms, tf, gbs);
+  printf("[bench] %dx%dx%d: %.3f ms  (%.2f TFLOP/s)\\n", M,N,K, ms, tflops);
 
-  // Cleanup
-  cudaEventDestroy(evs); cudaEventDestroy(eve);
-  cudaFree(dA); cudaFree(dB); cudaFree(dC); cudaFree(dD); if (dBias) cudaFree(dBias);
+  cudaFree(dA); cudaFree(dB); cudaFree(dC); cudaFree(dD); cudaFree(dBiasN);
+  cudaStreamDestroy(s);
   return 0;
 }

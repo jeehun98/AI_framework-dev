@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+build_type=${1:-Release}
 mkdir -p build && cd build
-cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Release
-ninja -j$(nproc)
-ctest --output-on-failure || ./tests/test_basic
+cmake -DCMAKE_BUILD_TYPE=${build_type} ..
+cmake --build . -j
