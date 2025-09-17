@@ -1,14 +1,10 @@
 #pragma once
-// Define REGEMM_USE_NVTX=1 to enable real NVTX.
-// Otherwise provide no-op shims.
-#if defined(REGEMM_USE_NVTX) && REGEMM_USE_NVTX
-  #include <nvToolsExt.h>
-  struct NvtxRangeScope {
-    explicit NvtxRangeScope(const char* name){ nvtxRangePushA(name); }
-    ~NvtxRangeScope(){ nvtxRangePop(); }
-  };
+
+#if defined(USE_NVTX)
+  #include <nvtx3/nvToolsExt.h>
+  #define NVTX_RANGE(name,color) nvtxRangePushEx(&(nvtxEventAttributes_t{0,0,0,color,0,name,0,0}))
+  #define NVTX_POP() nvtxRangePop()
 #else
-  inline void nvtxRangePushA(const char*) {}
-  inline void nvtxRangePop() {}
-  struct NvtxRangeScope { explicit NvtxRangeScope(const char*) {} };
+  #define NVTX_RANGE(name,color) do{}while(0)
+  #define NVTX_POP() do{}while(0)
 #endif

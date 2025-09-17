@@ -2,18 +2,15 @@
 #include "regemm/api.h"
 
 namespace regemm {
-void launch_gemm_bias_act_f32_smoke(const GemmBiasActParams&, cudaStream_t);
-void launch_gemm_bias_act_f32_tiled(const GemmBiasActParams&, cudaStream_t);
+// Forward decls implemented in the .cu files
+void launch_gemm_bias_act_f32_smoke (const GemmBiasActParams& p, cudaStream_t s);
+void launch_gemm_bias_act_f32_tiled (const GemmBiasActParams& p, cudaStream_t s);
 
-int gemm_bias_act(const GemmBiasActParams& p, void* stream) {
-  cudaStream_t s = reinterpret_cast<cudaStream_t>(stream);
-  if (p.dtype == DType::F32) {
-    // 간단한 휴리스틱: 큰 문제는 tiled, 아주 작으면 smoke
-    bool use_tiled = (p.M >= 128 && p.N >= 128 && p.K >= 16);
-    if (use_tiled) launch_gemm_bias_act_f32_tiled(p, s);
-    else           launch_gemm_bias_act_f32_smoke(p, s);
-    return cudaPeekAtLastError();
-  }
-  return 1; // unsupported dtype
+// Simple policy: use tiled for medium+ sizes, smoke for tiny shapes.
+void gemm_bias_act_f32(const GemmBiasActParams& p, cudaStream_t s) {
+  const bool tiny = (p.M*p.N < 4096) || (p.K < 8);
+  if (tiny) launch_gemm_bias_act_f32_smoke(p, s);
+  else      launch_gemm_bias_act_f32_tiled(p, s);
 }
+
 } // namespace regemm

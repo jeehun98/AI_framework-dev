@@ -1,8 +1,7 @@
 @echo off
-setlocal
-mkdir build
+set BUILD_TYPE=%1
+if "%BUILD_TYPE%"=="" set BUILD_TYPE=Release
+if not exist build mkdir build
 cd build
-cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release  -DCMAKE_CUDA_ARCHITECTURES=86
-ninja
-ctest --output-on-failure
-endlocal
+cmake -G "Ninja" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
+cmake --build . --config %BUILD_TYPE%
