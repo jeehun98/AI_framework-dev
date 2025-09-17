@@ -1,5 +1,11 @@
 build/
+CMakeFiles/
+CMakeCache.txt
+*.vcxproj*
+*.sln
+*.user
+*.log
+*.pdb
+*.obj
 *.ptx
-*.nvprof
-*.ncu-rep
-.DS_Store
+.cache/
