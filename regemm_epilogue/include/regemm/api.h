@@ -3,33 +3,58 @@
 
 namespace regemm {
 
-enum class DType : int { F32 = 0 /* later: F16, BF16, TF32*/ };
-enum class BiasKind : int { None=0, PerN=1, PerM=2, Scalar=3 };
-enum class ActKind  : int { None=0, ReLU=1 /* later: GELU, SiLU... */ };
-
-struct GemmBiasActParams {
-  // Shapes: A[M,K], B[K,N], D[M,N]
-  int M, N, K;
-
-  // Scalars: D = Act( alpha * (A*B) + beta * C_in + Bias )
-  float alpha{1.f}, beta{0.f};
-
-  // Pointers (row-major 가정)
-  const void* A{nullptr}; int lda{0}; // lda = K (row-major)
-  const void* B{nullptr}; int ldb{0}; // ldb = N
-  const void* C{nullptr}; int ldc{0}; // optional (beta!=0)
-  void*       D{nullptr}; int ldd{0};
-
-  // Bias/Act
-  const void* bias{nullptr};
-  BiasKind bias_kind{BiasKind::None};
-  ActKind  act{ActKind::None};
-
-  // Types / options
-  DType dtype{DType::F32};
+enum class ActKind : int {
+  None = 0,
+  ReLU = 1,
+  LeakyReLU = 2,
+  GELU = 3,
+  Sigmoid = 4,
+  Tanh = 5,
 };
 
-/// 런처(스모크: F32 전용)
-int gemm_bias_act(const GemmBiasActParams& p, void* stream = nullptr);
+enum class BiasKind : int {
+  None   = 0, // bias == nullptr
+  Scalar = 1, // single scalar
+  PerM   = 2, // one per row (M)
+  PerN   = 3  // one per col (N)
+};
+
+struct GemmBiasActParams {
+  // Matrix dims
+  int M, N, K;
+
+  // A: [M x K], lda >= K
+  const void* A;
+  int lda;
+
+  // B: [K x N], ldb >= N
+  const void* B;
+  int ldb;
+
+  // C: [M x N], optional, ldc >= N
+  const void* C;
+  int ldc;
+
+  // D: [M x N], output, ldd >= N
+  void* D;
+  int ldd;
+
+  // Scales
+  float alpha; // multiplies accumulated A*B
+  float beta;  // multiplies C
+
+  // Bias
+  const void* bias; // nullptr if none
+  BiasKind bias_kind;
+
+  // Activation
+  ActKind act;
+};
+
+// Host launchers (implemented in launcher.cu)
+void launch_gemm_bias_act_f32_smoke (const GemmBiasActParams& p, cudaStream_t s);
+void launch_gemm_bias_act_f32_tiled (const GemmBiasActParams& p, cudaStream_t s);
+
+void gemm_bias_act_f32(const GemmBiasActParams& p, cudaStream_t s);
 
 } // namespace regemm
