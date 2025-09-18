@@ -90,56 +90,8 @@ CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=
 //Value Computed by CMake.
 CMAKE_FIND_PACKAGE_REDIRECTS_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/CMakeFiles/pkgRedirects
 
-//User executables (bin)
-CMAKE_INSTALL_BINDIR:PATH=bin
-
-//Read-only architecture-independent data (DATAROOTDIR)
-CMAKE_INSTALL_DATADIR:PATH=
-
-//Read-only architecture-independent data root (share)
-CMAKE_INSTALL_DATAROOTDIR:PATH=share
-
-//Documentation root (DATAROOTDIR/doc/PROJECT_NAME)
-CMAKE_INSTALL_DOCDIR:PATH=
-
-//C header files (include)
-CMAKE_INSTALL_INCLUDEDIR:PATH=include
-
-//Info documentation (DATAROOTDIR/info)
-CMAKE_INSTALL_INFODIR:PATH=
-
-//Object code libraries (lib)
-CMAKE_INSTALL_LIBDIR:PATH=lib
-
-//Program executables (libexec)
-CMAKE_INSTALL_LIBEXECDIR:PATH=libexec
-
-//Locale-dependent data (DATAROOTDIR/locale)
-CMAKE_INSTALL_LOCALEDIR:PATH=
-
-//Modifiable single-machine data (var)
-CMAKE_INSTALL_LOCALSTATEDIR:PATH=var
-
-//Man documentation (DATAROOTDIR/man)
-CMAKE_INSTALL_MANDIR:PATH=
-
-//C header files for non-gcc (/usr/include)
-CMAKE_INSTALL_OLDINCLUDEDIR:PATH=/usr/include
-
 //Install path prefix, prepended onto install directories.
 CMAKE_INSTALL_PREFIX:PATH=C:/Program Files (x86)/graph_executor_v2
-
-//Run-time variable data (LOCALSTATEDIR/run)
-CMAKE_INSTALL_RUNSTATEDIR:PATH=
-
-//System admin executables (sbin)
-CMAKE_INSTALL_SBINDIR:PATH=sbin
-
-//Modifiable architecture-independent data (com)
-CMAKE_INSTALL_SHAREDSTATEDIR:PATH=com
-
-//Read-only single-machine data (etc)
-CMAKE_INSTALL_SYSCONFDIR:PATH=etc
 
 //Path to a program.
 CMAKE_LINKER:FILEPATH=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/link.exe
@@ -178,21 +130,6 @@ CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 
 //Value Computed by CMake
 CMAKE_PROJECT_NAME:STATIC=graph_executor_v2
-
-//Value Computed by CMake
-CMAKE_PROJECT_VERSION:STATIC=2.12.0
-
-//Value Computed by CMake
-CMAKE_PROJECT_VERSION_MAJOR:STATIC=2
-
-//Value Computed by CMake
-CMAKE_PROJECT_VERSION_MINOR:STATIC=12
-
-//Value Computed by CMake
-CMAKE_PROJECT_VERSION_PATCH:STATIC=0
-
-//Value Computed by CMake
-CMAKE_PROJECT_VERSION_TWEAK:STATIC=
 
 //RC compiler
 CMAKE_RC_COMPILER:FILEPATH=C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe
@@ -490,72 +427,17 @@ CUDA_nvrtc_static_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit
 //Path to a library.
 CUDA_pcsamplingutil_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/extras/CUPTI/lib64/pcsamplingutil.lib
 
-//Directory under which to collect all populated content
-FETCHCONTENT_BASE_DIR:PATH=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps
-
-//Disables all attempts to download or update content and assumes
-// source dirs already exist
-FETCHCONTENT_FULLY_DISCONNECTED:BOOL=OFF
-
-//Enables QUIET option for all content population
-FETCHCONTENT_QUIET:BOOL=ON
-
-//When not empty, overrides where to find pre-populated content
-// for pybind11
-FETCHCONTENT_SOURCE_DIR_PYBIND11:PATH=
-
-//Enables UPDATE_DISCONNECTED behavior for all content population
-FETCHCONTENT_UPDATES_DISCONNECTED:BOOL=OFF
-
-//Enables UPDATE_DISCONNECTED behavior just for population of pybind11
-FETCHCONTENT_UPDATES_DISCONNECTED_PYBIND11:BOOL=OFF
-
 //Link NVTX for profiling ranges
 GE2_WITH_NVTX:BOOL=OFF
 
 //Integrate regemm_epilogue
 GE2_WITH_REGEMM:BOOL=ON
 
-//Git command line client
-GIT_EXECUTABLE:FILEPATH=C:/Program Files/Git/cmd/git.exe
-
-//To enforce that a handle_type_name<> specialization exists
-PYBIND11_DISABLE_HANDLE_TYPE_NAME_DEFAULT_IMPLEMENTATION:BOOL=OFF
-
-//Force new FindPython
-PYBIND11_FINDPYTHON:BOOL=ON
-
-//Install pybind11 header files?
-PYBIND11_INSTALL:BOOL=OFF
-
-//Override the ABI version, may be used to enable the unstable
-// ABI.
-PYBIND11_INTERNALS_VERSION:STRING=
-
-//Disable search for Python
-PYBIND11_NOPYTHON:BOOL=OFF
-
-//Disable NumPy 2 support to avoid changes to previous pybind11
-// versions.
-PYBIND11_NUMPY_1_ONLY:BOOL=OFF
-
-//Use simpler GIL management logic that does not support disassociation
-PYBIND11_SIMPLE_GIL_MANAGEMENT:BOOL=OFF
-
-//Build pybind11 test suite?
-PYBIND11_TEST:BOOL=OFF
+//No help, variable specified on the command line.
+Python_EXECUTABLE:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
 
 //No help, variable specified on the command line.
-Python3_EXECUTABLE:UNINITIALIZED=C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe
-
-//No help, variable specified on the command line.
-Python3_FIND_STRATEGY:UNINITIALIZED=LOCATION
-
-//No help, variable specified on the command line.
-Python3_FIND_VIRTUALENV:UNINITIALIZED=STANDARD
-
-//No help, variable specified on the command line.
-Python3_ROOT_DIR:UNINITIALIZED=C:/Users/owner/AppData/Local/Programs/Python/Python312
+Python_ROOT_DIR:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312
 
 //Value Computed by CMake
 graph_executor_v2_BINARY_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build
@@ -566,17 +448,8 @@ graph_executor_v2_IS_TOP_LEVEL:STATIC=ON
 //Value Computed by CMake
 graph_executor_v2_SOURCE_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2
 
-//Value Computed by CMake
-pybind11_BINARY_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-build
-
-//The directory containing a CMake configuration file for pybind11.
-pybind11_DIR:PATH=pybind11_DIR-NOTFOUND
-
-//Value Computed by CMake
-pybind11_IS_TOP_LEVEL:STATIC=OFF
-
-//Value Computed by CMake
-pybind11_SOURCE_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-src
+//No help, variable specified on the command line.
+pybind11_DIR:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\share\cmake\pybind11
 
 //Value Computed by CMake
 regemm_epilogue_BINARY_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/regemm_epilogue_build
@@ -667,38 +540,6 @@ CMAKE_GENERATOR_TOOLSET:INTERNAL=
 //Source directory with the top level CMakeLists.txt file for this
 // project
 CMAKE_HOME_DIRECTORY:INTERNAL=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2
-//ADVANCED property for variable: CMAKE_INSTALL_BINDIR
-CMAKE_INSTALL_BINDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_DATADIR
-CMAKE_INSTALL_DATADIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_DATAROOTDIR
-CMAKE_INSTALL_DATAROOTDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_DOCDIR
-CMAKE_INSTALL_DOCDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_INCLUDEDIR
-CMAKE_INSTALL_INCLUDEDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_INFODIR
-CMAKE_INSTALL_INFODIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_LIBDIR
-CMAKE_INSTALL_LIBDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_LIBEXECDIR
-CMAKE_INSTALL_LIBEXECDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_LOCALEDIR
-CMAKE_INSTALL_LOCALEDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_LOCALSTATEDIR
-CMAKE_INSTALL_LOCALSTATEDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_MANDIR
-CMAKE_INSTALL_MANDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_OLDINCLUDEDIR
-CMAKE_INSTALL_OLDINCLUDEDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_RUNSTATEDIR
-CMAKE_INSTALL_RUNSTATEDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_SBINDIR
-CMAKE_INSTALL_SBINDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_SHAREDSTATEDIR
-CMAKE_INSTALL_SHAREDSTATEDIR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_INSTALL_SYSCONFDIR
-CMAKE_INSTALL_SYSCONFDIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_LINKER
 CMAKE_LINKER-ADVANCED:INTERNAL=1
 //Name of CMakeLists files to read
@@ -718,7 +559,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_MT
 CMAKE_MT-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=3
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=2
 //Platform information initialized
 CMAKE_PLATFORM_INFO_INITIALIZED:INTERNAL=1
 //noop for ranlib
@@ -917,35 +758,30 @@ CUDA_pcsamplingutil_LIBRARY-ADVANCED:INTERNAL=1
 //Details about finding CUDAToolkit
 FIND_PACKAGE_MESSAGE_DETAILS_CUDAToolkit:INTERNAL=[C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include][C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64/cudart.lib][C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin][v12.6.85()]
 //Details about finding Python
-FIND_PACKAGE_MESSAGE_DETAILS_Python:INTERNAL=[C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe][C:/Users/owner/AppData/Local/Programs/Python/Python312/libs/python312.lib][C:/Users/owner/AppData/Local/Programs/Python/Python312/Include][found components: Interpreter Development.Module ][v3.12.4(3.8)]
-//ADVANCED property for variable: GIT_EXECUTABLE
-GIT_EXECUTABLE-ADVANCED:INTERNAL=1
+FIND_PACKAGE_MESSAGE_DETAILS_Python:INTERNAL=[C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe][C:/Users/owner/AppData/Local/Programs/Python/Python312/libs/python312.lib][C:/Users/owner/AppData/Local/Programs/Python/Python312/Include][found components: Interpreter Development.Module ][v3.12.4(3.8)]
 //Test HAS_MSVC_GL_LTCG
 HAS_MSVC_GL_LTCG:INTERNAL=1
-PYBIND11_INCLUDE_DIR:INTERNAL=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-src/include
 //Python executable during the last CMake run
-PYBIND11_PYTHON_EXECUTABLE_LAST:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe
+PYBIND11_PYTHON_EXECUTABLE_LAST:INTERNAL=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
 //Python debug status
 PYTHON_IS_DEBUG:INTERNAL=0
 PYTHON_MODULE_DEBUG_POSTFIX:INTERNAL=
 PYTHON_MODULE_EXTENSION:INTERNAL=.cp312-win_amd64.pyd
-//CMAKE_INSTALL_PREFIX during last run
-_GNUInstallDirs_LAST_CMAKE_INSTALL_PREFIX:INTERNAL=C:/Program Files (x86)/graph_executor_v2
+_PYBIND11_CROSSCOMPILING:INTERNAL=OFF
 _Python:INTERNAL=Python
 //Compiler reason failure
 _Python_Compiler_REASON_FAILURE:INTERNAL=
-_Python_DEVELOPMENT_MODULE_SIGNATURE:INTERNAL=79349628d4bcccfffc5cd3077d0f420d
+_Python_DEVELOPMENT_MODULE_SIGNATURE:INTERNAL=8c8496d1bc111ee4406de19152aebcf5
 //Development reason failure
 _Python_Development_REASON_FAILURE:INTERNAL=
-//Path to a program.
-_Python_EXECUTABLE:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/python.exe
+_Python_EXECUTABLE:INTERNAL=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
 //Path to a program.
 _Python_EXECUTABLE_DEBUG:INTERNAL=_Python_EXECUTABLE_DEBUG-NOTFOUND
 //Path to a file.
 _Python_INCLUDE_DIR:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Include
 //Python Properties
 _Python_INTERPRETER_PROPERTIES:INTERNAL=Python;3;12;4;64;<none>;cp312-win_amd64;;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages
-_Python_INTERPRETER_SIGNATURE:INTERNAL=b6bda9de962f9b8c80d2529411c46a84
+_Python_INTERPRETER_SIGNATURE:INTERNAL=fa830f65925849b3b8498b7ed91e93ed
 //Path to a library.
 _Python_LIBRARY_DEBUG:INTERNAL=_Python_LIBRARY_DEBUG-NOTFOUND
 //Path to a library.
@@ -954,10 +790,6 @@ _Python_LIBRARY_RELEASE:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Py
 _Python_NumPy_REASON_FAILURE:INTERNAL=
 //Path to a library.
 _Python_RUNTIME_LIBRARY_RELEASE:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/python312.dll
-//True if pybind11 and all required components found on the system
-pybind11_FOUND:INTERNAL=TRUE
-//Directory where pybind11 headers are located
-pybind11_INCLUDE_DIR:INTERNAL=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-src/include
 //Directories where pybind11 and possibly Python headers are located
-pybind11_INCLUDE_DIRS:INTERNAL=C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-src/include;C:/Users/owner/AppData/Local/Programs/Python/Python312/Include
+pybind11_INCLUDE_DIRS:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/include;C:/Users/owner/AppData/Local/Programs/Python/Python312/Include
 
