@@ -10,7 +10,7 @@
 namespace regemm {
 
 // ====================================================================
-// 기존: Smoke (비타일, 소규모 행렬 최적)
+// 기존: Smoke (비타일, 소규모 행렬 최적)  — 이미 정식 스펙 준수
 // ====================================================================
 __global__ void gemm_bias_act_f32_smoke(GemmBiasActParams p) {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
@@ -29,16 +29,15 @@ __global__ void gemm_bias_act_f32_smoke(GemmBiasActParams p) {
     acc = fmaf(a, b, acc);
   }
 
-  acc *= p.alpha;
-
+  // pre = alpha*(A@B) + beta*C + bias
+  float pre = p.alpha * acc;
   if (p.beta != 0.f && C) {
-    float cin = C[m * p.ldc + n];
-    acc = fmaf(p.beta, cin, acc);
+    pre = fmaf(p.beta, C[m * p.ldc + n], pre);
   }
+  pre += load_bias(p, m, n);
 
-  acc += load_bias(p, m, n);
-  acc = apply_act_runtime(acc, p.act, p.leaky_slope);
-  D[m * p.ldd + n] = acc;
+  // activation
+  D[m * p.ldd + n] = apply_act_runtime(pre, p.act, p.leaky_slope);
 }
 
 void launch_gemm_bias_act_f32_smoke(const GemmBiasActParams& p, cudaStream_t s) {
@@ -76,7 +75,7 @@ static_assert(TDY * THR_M == BM, "BM must equal TDY*THR_M");
 #endif
 
 // ====================================================================
-// 기존: Tiled kernel (고성능 경로)
+// Tiled kernel (고성능 경로) — 에필로그 수식 고정: pre=alpha*acc + beta*C + bias
 // ====================================================================
 template<int BM_, int BN_, int BK_, ActKind AK>
 __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
@@ -213,71 +212,38 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
       bias_m_cached = load_bias(p, m, 0);
     }
 
-    if (p.beta != 0.f && C) {
-      if (vec_ok_loadC) {
-        #pragma unroll
-        for (int j = 0; j < THR_N; j += 4) {
-          int n = tn0 + j;
-          if (n + 3 < p.N) {
-            float4 c4 = *reinterpret_cast<const float4*>(&C[m * ldc + n]);
-            acc[i][j + 0] = fmaf(p.beta, c4.x, acc[i][j + 0]);
-            acc[i][j + 1] = fmaf(p.beta, c4.y, acc[i][j + 1]);
-            acc[i][j + 2] = fmaf(p.beta, c4.z, acc[i][j + 2]);
-            acc[i][j + 3] = fmaf(p.beta, c4.w, acc[i][j + 3]);
-          } else {
-            for (int t = 0; t < 4; t++) {
-              int nn = n + t;
-              int jj = j + t;
-              if (nn < p.N) {
-                float cin = C[m * ldc + nn];
-                acc[i][jj] = fmaf(p.beta, cin, acc[i][jj]);
-              }
-            }
-          }
-        }
-      } else {
-        #pragma unroll
-        for (int j = 0; j < THR_N; j++) {
-          int n = tn0 + j;
-          if (n < p.N) {
-            float cin = C[m * ldc + n];
-            acc[i][j] = fmaf(p.beta, cin, acc[i][j]);
-          }
-        }
-      }
-    }
-
-    #pragma unroll
-    for (int j = 0; j < THR_N; j++) {
-      int n = tn0 + j;
-      if (n < p.N) {
-        float v = acc[i][j] * p.alpha;
-        if (p.bias) {
-          if (p.bias_kind == BiasKind::PerN)      v += bias_j[j];
-          else if (p.bias_kind == BiasKind::PerM) v += bias_m_cached;
-          else                                    v += load_bias(p, m, n);
-        }
-        v = act_apply<AK>(v, p.leaky_slope);
-        acc[i][j] = v;
-      }
-    }
-
+    // --- 에필로그: pre = alpha*acc + beta*C + bias ---
     if (vec_ok_store) {
       #pragma unroll
       for (int j = 0; j < THR_N; j += 4) {
         int n = tn0 + j;
+        float4 d4;
+        #pragma unroll
+        for (int t = 0; t < 4; t++) {
+          int nn = n + t;
+          int jj = j + t;
+          if (nn < p.N) {
+            float pre = p.alpha * acc[i][jj];
+            if (p.beta != 0.f && C) {
+              float cin = C[m * ldc + nn];
+              pre = fmaf(p.beta, cin, pre);
+            }
+            if (p.bias) {
+              if (p.bias_kind == BiasKind::PerN)      pre += bias_j[jj];
+              else if (p.bias_kind == BiasKind::PerM) pre += bias_m_cached;
+              else                                    pre += load_bias(p, m, nn);
+            }
+            (&d4.x)[t] = act_apply<AK>(pre, p.leaky_slope);
+          }
+        }
         if (n + 3 < p.N) {
-          float4 d4;
-          d4.x = acc[i][j + 0];
-          d4.y = acc[i][j + 1];
-          d4.z = acc[i][j + 2];
-          d4.w = acc[i][j + 3];
           *reinterpret_cast<float4*>(&D[m * ldd + n]) = d4;
         } else {
+          #pragma unroll
           for (int t = 0; t < 4; t++) {
             int nn = n + t;
             int jj = j + t;
-            if (nn < p.N) D[m * ldd + nn] = acc[i][jj];
+            if (nn < p.N) D[m * ldd + nn] = (&d4.x)[t];
           }
         }
       }
@@ -285,7 +251,19 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
       #pragma unroll
       for (int j = 0; j < THR_N; j++) {
         int n = tn0 + j;
-        if (n < p.N) D[m * ldd + n] = acc[i][j];
+        if (n < p.N) {
+          float pre = p.alpha * acc[i][j];
+          if (p.beta != 0.f && C) {
+            float cin = C[m * ldc + n];
+            pre = fmaf(p.beta, cin, pre);
+          }
+          if (p.bias) {
+            if (p.bias_kind == BiasKind::PerN)      pre += bias_j[j];
+            else if (p.bias_kind == BiasKind::PerM) pre += bias_m_cached;
+            else                                    pre += load_bias(p, m, n);
+          }
+          D[m * ldd + n] = act_apply<AK>(pre, p.leaky_slope);
+        }
       }
     }
   }
@@ -322,7 +300,7 @@ void gemm_bias_act_f32(const GemmBiasActParams& p, cudaStream_t s) {
 // ======================  NEW: EX (Z Stash) 경로  =====================
 // ====================================================================
 
-// Smoke EX: 작은 사이즈용, pre-activation(Z) 저장 포함
+// Smoke EX — 이미 정식 스펙 준수
 __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
   const int n = blockIdx.x * blockDim.x + threadIdx.x;
@@ -343,22 +321,21 @@ __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
     acc = fmaf(a, b, acc);
   }
 
+  // pre = alpha*(A@B) + beta*C + bias
   float pre = p.alpha * acc;
   if (p.beta != 0.f && C) {
     pre = fmaf(p.beta, C[m * p.ldc + n], pre);
   }
-  pre += load_bias(p, m, n);       // 템플릿 load_bias 사용
+  pre += load_bias(p, m, n);
 
   if (p.save_preact && Z) {
-    Z[m * ldZ + n] = pre;          // Z stash
+    Z[m * ldZ + n] = pre;
   }
 
-  // leaky_slope 반영 가능한 런타임 버전 사용
-  float y = apply_act_runtime(pre, p.act, p.leaky_slope);
-  D[m * p.ldd + n] = y;
+  D[m * p.ldd + n] = apply_act_runtime(pre, p.act, p.leaky_slope);
 }
 
-// Tiled EX: 고성능 경로, pre-activation(Z) 저장 포함
+// Tiled EX — 에필로그 수식 고정 + Z stash
 template<int BM_, int BN_, int BK_, ActKind AK>
 __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
   const int m0 = blockIdx.y * BM_;
@@ -495,42 +472,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
       bias_m_cached = load_bias(p, m, 0);
     }
 
-    // add beta*C
-    if (p.beta != 0.f && C) {
-      if (vec_ok_loadC) {
-        #pragma unroll
-        for (int j = 0; j < THR_N; j += 4) {
-          int n = tn0 + j;
-          if (n + 3 < p.N) {
-            float4 c4 = *reinterpret_cast<const float4*>(&C[m * ldc + n]);
-            acc[i][j + 0] = fmaf(p.beta, c4.x, acc[i][j + 0]);
-            acc[i][j + 1] = fmaf(p.beta, c4.y, acc[i][j + 1]);
-            acc[i][j + 2] = fmaf(p.beta, c4.z, acc[i][j + 2]);
-            acc[i][j + 3] = fmaf(p.beta, c4.w, acc[i][j + 3]);
-          } else {
-            for (int t = 0; t < 4; t++) {
-              int nn = n + t;
-              int jj = j + t;
-              if (nn < p.N) {
-                float cin = C[m * ldc + nn];
-                acc[i][jj] = fmaf(p.beta, cin, acc[i][jj]);
-              }
-            }
-          }
-        }
-      } else {
-        #pragma unroll
-        for (int j = 0; j < THR_N; j++) {
-          int n = tn0 + j;
-          if (n < p.N) {
-            float cin = C[m * ldc + n];
-            acc[i][j] = fmaf(p.beta, cin, acc[i][j]);
-          }
-        }
-      }
-    }
-
-    // pre 계산 + Z stash + activation + store
+    // --- 에필로그(+Z): pre = alpha*acc + beta*C + bias ---
     if (vec_ok_store) {
       #pragma unroll
       for (int j = 0; j < THR_N; j += 4) {
@@ -542,13 +484,17 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
           int jj = j + t;
           if (nn < p.N) {
             float pre = p.alpha * acc[i][jj];
+            if (p.beta != 0.f && C) {
+              float cin = C[m * ldc + nn];
+              pre = fmaf(p.beta, cin, pre);
+            }
             if (p.bias) {
               if (p.bias_kind == BiasKind::PerN)      pre += bias_j[jj];
               else if (p.bias_kind == BiasKind::PerM) pre += bias_m_cached;
               else                                    pre += load_bias(p, m, nn);
             }
-            if (p.save_preact && Z) { Z[m * ldZ + nn] = pre; }
-            (&d4.x)[t] = apply_act_runtime(pre, p.act, p.leaky_slope);
+            if (p.save_preact && Z) { Z[m * (p.ldZ ? p.ldZ : p.ldd) + nn] = pre; }
+            (&d4.x)[t] = act_apply<AK>(pre, p.leaky_slope);
           }
         }
         if (n + 3 < p.N) {
@@ -567,13 +513,17 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
         int n = tn0 + j;
         if (n < p.N) {
           float pre = p.alpha * acc[i][j];
+          if (p.beta != 0.f && C) {
+            float cin = C[m * ldc + n];
+            pre = fmaf(p.beta, cin, pre);
+          }
           if (p.bias) {
             if (p.bias_kind == BiasKind::PerN)      pre += bias_j[j];
             else if (p.bias_kind == BiasKind::PerM) pre += bias_m_cached;
             else                                    pre += load_bias(p, m, n);
           }
-          if (p.save_preact && Z) { Z[m * ldZ + n] = pre; }
-          D[m * ldd + n] = apply_act_runtime(pre, p.act, p.leaky_slope);
+          if (p.save_preact && Z) { Z[m * (p.ldZ ? p.ldZ : p.ldd) + n] = pre; }
+          D[m * ldd + n] = act_apply<AK>(pre, p.leaky_slope);
         }
       }
     }
