@@ -48,6 +48,7 @@ struct GemmBiasActParams {
 
   // Activation
   ActKind act;
+  float leaky_slope = 0.01f;
 };
 
 // Host launchers (implemented in launcher.cu)

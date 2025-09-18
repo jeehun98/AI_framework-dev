@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-subbuild/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

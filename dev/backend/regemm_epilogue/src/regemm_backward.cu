@@ -171,6 +171,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 
   const float one  = 1.f;
   const float zero = 0.f;
+  const float alpha = p.alpha;
 
   // --- 4.4 gA = gZ @ B^T  (M x K) = (M x N) @ (K x N)^T
   if (p.gA) {
@@ -178,7 +179,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       h,
       /*transA=*/false, /*transB=*/true,
       /*M=*/M, /*N=*/K, /*K=*/N,
-      &one,
+      &alpha,
       /*A=*/gZ, /*lda=*/N,
       /*B=*/reinterpret_cast<const float*>(p.B), /*ldb=*/N,
       &zero,
@@ -191,7 +192,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       h,
       /*transA=*/true, /*transB=*/false,
       /*M=*/K, /*N=*/N, /*K=*/M,
-      &one,
+      &alpha,
       /*A=*/reinterpret_cast<const float*>(p.A), /*lda=*/K,
       /*B=*/gZ, /*ldb=*/N,
       &zero,

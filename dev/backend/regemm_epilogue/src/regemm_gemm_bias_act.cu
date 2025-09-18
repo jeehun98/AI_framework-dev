@@ -37,7 +37,7 @@ __global__ void gemm_bias_act_f32_smoke(GemmBiasActParams p) {
   }
 
   acc += load_bias(p, m, n);
-  acc = apply_act_runtime(acc, p.act);
+  acc = apply_act_runtime(acc, p.act, p.leaky_slope);
   D[m * p.ldd + n] = acc;
 }
 
@@ -257,7 +257,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
           else if (p.bias_kind == BiasKind::PerM) v += bias_m_cached;
           else                                    v += load_bias(p, m, n);
         }
-        v = act_apply<AK>(v);
+        v = act_apply<AK>(v, p.leaky_slope);
         acc[i][j] = v;
       }
     }

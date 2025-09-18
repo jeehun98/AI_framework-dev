@@ -1,5 +1,6 @@
 // my_kernels.cu
 #include "ge_v2_api.h"
+#include "ge_v2_api_ex.h"
 #include <cuda_runtime.h>
 #include <cstdio>
 
@@ -7,6 +8,29 @@
 #include "regemm/api.h"
 
 using namespace regemm;
+
+// ── 여기서부터 매핑 함수 (공용) ─────────────────────────────
+static inline regemm::ActKind to_regemm_act(ge2_act_kind_t a) {
+  switch (a) {
+    case GE2_ACT_NONE:       return regemm::ActKind::None;
+    case GE2_ACT_RELU:       return regemm::ActKind::ReLU;
+    case GE2_ACT_LEAKY_RELU: return regemm::ActKind::LeakyReLU;
+    case GE2_ACT_GELU:       return regemm::ActKind::GELU;
+    case GE2_ACT_SIGMOID:    return regemm::ActKind::Sigmoid;
+    case GE2_ACT_TANH:       return regemm::ActKind::Tanh;
+    default:                 return regemm::ActKind::None;
+  }
+}
+
+static inline regemm::BiasKind to_regemm_bias(ge2_bias_kind_t b, int has_bias_flag) {
+  if (!has_bias_flag) return regemm::BiasKind::None;
+  switch (b) {
+    case GE2_BIAS_SCALAR: return regemm::BiasKind::Scalar;
+    case GE2_BIAS_PER_M:  return regemm::BiasKind::PerM;
+    case GE2_BIAS_PER_N:  return regemm::BiasKind::PerN;
+    default:              return regemm::BiasKind::None;
+  }
+}
 
 // ---- f32 adapter: route to regemm (LEGACY) ----
 extern "C" int ge2_launch_gemm_bias_act_f32(const ge2_uintptr* bufs, int n, void* stream_opaque) {
