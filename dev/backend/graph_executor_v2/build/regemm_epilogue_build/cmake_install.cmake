@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/owner/Desktop/AI_framework-dev/dev/backend/regemm_epilogue
+# Install script for directory: C:/Users/as042/Desktop/AI_framework-dev/dev/backend/regemm_epilogue
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -35,6 +35,6 @@ endif()
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/regemm_epilogue_build/install_local_manifest.txt"
+  file(WRITE "C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/regemm_epilogue_build/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

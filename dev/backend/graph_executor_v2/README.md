@@ -15,6 +15,14 @@ More?   -DPython3_EXECUTABLE="C:/Users/owner/AppData/Local/Programs/Python/Pytho
 More?   -DPython3_FIND_STRATEGY=LOCATION ^
 More?   -DPython3_FIND_VIRTUALENV=STANDARD
 
+데탑용
+cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DGE2_WITH_REGEMM=ON -DCMAKE_CUDA_ARCHITECTURES=86 ^
+  -DPython_EXECUTABLE="C:/Users/as042/AppData/Local/Programs/Python/Python312/python.exe" ^
+  -DPython_ROOT_DIR="C:/Users/as042/AppData/Local/Programs/Python/Python312" ^
+  -Dpybind11_DIR="C:/Users/as042/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/share/cmake/pybind11"
+
+cmake --build build --config Release -- -v
+
 
 # graph_executor_v2 — 빌드 가이드 (Windows & Linux, 한글)
 
