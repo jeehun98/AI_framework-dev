@@ -1,3 +1,4 @@
+// src/regemm_backward.cu
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cstdint>
@@ -44,103 +45,6 @@ __global__ void debug_print_header_kernel(int* out_act,
   }
 }
 
-// ======= 내부 유틸 =======
-__global__ void scale_copy2d_kernel(
-    float* __restrict__ out, int ldo,
-    const float* __restrict__ in,  int ldi,
-    float beta,
-    int M, int N)
-{
-  int m = blockIdx.y * blockDim.y + threadIdx.y;
-  int n = blockIdx.x * blockDim.x + threadIdx.x;
-  if (m < M && n < N) out[m * ldo + n] = beta * in[m * ldi + n];
-}
-
-// ======= 1) gZ = gY ⊙ act'(Z) =======
-__global__ void elemwise_act_backward_kernel(
-    const float* __restrict__ gY, int ldgY,
-    const float* __restrict__ Z,  int ldZ,
-    float* __restrict__ gZ,       // contiguous, stride = N
-    int M, int N,
-    ActKind act, float leaky_slope)
-{
-  int m = blockIdx.y * blockDim.y + threadIdx.y;
-  int n = blockIdx.x * blockDim.x + threadIdx.x;
-  if (m >= M || n >= N) return;
-
-  float gy = gY[m * ldgY + n];
-  float z  = Z [m * ldZ  + n];
-
-  gZ[m * N + n] = apply_act_grad_runtime(z, gy, act, leaky_slope);
-}
-
-// ======= 2) gBias 리덕션 커널들 =======
-// Scalar: gBias[0] = sum(gZ)
-__global__ void bias_grad_scalar_kernel(const float* __restrict__ gZ, int size, float* gBias)
-{
-  __shared__ float sh[256];
-  int tid = threadIdx.x;
-  float sum = 0.f;
-
-  for (int i = blockIdx.x * blockDim.x + tid; i < size; i += gridDim.x * blockDim.x) {
-    sum += gZ[i];
-  }
-  sh[tid] = sum;
-  __syncthreads();
-
-  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
-    if (tid < s) sh[tid] += sh[tid + s];
-    __syncthreads();
-  }
-  if (tid == 0) atomicAdd(gBias, sh[0]);
-}
-
-// PerM: gBias[m] = sum_n gZ[m, n]
-__global__ void bias_grad_perM_kernel(const float* __restrict__ gZ, int M, int N, float* gBias)
-{
-  int m = blockIdx.x * blockDim.x + threadIdx.x;
-  if (m >= M) return;
-  float s = 0.f;
-  const float* row = gZ + m * N;
-  for (int n = 0; n < N; ++n) s += row[n];
-  gBias[m] = s;
-}
-
-// PerN: gBias[n] = sum_m gZ[m, n]
-__global__ void bias_grad_perN_kernel(const float* __restrict__ gZ, int M, int N, float* gBias)
-{
-  int n = blockIdx.x * blockDim.x + threadIdx.x;
-  if (n >= N) return;
-  float s = 0.f;
-  for (int m = 0; m < M; ++m) s += gZ[m * N + n];
-  gBias[n] = s;
-}
-
-// ======= 3) SGEMM 래퍼 (row-major 편의) =======
-// column-major 내부 cublas에 대해 C^T = (B op) * (A op)로 호출
-static inline cublasStatus_t sgemm_rm(
-    cublasHandle_t h,
-    bool transA, bool transB,
-    int M, int N, int K,
-    const float* alpha,
-    const float* A, int lda_rm,
-    const float* B, int ldb_rm,
-    const float* beta,
-    float* C, int ldc_rm)
-{
-  const cublasOperation_t opA_cm = transB ? CUBLAS_OP_T : CUBLAS_OP_N; // B op
-  const cublasOperation_t opB_cm = transA ? CUBLAS_OP_T : CUBLAS_OP_N; // A op
-  return cublasSgemm(
-      h,
-      opA_cm, opB_cm,
-      /*m=*/N, /*n=*/M, /*k=*/K,
-      alpha,
-      /*A=*/B, /*lda=*/ldb_rm,
-      /*B=*/A, /*ldb=*/lda_rm,
-      beta,
-      /*C=*/C, /*ldc=*/ldc_rm);
-}
-
 // ======= (호스트) 디버그: 헤더 블록 값 덤프 =======
 static inline void dump_head_host(const char* tag,
                                   const float* Zp,  int ldZp,
@@ -169,7 +73,95 @@ static inline void dump_head_host(const char* tag,
   }
 }
 
-// ======= 4) 메인 엔트리: Backward(EX) =======
+// ======= 3) SGEMM 래퍼 (row-major 편의) =======
+// column-major 내부 cublas에 대해 C^T = (B op) * (A op) 로 호출
+static inline cublasStatus_t sgemm_rm(
+    cublasHandle_t h,
+    bool transA, bool transB,
+    int M, int N, int K,
+    const float* alpha,
+    const float* A, int lda_rm,
+    const float* B, int ldb_rm,
+    const float* beta,
+    float* C, int ldc_rm)
+{
+  const cublasOperation_t opA_cm = transB ? CUBLAS_OP_T : CUBLAS_OP_N; // B op
+  const cublasOperation_t opB_cm = transA ? CUBLAS_OP_T : CUBLAS_OP_N; // A op
+  return cublasSgemm(
+      h,
+      opA_cm, opB_cm,
+      /*m=*/N, /*n=*/M, /*k=*/K,
+      alpha,
+      /*A=*/B, /*lda=*/ldb_rm,
+      /*B=*/A, /*ldb=*/lda_rm,
+      beta,
+      /*C=*/C, /*ldc=*/ldc_rm);
+}
+
+// ====================================================================
+// ===================== NEW: BWD 에필로그 커널 ========================
+// ====================================================================
+//
+//   gZ = gY ⊙ act'(Z)                      [항상]
+//   (옵션) gC = beta * gZ                  [p.C && p.gC]
+//   (옵션) gBias (Scalar/PerM/PerN) 축적   [p.gBias != nullptr]
+//
+// 메모리:
+//   - 입력 gY(ldgY), Z(ldZ) : 주어진 stride 사용
+//   - 출력 gZ : 내부 임시 버퍼 (contiguous, ld = N)  → GEMM에 바로 사용
+//   - 출력 gC(ldgC) : 선택적
+//
+// 주의:
+//   - Scalar bias는 atomic 누적이므로 사전에 0으로 초기화하는 편이 안전
+//   - PerM/PerN도 atomicAdd 사용(간단 경로). 큰 사이즈에서 병목이면 2-phase 리덕션 권장.
+//
+template<ActKind AK, bool FUSE_GC>
+__global__ void bwd_epilogue_kernel(
+    const float* __restrict__ gY, int ldgY,
+    const float* __restrict__ Z,  int ldZ,
+    float* __restrict__ gZ,       // contiguous, ld = N
+    int M, int N,
+    float beta,                   // for gC
+    float* __restrict__ gC, int ldgC, // nullable
+    float* __restrict__ gBias,         // nullable
+    BiasKind bk, float leaky_slope)
+{
+  const int m = blockIdx.y * blockDim.y + threadIdx.y;
+  const int n = blockIdx.x * blockDim.x + threadIdx.x;
+  if (m >= M || n >= N) return;
+
+  const float gy = gY[m * ldgY + n];
+  const float z  = Z [m * ldZ  + n];
+
+  // NOTE: activations.h에 템플릿 act_grad_apply<AK>()가 없다면,
+  //       런타임 경로를 템플릿에 주입: apply_act_grad_runtime(z, gy, static_cast<ActKind>(AK), leaky_slope)
+  const float gz = apply_act_grad_runtime(z, gy, static_cast<ActKind>(AK), leaky_slope);
+
+  // 1) gZ 기록 (ld = N)
+  gZ[m * N + n] = gz;
+
+  // 2) gC (옵션)
+  if constexpr (FUSE_GC) {
+    if (gC) {
+      gC[m * ldgC + n] = beta * gz;
+    }
+  }
+
+  // 3) gBias (옵션) — 간단 경로: 원자 누적
+  if (gBias) {
+    if (bk == BiasKind::Scalar) {
+      atomicAdd(gBias, gz);
+    } else if (bk == BiasKind::PerM) {
+      atomicAdd(&gBias[m], gz);
+    } else if (bk == BiasKind::PerN) {
+      atomicAdd(&gBias[n], gz);
+    }
+  }
+}
+
+// ====================================================================
+// ============================ 메인 ================================
+// ====================================================================
 void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 {
   NVTX_RANGE("regemm::bwd", 0xFFAA66);
@@ -178,7 +170,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   const int ldgY = p.ldgY;
   const int ldZ  = p.ldZ;
 
-  // --- 4.1 gZ 임시 버퍼 할당 (contiguous: ld = N) ---
+  // --- gZ 임시 버퍼 할당 (contiguous: ld = N) ---
   float* gZ = nullptr;
 #if CUDART_VERSION >= 11020
   REGEMM_CHECK(cudaMallocAsync(&gZ, sizeof(float) * M * N, s));
@@ -199,15 +191,128 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 #endif
   debug_print_header_kernel<<<1, 32, 0, s>>>(d_act, d_ldZ, d_ldgY, p.act, ldZ, ldgY);
 
-  // --- 4.2 gZ = gY ⊙ act'(Z) ---
+  // --- NEW: BWD 에필로그 한 방에 처리 (gZ, [옵션]gC, [옵션]gBias) ---
   {
     dim3 block(16, 16);
     dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
-    elemwise_act_backward_kernel<<<grid, block, 0, s>>>(
-        reinterpret_cast<const float*>(p.gY), ldgY,
-        reinterpret_cast<const float*>(p.Z),  ldZ,
-        gZ, M, N,
-        p.act, p.leaky_slope);
+
+    const bool fuse_gC = (p.C && p.gC);
+
+    // gBias는 atomicAdd 경로이므로 모드별 크기만큼 0으로 초기화 필요
+    if (p.gBias) {
+      size_t bytes = 0;
+      if (p.bias_kind == BiasKind::Scalar)      bytes = sizeof(float);
+      else if (p.bias_kind == BiasKind::PerM)   bytes = sizeof(float) * static_cast<size_t>(p.M);
+      else if (p.bias_kind == BiasKind::PerN)   bytes = sizeof(float) * static_cast<size_t>(p.N);
+      if (bytes) {
+        REGEMM_CHECK(cudaMemsetAsync(p.gBias, 0, bytes, s));
+      }
+    }   
+
+    switch (p.act) {
+      case ActKind::ReLU:
+        if (fuse_gC)
+          bwd_epilogue_kernel<ActKind::ReLU, true><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            p.beta, reinterpret_cast<float*>(p.gC), p.ldgC,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        else
+          bwd_epilogue_kernel<ActKind::ReLU, false><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            0.f, nullptr, 0,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        break;
+
+      case ActKind::LeakyReLU:
+        if (fuse_gC)
+          bwd_epilogue_kernel<ActKind::LeakyReLU, true><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            p.beta, reinterpret_cast<float*>(p.gC), p.ldgC,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        else
+          bwd_epilogue_kernel<ActKind::LeakyReLU, false><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            0.f, nullptr, 0,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        break;
+
+      case ActKind::GELU:
+        if (fuse_gC)
+          bwd_epilogue_kernel<ActKind::GELU, true><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            p.beta, reinterpret_cast<float*>(p.gC), p.ldgC,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        else
+          bwd_epilogue_kernel<ActKind::GELU, false><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            0.f, nullptr, 0,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        break;
+
+      case ActKind::Sigmoid:
+        if (fuse_gC)
+          bwd_epilogue_kernel<ActKind::Sigmoid, true><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            p.beta, reinterpret_cast<float*>(p.gC), p.ldgC,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        else
+          bwd_epilogue_kernel<ActKind::Sigmoid, false><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            0.f, nullptr, 0,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        break;
+
+      case ActKind::Tanh:
+        if (fuse_gC)
+          bwd_epilogue_kernel<ActKind::Tanh, true><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            p.beta, reinterpret_cast<float*>(p.gC), p.ldgC,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        else
+          bwd_epilogue_kernel<ActKind::Tanh, false><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            0.f, nullptr, 0,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        break;
+
+      case ActKind::None:
+      default:
+        if (fuse_gC)
+          bwd_epilogue_kernel<ActKind::None, true><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            p.beta, reinterpret_cast<float*>(p.gC), p.ldgC,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        else
+          bwd_epilogue_kernel<ActKind::None, false><<<grid, block, 0, s>>>(
+            reinterpret_cast<const float*>(p.gY), ldgY,
+            reinterpret_cast<const float*>(p.Z),  ldZ,
+            gZ, M, N,
+            0.f, nullptr, 0,
+            reinterpret_cast<float*>(p.gBias), p.bias_kind, p.leaky_slope);
+        break;
+    }
   }
 
   // --- (디버그) 호스트로 값 복사 & 출력 ---
@@ -225,7 +330,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
                  reinterpret_cast<const float*>(p.gY), ldgY,
                  gZ, M, N, s);
 
-  // --- 4.3 cuBLAS 준비 ---
+  // --- cuBLAS 준비 ---
   cublasHandle_t h = nullptr;
   CUBLAS_CHECK(cublasCreate(&h));
   CUBLAS_CHECK(cublasSetStream(h, s));
@@ -233,7 +338,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   const float zero  = 0.f;
   const float alpha = p.alpha;
 
-  // --- 4.4 gA = gZ @ B^T  (M x K) = (M x N) @ (K x N)^T
+  // --- gA = alpha * gZ @ B^T  (M x K) = (M x N) @ (K x N)^T
   if (p.gA) {
     CUBLAS_CHECK(sgemm_rm(
       h,
@@ -241,56 +346,27 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       /*M=*/M, /*N=*/K, /*K=*/N,
       &alpha,
       /*A=*/gZ, /*lda=*/N,
-      /*B=*/reinterpret_cast<const float*>(p.B), /*ldb=*/N,
+      /*B=*/reinterpret_cast<const float*>(p.B), /*ldb=*/p.ldb,
       &zero,
-      /*C=*/reinterpret_cast<float*>(p.gA), /*ldc=*/K));
+      /*C=*/reinterpret_cast<float*>(p.gA), /*ldc=*/p.ldgA));
   }
 
-  // --- 4.5 gB = A^T @ gZ  (K x N) = (M x K)^T @ (M x N)
+  // --- gB = alpha * A^T @ gZ  (K x N) = (M x K)^T @ (M x N)
   if (p.gB) {
     CUBLAS_CHECK(sgemm_rm(
       h,
       /*transA=*/true, /*transB=*/false,
       /*M=*/K, /*N=*/N, /*K=*/M,
       &alpha,
-      /*A=*/reinterpret_cast<const float*>(p.A), /*lda=*/K,
+      /*A=*/reinterpret_cast<const float*>(p.A), /*lda=*/p.lda,
       /*B=*/gZ, /*ldb=*/N,
       &zero,
-      /*C=*/reinterpret_cast<float*>(p.gB), /*ldc=*/N));
+      /*C=*/reinterpret_cast<float*>(p.gB), /*ldc=*/p.ldgB));
   }
 
-  // --- 4.6 gC = beta * gZ (C 사용 시) ---
-  if (p.C && p.gC) {
-    dim3 block(16, 16);
-    dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
-    scale_copy2d_kernel<<<grid, block, 0, s>>>(
-        reinterpret_cast<float*>(p.gC), p.ldgC,
-        /*in=*/gZ, /*ldi=*/N,
-        /*beta=*/p.beta,
-        M, N);
-  }
-
-  // --- 4.7 gBias ---
-  if (p.gBias != nullptr) {
-    if (p.bias_kind == BiasKind::Scalar) {
-      REGEMM_CHECK(cudaMemsetAsync(p.gBias, 0, sizeof(float), s));
-      int threads = 256;
-      int blocks = (M * N + threads - 1) / threads;
-      if (blocks > 1024) blocks = 1024;
-      bias_grad_scalar_kernel<<<blocks, threads, 0, s>>>(gZ, M * N, reinterpret_cast<float*>(p.gBias));
-    } else if (p.bias_kind == BiasKind::PerM) {
-      int threads = 256;
-      int blocks = (M + threads - 1) / threads;
-      bias_grad_perM_kernel<<<blocks, threads, 0, s>>>(gZ, M, N, reinterpret_cast<float*>(p.gBias));
-    } else if (p.bias_kind == BiasKind::PerN) {
-      int threads = 256;
-      int blocks = (N + threads - 1) / threads;
-      bias_grad_perN_kernel<<<blocks, threads, 0, s>>>(gZ, M, N, reinterpret_cast<float*>(p.gBias));
-    }
-  }
-
-  // --- 4.8 정리 ---
   CUBLAS_CHECK(cublasDestroy(h));
+
+  // --- 정리 ---
 #if CUDART_VERSION >= 11020
   REGEMM_CHECK(cudaFreeAsync(gZ, s));
   REGEMM_CHECK(cudaFreeAsync(d_act,  s));

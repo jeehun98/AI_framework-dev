@@ -141,20 +141,24 @@ PYBIND11_MODULE(graph_executor_v2, m) {
       py::object gC, py::object gBias,
       ge2_gemm_bias_act_bwd_params_t pb, py::object stream_obj) {
 
+      if (Z.is_none()) {
+        throw std::runtime_error("Backward requires Z (pre-activation). Did you run forward with save_preact=1 and pass Z?");
+      }
+      if (pb.ldZ <= 0) {
+        throw std::runtime_error("pb.ldZ must be set for backward (no default). Use forward's (ldZ==0? ldd: ldZ).");
+      }
+
       ge2_uintptr bufs[11]; int n = 0;
-      bufs[n++] = ptr_from_obj(A);         // 0: A
-      bufs[n++] = ptr_from_obj(B);         // 1: B
-      // 2: C (없으면 0을 넣는다)
-      bufs[n++] = C.is_none() ? 0 : ptr_from_obj(C);
-      bufs[n++] = ptr_from_obj(gY);        // 3: gY
-      bufs[n++] = ptr_from_obj(Z);         // 4: Z
-      bufs[n++] = ptr_from_obj(gA);        // 5: gA
-      bufs[n++] = ptr_from_obj(gB);        // 6: gB
-      // 7: gC (없으면 0)
-      bufs[n++] = gC.is_none() ? 0 : ptr_from_obj(gC);
-      // 8: gBias (없으면 0)
-      bufs[n++] = gBias.is_none() ? 0 : ptr_from_obj(gBias);
-      bufs[n++] = reinterpret_cast<ge2_uintptr>(&pb); // 9: &pb
+      bufs[n++] = ptr_from_obj(A);        // 0
+      bufs[n++] = ptr_from_obj(B);        // 1
+      bufs[n++] = C.is_none() ? 0 : ptr_from_obj(C);  // 2
+      bufs[n++] = ptr_from_obj(gY);       // 3
+      bufs[n++] = ptr_from_obj(Z);        // 4
+      bufs[n++] = ptr_from_obj(gA);       // 5
+      bufs[n++] = ptr_from_obj(gB);       // 6
+      bufs[n++] = gC.is_none()   ? 0 : ptr_from_obj(gC);   // 7
+      bufs[n++] = gBias.is_none()? 0 : ptr_from_obj(gBias);// 8
+      bufs[n++] = reinterpret_cast<ge2_uintptr>(&pb);      // 9
 
       void* stream = stream_obj.is_none() ? nullptr
                       : reinterpret_cast<void*>(ptr_from_obj(stream_obj));
@@ -162,5 +166,6 @@ PYBIND11_MODULE(graph_executor_v2, m) {
       if (st != 0)
         throw std::runtime_error("ge2_launch_gemm_bias_act_bwd_f32_ex failed: " + std::to_string(st));
   });
+
 
 }

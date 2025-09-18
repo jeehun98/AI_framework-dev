@@ -30,7 +30,7 @@ __device__ __forceinline__ float act_apply<ActKind::LeakyReLU>(float x) {
 template<>
 __device__ __forceinline__ float act_apply<ActKind::GELU>(float x) {
   // tanh approximation
-  const float k0 = sqrtf(2.f / CUDART_PI_F); // ~0.7978845608
+  const float k0 = 0.7978845608f;
   const float k1 = 0.044715f;
   float x3 = x * x * x;
   float t  = k0 * (x + k1 * x3);
@@ -89,7 +89,7 @@ __device__ __forceinline__ float act_deriv<ActKind::LeakyReLU>(float x, float le
 template<>
 __device__ __forceinline__ float act_deriv<ActKind::GELU>(float x, float /*leaky*/) {
   // tanh approx derivative
-  const float c  = sqrtf(2.f / CUDART_PI_F);
+  const float c  = 0.7978845608f;
   const float k1 = 0.044715f;
   float x2  = x * x;
   float x3  = x2 * x;

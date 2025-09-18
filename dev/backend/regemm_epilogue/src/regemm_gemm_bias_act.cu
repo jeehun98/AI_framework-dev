@@ -493,7 +493,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
               else if (p.bias_kind == BiasKind::PerM) pre += bias_m_cached;
               else                                    pre += load_bias(p, m, nn);
             }
-            if (p.save_preact && Z) { Z[m * (p.ldZ ? p.ldZ : p.ldd) + nn] = pre; }
+            if (p.save_preact && Z) { Z[m * ldZ + nn] = pre; }
             (&d4.x)[t] = act_apply<AK>(pre, p.leaky_slope);
           }
         }
@@ -522,7 +522,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
             else if (p.bias_kind == BiasKind::PerM) pre += bias_m_cached;
             else                                    pre += load_bias(p, m, n);
           }
-          if (p.save_preact && Z) { Z[m * (p.ldZ ? p.ldZ : p.ldd) + n] = pre; }
+          if (p.save_preact && Z) { Z[m * ldZ + n] = pre; }
           D[m * ldd + n] = act_apply<AK>(pre, p.leaky_slope);
         }
       }
