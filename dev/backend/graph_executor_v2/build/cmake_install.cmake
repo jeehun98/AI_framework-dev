@@ -34,6 +34,11 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
+  include("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/_deps/pybind11-build/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
   include("C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/regemm_epilogue_build/cmake_install.cmake")
 endif()
 
@@ -42,7 +47,10 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/include" TYPE FILE FILES "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/include/ge_v2_api.h")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/include" TYPE FILE FILES
+    "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/include/ge_v2_api.h"
+    "C:/Users/owner/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/include/ge_v2_api_ex.h"
+    )
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
