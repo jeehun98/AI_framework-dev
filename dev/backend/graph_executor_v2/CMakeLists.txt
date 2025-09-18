@@ -1,21 +1,8 @@
-# CMakeLists.txt
-#
-# 목적
-#  - pybind11 기반 파이썬 확장 모듈(graph_executor_v2) 빌드
-#  - CUDA / cuBLAS / cuBLASLt 연동
-#  - regemm_epilogue 커널을 add_subdirectory로 링크
-#  - Windows / Linux 공용 설정
-#
-# 빌드 결과
-#  - Python 모듈: graph_executor_v2.(pyd|so)
-#  - include/ge_v2_api.h 설치(optional)
-
 cmake_minimum_required(VERSION 3.26)
 project(graph_executor_v2 LANGUAGES CXX CUDA)
 
 # ------------------------------ Python / pybind11 ------------------------------
-find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)  # 3.8+ 권장
-# 우선 시스템에서 찾고, 없으면 FetchContent로 가져오기
+find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG QUIET)
 if (NOT pybind11_FOUND)
   include(FetchContent)
@@ -34,6 +21,9 @@ find_package(CUDAToolkit REQUIRED)
 if (NOT CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
+
+# (선택) NVTX 사용 옵션
+option(GE2_WITH_NVTX "Link NVTX for profiling ranges" OFF)
 
 # ------------------------------ regemm_epilogue 통합 ---------------------------
 # 레포 구조:
@@ -61,14 +51,13 @@ set(SRC_PY
   src/bindings_min_api.cpp
 )
 
-# ------------------------------ 코어(선택) & 모듈 ------------------------------
-# 코어 정적 라이브러리 (CUDA 분리 컴파일 옵션, regemm 링크)
+# ------------------------------ 코어 라이브러리 ------------------------------
 add_library(ge_v2_core STATIC ${SRC_CORE})
 target_compile_features(ge_v2_core PRIVATE cxx_std_17)
 set_target_properties(ge_v2_core PROPERTIES
-  CUDA_STANDARD 17
-  CUDA_SEPARABLE_COMPILATION ON
-  POSITION_INDEPENDENT_CODE ON
+  CUDA_STANDARD                17
+  CUDA_SEPARABLE_COMPILATION   ON
+  POSITION_INDEPENDENT_CODE    ON
 )
 
 target_include_directories(ge_v2_core PRIVATE
@@ -81,10 +70,11 @@ target_link_libraries(ge_v2_core PRIVATE
   CUDA::cudart
   CUDA::cublas
   CUDA::cublasLt
+  $<$<BOOL:${GE2_WITH_NVTX}>:CUDA::nvToolsExt>
   $<$<BOOL:${GE2_WITH_REGEMM}>:${REGEMM_TARGET}>
 )
 
-# 파이썬 모듈 (pybind11)
+# ------------------------------ 파이썬 모듈 ------------------------------
 pybind11_add_module(graph_executor_v2 MODULE ${SRC_PY})
 target_compile_features(graph_executor_v2 PRIVATE cxx_std_17)
 set_target_properties(graph_executor_v2 PROPERTIES
@@ -129,11 +119,25 @@ install(TARGETS graph_executor_v2
         RUNTIME DESTINATION .
         ARCHIVE DESTINATION .)
 
-install(FILES include/ge_v2_api.h DESTINATION include)
+# ✅ EX API도 같이 설치
+install(FILES
+  include/ge_v2_api.h
+  include/ge_v2_api_ex.h
+  DESTINATION include
+)
 
-# ------------------------------ 테스트(선택) ------------------------------
+# ------------------------------ 테스트/편의(선택) ------------------------------
 enable_testing()
 add_test(NAME import_test COMMAND ${Python_EXECUTABLE} -c "import graph_executor_v2; print('ok')")
+
+# 빌드 후 test/로 결과 모듈 복사(개발 편의)
+set(_GE2_OUT $<TARGET_FILE:graph_executor_v2>)
+add_custom_command(TARGET graph_executor_v2 POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${_GE2_OUT}
+          ${CMAKE_CURRENT_LIST_DIR}/test/$<TARGET_FILE_NAME:graph_executor_v2>
+  COMMENT "Copying graph_executor_v2 to test/ for quick import"
+)
 
 # ------------------------------ 빌드 메모 ------------------------------
 # 1) Windows(Ninja):
