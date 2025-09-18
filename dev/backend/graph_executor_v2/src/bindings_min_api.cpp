@@ -133,36 +133,34 @@ PYBIND11_MODULE(graph_executor_v2, m) {
       .def_readwrite("leaky_slope", &ge2_gemm_bias_act_bwd_params_t::leaky_slope);
 
   // ---- Backward(EX): bufs 레이아웃 A,B,(C), gY, Z, gA, gB, (gC), (gBias), params_bwd ----
+  // ---- Backward(EX): bufs 레이아웃을 항상 고정 인덱스로 ----
   m.def("gemm_bias_act_bwd_f32_ex",
-        [](py::object A, py::object B, py::object C, py::object gY, py::object Z,
-           py::object gA, py::object gB, py::object gC, py::object gBias,
-           ge2_gemm_bias_act_bwd_params_t pb, py::object stream_obj) {
-            ge2_uintptr bufs[12]; int n = 0;
-            bufs[n++] = ptr_from_obj(A);
-            bufs[n++] = ptr_from_obj(B);
-            // C는 선택적 (forward에서 C를 썼을 때만)
-            bool use_C = (pb.ldc != 0) && !C.is_none();  // 관례: ldc가 0이면 내부 기본치, 포인터는 명시 체크
-            if (use_C) {
-              bufs[n++] = ptr_from_obj(C);
-            }
-            bufs[n++] = ptr_from_obj(gY);
-            bufs[n++] = ptr_from_obj(Z);
-            bufs[n++] = ptr_from_obj(gA);
-            bufs[n++] = ptr_from_obj(gB);
-            if (!gC.is_none()) {
-              bufs[n++] = ptr_from_obj(gC);
-            }
-            if (!gBias.is_none()) {
-              bufs[n++] = ptr_from_obj(gBias);
-            }
-            bufs[n++] = reinterpret_cast<ge2_uintptr>(&pb);
+    [](py::object A, py::object B, py::object C,
+      py::object gY, py::object Z,
+      py::object gA, py::object gB,
+      py::object gC, py::object gBias,
+      ge2_gemm_bias_act_bwd_params_t pb, py::object stream_obj) {
 
-            void* stream = stream_obj.is_none() ? nullptr : reinterpret_cast<void*>(ptr_from_obj(stream_obj));
-            int st = ge2_launch_gemm_bias_act_bwd_f32_ex(bufs, n, stream);
-            if (st != 0) throw std::runtime_error("ge2_launch_gemm_bias_act_bwd_f32_ex failed: " + std::to_string(st));
-        },
-        py::arg("A"), py::arg("B"), py::arg("C") = py::none(),
-        py::arg("gY"), py::arg("Z"),
-        py::arg("gA"), py::arg("gB"), py::arg("gC") = py::none(), py::arg("gBias") = py::none(),
-        py::arg("params"), py::arg("stream") = py::none());
+      ge2_uintptr bufs[11]; int n = 0;
+      bufs[n++] = ptr_from_obj(A);         // 0: A
+      bufs[n++] = ptr_from_obj(B);         // 1: B
+      // 2: C (없으면 0을 넣는다)
+      bufs[n++] = C.is_none() ? 0 : ptr_from_obj(C);
+      bufs[n++] = ptr_from_obj(gY);        // 3: gY
+      bufs[n++] = ptr_from_obj(Z);         // 4: Z
+      bufs[n++] = ptr_from_obj(gA);        // 5: gA
+      bufs[n++] = ptr_from_obj(gB);        // 6: gB
+      // 7: gC (없으면 0)
+      bufs[n++] = gC.is_none() ? 0 : ptr_from_obj(gC);
+      // 8: gBias (없으면 0)
+      bufs[n++] = gBias.is_none() ? 0 : ptr_from_obj(gBias);
+      bufs[n++] = reinterpret_cast<ge2_uintptr>(&pb); // 9: &pb
+
+      void* stream = stream_obj.is_none() ? nullptr
+                      : reinterpret_cast<void*>(ptr_from_obj(stream_obj));
+      int st = ge2_launch_gemm_bias_act_bwd_f32_ex(bufs, n, stream);
+      if (st != 0)
+        throw std::runtime_error("ge2_launch_gemm_bias_act_bwd_f32_ex failed: " + std::to_string(st));
+  });
+
 }

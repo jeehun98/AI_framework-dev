@@ -194,77 +194,29 @@ extern "C" int ge2_launch_gemm_bias_act_f32_ex(const ge2_uintptr* bufs, int n, v
   return (cudaGetLastError() == cudaSuccess) ? 0 : -2;
 }
 
-// ---- Backward(EX): A,B,(C), gY, Z, gA, gB, (gC), (gBias), &pb ----
+// ---- Backward(EX): 고정 레이아웃 파싱 ----
+// bufs: [A, B, C(or 0), gY, Z, gA, gB, gC(or 0), gBias(or 0), &pb]
 extern "C" int ge2_launch_gemm_bias_act_bwd_f32_ex(const ge2_uintptr* bufs, int n, void* stream_opaque) {
-  if (!bufs || n < 7) return -1; // 최소 A,B,gY,Z,gA,gB,&pb
+  if (!bufs || n < 10) return -1; // 고정 레이아웃 최소 길이 체크
   auto s = reinterpret_cast<cudaStream_t>(stream_opaque);
 
   const auto* pb = reinterpret_cast<const ge2_gemm_bias_act_bwd_params_t*>(bufs[n - 1]);
   if (!pb) return -1;
 
-  int idx = 0;
-  const float* A  = reinterpret_cast<const float*>(bufs[idx++]); // [M,K]
-  const float* B  = reinterpret_cast<const float*>(bufs[idx++]); // [K,N]
+  const float* A   = reinterpret_cast<const float*>(bufs[0]); // [M,K]
+  const float* B   = reinterpret_cast<const float*>(bufs[1]); // [K,N]
+  const float* C   = (bufs[2] ? reinterpret_cast<const float*>(bufs[2]) : nullptr); // optional
 
-  const float* C  = nullptr;
-  bool use_C = false;
-  // C 사용 여부는 포인터 유무 + ld 힌트로 판단 (명시적 플래그가 없는 C API)
-  // 호출 측에서 C=None이면 bufs에 안 넣는 걸 권장.
-  // 여기서는 안전하게 판단: 남은 개수와 stride/beta를 참고
-  if (pb->ldc >= 0) {
-    // bufs가 충분하고 다음이 C일 가능성 체크
-    // 최소 레이아웃 생각: [A,B,(C),gY,Z,gA,gB,(gC),(gBias),&pb]
-    // gY는 반드시 있어야 하므로 bufs[idx]가 gY가 아닐 때만 C로 본다
-    // 정확 매핑은 호출 측 보장이 가장 확실함.
-  }
+  const float* gY  = reinterpret_cast<const float*>(bufs[3]); // [M,N]
+  const float* Z   = reinterpret_cast<const float*>(bufs[4]); // [M,N]
 
-  // 간단 & 확실: 호출 규약을 따르게 해서 C가 있으면 무조건 bufs[idx]가 C
-  // (launch_table / pybind에서 이 규약을 강제했으니 그대로 사용)
-  if (n >= 9) {
-    // C가 있는 경우의 최소 길이 시나리오: A,B,C,gY,Z,gA,gB,&pb => n >= 8
-    // 여기선 여유있게 n>=9에서만 C 후보로 본다 (gC/gBias 포함 시)
-    // 더 안전히: 이름있는 래퍼에서 확정적으로 넣어주도록 했으므로 그대로 파싱
-  }
-  // 더 안전한 파싱: pybind에서 "C가 None이 아니면 bufs에 넣는다" 규약 → 여기서 px와 동일하게 처리
-  // 즉, n을 이용해 역으로 추론하기보단, 다음 객체가 gY인지 검사 불가하므로 호출측 규약 신뢰
-  // 따라서 런타임에서는 "C를 쓰면 bufs에 C를 넣는다" 전제로 idx 재구성:
+  float* gA        = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[5]))); // [M,K]
+  float* gB        = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[6]))); // [K,N]
 
-  // 파싱 재정의:
-  // 최소 필수는 C가 없을 때 [A,B,gY,Z,gA,gB,&pb] => n==7
-  // C가 있으면 [A,B,C,gY,Z,gA,gB,&pb] => n==8
-  // gC, gBias가 더해지면 9 또는 10
-  if (n == 8 || n == 9 || n == 10) {
-    // bufs[2]가 C일 가능성 높음
-    C = reinterpret_cast<const float*>(bufs[2]);
-    use_C = true;
-    idx = 3;
-  } else {
-    idx = 2; // C 없음
-  }
+  float* gC        = (bufs[7] ? reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[7]))) : nullptr); // optional
+  float* gBias     = (bufs[8] ? reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[8]))) : nullptr); // optional
 
-  const float* gY = reinterpret_cast<const float*>(bufs[idx++]); // [M,N]
-  const float* Z  = reinterpret_cast<const float*>(bufs[idx++]); // [M,N]
-  float* gA       = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[idx++])));
-  float* gB       = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[idx++])));
-
-  float* gC = nullptr;
-  float* gBias = nullptr;
-
-  // 남은 bufs: (gC), (gBias), &pb
-  if (idx < n - 1) {
-    // 하나 남았으면 gC or gBias 중 하나
-    // 둘 남았으면 gC, gBias 둘 다
-    int remain = (n - 1) - idx;
-    if (remain == 1) {
-      // 어떤 것이든 상관 없이 포인터만 전달 (API 쪽에서 nullptr 구분 없음)
-      gC = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[idx++])));
-    } else if (remain >= 2) {
-      gC    = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[idx++])));
-      gBias = reinterpret_cast<float*>(const_cast<void*>(reinterpret_cast<const void*>(bufs[idx++])));
-    }
-  }
-
-  // 파라미터 구성
+  // 파라미터 구성 (나머지는 기존 그대로)
   GemmBiasActBwdParams p{};
   p.M = pb->M; p.N = pb->N; p.K = pb->K;
 
@@ -297,7 +249,6 @@ extern "C" int ge2_launch_gemm_bias_act_bwd_f32_ex(const ge2_uintptr* bufs, int 
   p.act       = _map_act(pb->act_kind);
   p.leaky_slope = pb->leaky_slope;
 
-  // 호출
   gemm_bias_act_bwd_f32(p, s);
   return (cudaGetLastError() == cudaSuccess) ? 0 : -2;
 }
