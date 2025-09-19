@@ -126,7 +126,7 @@ if __name__ == "__main__":
         # 완화된 백트래킹 학습
         final_loss = train_with_relaxed_backtracking(
             model, x_std, y,
-            epochs=600, init_lr=init_lr,
+            epochs=2000, init_lr=init_lr,
             tol_rel=1e-4, tol_abs=1e-7,
             max_halves=6, min_lr=1e-5,
             rewarm_every=20, rewarm_factor=1.25,
