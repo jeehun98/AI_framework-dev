@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/cmake_install.cmake",
-		"C:/Users/as042/Desktop/AI_framework-dev/dev/backend/graph_executor_v2/build/regemm_epilogue_build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
