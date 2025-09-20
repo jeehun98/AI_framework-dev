@@ -2,7 +2,8 @@
 #include <cstdint>
 #include <cuda_runtime_api.h>  // for cudaStream_t
 
-namespace regemm {
+
+namespace ge2::regemm {
 
 // -------------------- Enums (기존 유지) --------------------
 enum class ActKind : int {
