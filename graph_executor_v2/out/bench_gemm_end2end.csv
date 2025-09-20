@@ -1,0 +1,3 @@
+M,K,N,mode,act,bias,avg_s,TFLOPS
+1024,1024,1024,end2end,relu,pern,0.003772,0.569
+2048,2048,1024,end2end,relu,pern,0.008808,0.975
