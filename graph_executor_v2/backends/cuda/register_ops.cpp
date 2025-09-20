@@ -4,11 +4,12 @@
 
 namespace ai {
 
-// launcher.cu에서 제공
+// CUDA GEMM 런처(우리가 만든 래퍼) 선언
 Status GemmCudaLaunch(const Tensor&, const Tensor&, const Tensor*, Tensor&,
                       const GemmAttrs&, StreamHandle);
 
-static bool _reg = []{
+// 내부 등록 함수
+static void do_register_cuda_gemm() {
   auto& R = OpRegistry::inst();
 
   const ActKind acts[] = {
@@ -16,16 +17,22 @@ static bool _reg = []{
     ActKind::GELU, ActKind::Sigmoid, ActKind::Tanh
   };
 
-  // F32, RowMajor, with_bias/no_bias 모두 등록
   for (bool wb : {false, true}) {
     for (auto a : acts) {
       OpKey k{OpKind::GEMM, Device::CUDA, DType::F32, Layout::RowMajor, a, wb};
       R.reg(k, &GemmCudaLaunch);
     }
   }
+}
 
-  // (선택) F16 등은 나중에 추가
-  return true;
-}();
+// 외부에서 반드시 한 번 호출할 공개 함수 (정적 라이브러리 강제 포함 목적)
+extern "C"
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+void ai_backend_cuda_register_all() {
+  static bool once = false;
+  if (!once) { do_register_cuda_gemm(); once = true; }
+}
 
 } // namespace ai
