@@ -7,7 +7,7 @@
 #include "ai/op_schema.hpp"
 #include "ai/dispatch.hpp"      // StreamHandle, Status
 
-#include "regemm/api.h"         // GemmBiasActBwdParams / gemm_bias_act_bwd_f32
+#include "regemm/api.h"
 
 namespace {
 
@@ -17,8 +17,8 @@ inline int64_t infer_ld_rowmajor_2d(const ai::Tensor& t) {
   return t.desc.shape[1]; // contiguous row-major 가정
 }
 
-inline regemm::ActKind to_regemm_act(ai::ActKind a) {
-  using A = ai::ActKind; using R = regemm::ActKind;
+inline ge2::regemm::ActKind to_regemm_act(ai::ActKind a) {
+  using A = ai::ActKind; using R = ge2::regemm::ActKind;
   switch (a) {
     case A::None:      return R::None;
     case A::ReLU:      return R::ReLU;
@@ -30,16 +30,16 @@ inline regemm::ActKind to_regemm_act(ai::ActKind a) {
   return R::None;
 }
 
-inline regemm::BiasKind deduce_bias_kind_from_forward(const ai::Tensor* bias_like, int64_t M, int64_t N) {
+inline ge2::regemm::BiasKind deduce_bias_kind_from_forward(const ai::Tensor* bias_like, int64_t M, int64_t N) {
   // fwd에서 사용했던 bias 형태를 그대로 전달해야 gBias 축적 크기가 맞음
-  if (!bias_like || !bias_like->data) return regemm::BiasKind::None;
+  if (!bias_like || !bias_like->data) return ge2::regemm::BiasKind::None;
   if (bias_like->desc.shape.size() == 1) {
     const auto sz = bias_like->desc.shape[0];
-    if (sz == N) return regemm::BiasKind::PerN;
-    if (sz == M) return regemm::BiasKind::PerM;
-    if (sz == 1) return regemm::BiasKind::Scalar;
+    if (sz == N) return ge2::regemm::BiasKind::PerN;
+    if (sz == M) return ge2::regemm::BiasKind::PerM;
+    if (sz == 1) return ge2::regemm::BiasKind::Scalar;
   }
-  return regemm::BiasKind::None;
+  return ge2::regemm::BiasKind::None;
 }
 
 } // anonymous
@@ -109,20 +109,20 @@ Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
 
   // 4) bias kind 추론 (fwd에 사용했던 bias 텐서를 알고 있으면 그 모양을 넘겨주세요)
   //    여기서는 gBias 텐서 모양만으로도 추론 시도
-  regemm::BiasKind bk = regemm::BiasKind::None;
+  ge2::regemm::BiasKind bk = ge2::regemm::BiasKind::None;
   if (gBias && gBias->data) {
     // gBias shape이 [1]/[M]/[N] 중 하나라고 가정
     if (gBias->desc.shape.size()==1) {
       const auto sz = gBias->desc.shape[0];
-      if      (sz == 1) bk = regemm::BiasKind::Scalar;
-      else if (sz == M) bk = regemm::BiasKind::PerM;
-      else if (sz == N) bk = regemm::BiasKind::PerN;
+      if      (sz == 1) bk = ge2::regemm::BiasKind::Scalar;
+      else if (sz == M) bk = ge2::regemm::BiasKind::PerM;
+      else if (sz == N) bk = ge2::regemm::BiasKind::PerN;
     }
     // 모양이 불일치하면 None으로 두고 커널에서 아무것도 안 누적
   }
 
   // 5) 파라미터 구성
-  regemm::GemmBiasActBwdParams p{};
+  ge2::regemm::GemmBiasActBwdParams p{};
   p.M = static_cast<int>(M);
   p.N = static_cast<int>(N);
   p.K = static_cast<int>(K);
@@ -150,7 +150,7 @@ Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
   p.leaky_slope = attrs.leaky_slope;
 
   // 6) 실행
-  regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
+  ge2::regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
   return 0;
 }
 

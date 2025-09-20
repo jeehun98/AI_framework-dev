@@ -1,7 +1,8 @@
 #pragma once
 #include "regemm/api.h"
 
-namespace regemm {
+
+namespace ge2::regemm {
 
 // Host 측 레이아웃 규약
 //  - Scalar: bias -> float* (1개)

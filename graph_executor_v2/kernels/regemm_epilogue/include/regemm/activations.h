@@ -1,9 +1,10 @@
 #pragma once
 #include "regemm/api.h"
+
 #include <cuda_runtime.h>
 #include <math_constants.h>
 
-namespace regemm {
+namespace ge2::regemm {
 
 // ============================================================
 // (1) 컴파일타임 템플릿: Forward (기존 유지)
