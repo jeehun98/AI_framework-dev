@@ -5,7 +5,7 @@
 
 #include "ai/tensor.hpp"
 #include "ai/op_schema.hpp"
-#include "ai/dispatch.hpp"      // StreamHandle, Status
+#include "ai/dispatch.hpp"      // StreamHandle, ai::Status
 
 #include "regemm/api.h"         // regemm::{GemmBiasActBwdParams, gemm_bias_act_bwd_f32, ActKind, BiasKind}
 
@@ -65,41 +65,41 @@ namespace ai {
  *   Note: 시그니처는 기존 GemmAttrs를 재사용하지만, FWD의 alpha/beta를 내려받아야 정확히 일치합니다.
  *         지금은 p.alpha=1, p.beta=(C&&gC?1:0)로 두었으니, 필요 시 전용 GemmBwdAttrs(alpha,beta 포함)로 교체하세요.
  */
-Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
-                        const Tensor& gY, const Tensor& Z,
-                        Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
-                        const GemmAttrs& attrs, StreamHandle stream)
+ai::Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
+                            const Tensor& gY, const Tensor& Z,
+                            Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
+                            const GemmAttrs& attrs, StreamHandle stream)
 {
   // 1) 디바이스/타입/레이아웃 가드
   auto is_cuda_f32_rm = [](const Tensor& T){
     return T.is_cuda() && T.desc.dtype==DType::F32 && T.desc.layout==Layout::RowMajor;
   };
   if (!is_cuda_f32_rm(A) || !is_cuda_f32_rm(B) || !is_cuda_f32_rm(gY) || !is_cuda_f32_rm(Z))
-    return -101;
-  if (gA && !is_cuda_f32_rm(*gA)) return -102;
-  if (gB && !is_cuda_f32_rm(*gB)) return -103;
-  if (gC && !is_cuda_f32_rm(*gC)) return -104;
-  if (C  && !is_cuda_f32_rm(*C))  return -105;
-  if (attrs.trans_a || attrs.trans_b) return -106; // 현재 비전치 전제
+    return ai::Status::DeviceMismatch;
+  if (gA && !is_cuda_f32_rm(*gA)) return ai::Status::DeviceMismatch;
+  if (gB && !is_cuda_f32_rm(*gB)) return ai::Status::DeviceMismatch;
+  if (gC && !is_cuda_f32_rm(*gC)) return ai::Status::DeviceMismatch;
+  if (C  && !is_cuda_f32_rm(*C))  return ai::Status::DeviceMismatch;
+  if (attrs.trans_a || attrs.trans_b) return ai::Status::TransposeNotSupported; // 현재 비전치 전제
 
   // 2) 치수 체크
   if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 ||
-      gY.desc.shape.size()!=2 || Z.desc.shape.size()!=2) return -107;
+      gY.desc.shape.size()!=2 || Z.desc.shape.size()!=2) return ai::Status::ShapeMismatch;
 
   const int64_t M = A.desc.shape[0];
   const int64_t K = A.desc.shape[1];
   const int64_t Kb= B.desc.shape[0];
   const int64_t N = B.desc.shape[1];
-  if (K != Kb) return -108;
+  if (K != Kb) return ai::Status::ShapeMismatch;
 
-  if (gY.desc.shape[0]!=M || gY.desc.shape[1]!=N) return -109;
-  if (Z .desc.shape[0]!=M || Z .desc.shape[1]!=N) return -110;
+  if (gY.desc.shape[0]!=M || gY.desc.shape[1]!=N) return ai::Status::ShapeMismatch;
+  if (Z .desc.shape[0]!=M || Z .desc.shape[1]!=N) return ai::Status::ShapeMismatch;
 
-  if (gA && (gA->desc.shape.size()!=2 || gA->desc.shape[0]!=M || gA->desc.shape[1]!=K)) return -111;
-  if (gB && (gB->desc.shape.size()!=2 || gB->desc.shape[0]!=K || gB->desc.shape[1]!=N)) return -112;
+  if (gA && (gA->desc.shape.size()!=2 || gA->desc.shape[0]!=M || gA->desc.shape[1]!=K)) return ai::Status::ShapeMismatch;
+  if (gB && (gB->desc.shape.size()!=2 || gB->desc.shape[0]!=K || gB->desc.shape[1]!=N)) return ai::Status::ShapeMismatch;
   if (gC) {
-    if (!C) return -113; // gC를 원하면 C도 있어야 함(커널이 C&&gC 둘 다 있을 때만 gC 씀)
-    if (gC->desc.shape.size()!=2 || gC->desc.shape[0]!=M || gC->desc.shape[1]!=N) return -114;
+    if (!C) return ai::Status::MissingInput; // gC를 원하면 C도 있어야 함(커널이 C&&gC 둘 다 있을 때만 gC 씀)
+    if (gC->desc.shape.size()!=2 || gC->desc.shape[0]!=M || gC->desc.shape[1]!=N) return ai::Status::ShapeMismatch;
   }
 
   // 3) leading dims
@@ -107,12 +107,12 @@ Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
   const int64_t ldb  = infer_ld_rowmajor_2d(B);
   const int64_t ldgY = infer_ld_rowmajor_2d(gY);
   const int64_t ldZ  = infer_ld_rowmajor_2d(Z);
-  if (lda < K || ldb < N || ldgY < N || ldZ < N) return -115;
+  if (lda < K || ldb < N || ldgY < N || ldZ < N) return ai::Status::StrideMismatch;
 
   int64_t ldgA = 0, ldgB = 0, ldgC = 0;
-  if (gA) { ldgA = infer_ld_rowmajor_2d(*gA); if (ldgA < K) return -116; }
-  if (gB) { ldgB = infer_ld_rowmajor_2d(*gB); if (ldgB < N) return -117; }
-  if (gC) { ldgC = infer_ld_rowmajor_2d(*gC); if (ldgC < N) return -118; }
+  if (gA) { ldgA = infer_ld_rowmajor_2d(*gA); if (ldgA < K) return ai::Status::StrideMismatch; }
+  if (gB) { ldgB = infer_ld_rowmajor_2d(*gB); if (ldgB < N) return ai::Status::StrideMismatch; }
+  if (gC) { ldgC = infer_ld_rowmajor_2d(*gC); if (ldgC < N) return ai::Status::StrideMismatch; }
 
   // 4) bias kind 추론
   //   (A) 가장 정확: FWD에 사용한 bias 텐서를 받아서 판정 → deduce_bias_kind_from_forward(...)
@@ -160,7 +160,7 @@ Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
 
   // 7) 실행
   regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
-  return 0;
+  return ai::Status::Ok;
 }
 
 } // namespace ai

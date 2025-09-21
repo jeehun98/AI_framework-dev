@@ -52,7 +52,7 @@ build cmake_object_order_depends_target_ai_core: phony || .
 build CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\dispatch\registry.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\dispatch
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -61,7 +61,7 @@ build CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj: CXX_COMPILER__ai_cor
 build CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\dispatch\selector_rules.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\dispatch
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -70,7 +70,7 @@ build CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj: CXX_COMPILER__
 build CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\executor\scheduler.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -79,7 +79,7 @@ build CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj: CXX_COMPILER__ai_co
 build CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\executor\mem_planner.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -88,7 +88,7 @@ build CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj: CXX_COMPILER__ai_
 build CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\executor\autograd_engine.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -97,7 +97,16 @@ build CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj: CXX_COMPILER_
 build CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\ops\gemm.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
+  OBJECT_DIR = CMakeFiles\ai_core.dir
+  OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
+  TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
+  TARGET_PDB = ai_core.pdb
+
+build CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\ops\rmsnorm.cpp || cmake_object_order_depends_target_ai_core
+  CONFIG = Release
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -111,7 +120,7 @@ build CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj: CXX_COMPILER__ai_core_unscann
 #############################################
 # Link the static library ai_core.lib
 
-build ai_core.lib: CXX_STATIC_LIBRARY_LINKER__ai_core_Release CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj
+build ai_core.lib: CXX_STATIC_LIBRARY_LINKER__ai_core_Release CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64
@@ -134,7 +143,7 @@ build cmake_object_order_depends_target_ai_backend_cuda: phony || cmake_object_o
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\register_ops.cpp.obj: CXX_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\register_ops.cpp || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -144,7 +153,7 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\launcher.cu.obj: CUD
   CONFIG = Release
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -154,9 +163,29 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\backward.cu.obj: CUD
   CONFIG = Release
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\backward.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm
+  TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
+  TARGET_PDB = ai_backend_cuda.pdb
+
+build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
+  OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm
+  TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
+  TARGET_PDB = ai_backend_cuda.pdb
+
+build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
+  OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
   TARGET_PDB = ai_backend_cuda.pdb
 
@@ -164,7 +193,7 @@ build CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_gemm_bia
   CONFIG = Release
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_gemm_bias_act.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -174,7 +203,7 @@ build CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward
   CONFIG = Release
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -188,7 +217,7 @@ build CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward
 #############################################
 # Link the static library ai_backend_cuda.lib
 
-build ai_backend_cuda.lib: CXX_STATIC_LIBRARY_LINKER__ai_backend_cuda_Release CMakeFiles\ai_backend_cuda.dir\backends\cuda\register_ops.cpp.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\backward.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_gemm_bias_act.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward.cu.obj || ai_core.lib
+build ai_backend_cuda.lib: CXX_STATIC_LIBRARY_LINKER__ai_backend_cuda_Release CMakeFiles\ai_backend_cuda.dir\backends\cuda\register_ops.cpp.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\backward.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_gemm_bias_act.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward.cu.obj || ai_core.lib
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64
@@ -212,7 +241,7 @@ build CMakeFiles\_core.dir\src\bindings\py_api.cpp.obj: CXX_COMPILER___core_unsc
   CONFIG = Release
   DEFINES = -DPy_NO_LINK_LIB -D_core_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /GL /bigobj /MP
-  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_core.dir
   OBJECT_FILE_DIR = CMakeFiles\_core.dir\src\bindings
   TARGET_COMPILE_PDB = CMakeFiles\_core.dir\

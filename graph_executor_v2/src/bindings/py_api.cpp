@@ -13,6 +13,7 @@
 #include "ai/dispatch.hpp"
 #include "ai/op_schema.hpp"
 #include "regemm/api.h"  // EX forward(Z stash) 직접 호출용
+#include "backends/cuda/ops/rmsnorm/api.hpp"  // ✅ RMSNormAttrs, 런처 시그니처 출처 통일
 
 namespace py = pybind11;
 using namespace ai;
@@ -69,6 +70,11 @@ int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
                  const Tensor& gY, const Tensor& Z,
                  Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
                  const GemmAttrs& attrs, StreamHandle stream);
+
+// ⬇️ RMSNorm은 attrs 타입이 ai::RMSNormAttrs 임에 유의
+int rmsnorm_run(const Tensor&, const Tensor*, const Tensor*, Tensor&, const ai::RMSNormAttrs&, StreamHandle);
+int rmsnorm_backward_run(const Tensor&, const Tensor*, const Tensor&, Tensor&, Tensor*, Tensor*, const ai::RMSNormAttrs&, StreamHandle);
+
 }} // namespace ai::ops
 
 // -------------------- FWD: 단발 함수 --------------------
@@ -441,6 +447,188 @@ static py::dict gemm_bias_act_bwd(py::array A_in, py::array B_in,
   return out;
 }
 
+// py 함수 (전략: 기존 GEMM 바인딩 코드 패턴 재사용)
+py::array rmsnorm(py::array X_in,
+                  py::object gamma_in = py::none(),
+                  py::object beta_in  = py::none(),
+                  double eps = 1e-6)
+{
+  // --- 1) NumPy → host f32 contiguous ---
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=2) throw std::runtime_error("rmsnorm: X must be 2D");
+  const int64_t M = X.shape(0);
+  const int64_t N = X.shape(1);
+
+  // gamma / beta (optional, 1D length == N)
+  bool has_gamma = !gamma_in.is_none();
+  bool has_beta  = !beta_in.is_none();
+
+  py::array_t<float> gamma_f, beta_f;
+  if (has_gamma) {
+    gamma_f = py::array_t<float, py::array::c_style | py::array::forcecast>(gamma_in);
+    if (gamma_f.ndim()!=1 || gamma_f.shape(0)!=N)
+      throw std::runtime_error("rmsnorm: gamma must be 1D with length N");
+  }
+  if (has_beta) {
+    beta_f = py::array_t<float, py::array::c_style | py::array::forcecast>(beta_in);
+    if (beta_f.ndim()!=1 || beta_f.shape(0)!=N)
+      throw std::runtime_error("rmsnorm: beta must be 1D with length N");
+  }
+
+  // --- 2) Device alloc/copy ---
+  float *dX=nullptr, *dGamma=nullptr, *dBeta=nullptr, *dY=nullptr;
+  checkCuda(cudaMalloc(&dX,    sizeof(float)*M*N), "cudaMalloc X");
+  checkCuda(cudaMalloc(&dY,    sizeof(float)*M*N), "cudaMalloc Y");
+  checkCuda(cudaMemcpy(dX, X.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice), "H2D X");
+
+  if (has_gamma) {
+    checkCuda(cudaMalloc(&dGamma, sizeof(float)*N), "cudaMalloc gamma");
+    checkCuda(cudaMemcpy(dGamma, gamma_f.data(), sizeof(float)*N, cudaMemcpyHostToDevice), "H2D gamma");
+  }
+  if (has_beta) {
+    checkCuda(cudaMalloc(&dBeta, sizeof(float)*N), "cudaMalloc beta");
+    checkCuda(cudaMemcpy(dBeta, beta_f.data(), sizeof(float)*N, cudaMemcpyHostToDevice), "H2D beta");
+  }
+
+  // --- 3) Wrap tensors ---
+  auto make_desc_2d_local = [](int64_t r, int64_t c){
+    TensorDesc d{}; d.dtype=DType::F32; d.layout=Layout::RowMajor; d.shape={r,c}; d.stride={c,1}; return d;
+  };
+  auto make_desc_1d = [](int64_t len){
+    TensorDesc d{}; d.dtype=DType::F32; d.layout=Layout::RowMajor; d.shape={len}; d.stride={1}; return d;
+  };
+
+  Tensor tX{dX, make_desc_2d_local(M,N), Device::CUDA, 0};
+  Tensor tY{dY, make_desc_2d_local(M,N), Device::CUDA, 0};
+
+  Tensor tGamma{}, tBeta{};
+  Tensor *pGamma = nullptr, *pBeta = nullptr;
+  if (has_gamma) { tGamma = Tensor{dGamma, make_desc_1d(N), Device::CUDA, 0}; pGamma=&tGamma; }
+  if (has_beta ) { tBeta  = Tensor{dBeta,  make_desc_1d(N), Device::CUDA, 0}; pBeta =&tBeta;  }
+
+  // --- 4) Call op ---
+  ai::RMSNormAttrs attrs{}; attrs.eps = static_cast<float>(eps);  // ✅ 올바른 타입/네임스페이스
+  int rc = ai::ops::rmsnorm_run(tX, pGamma, pBeta, tY, attrs, /*stream*/nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after rmsnorm");
+  if (rc != 0) {
+    if (dGamma) cudaFree(dGamma);
+    if (dBeta)  cudaFree(dBeta);
+    cudaFree(dX); cudaFree(dY);
+    throw std::runtime_error("rmsnorm_run failed with code " + std::to_string(rc));
+  }
+
+  // --- 5) D2H & free ---
+  auto Y_out = py::array_t<float>({M, N});
+  checkCuda(cudaMemcpy(Y_out.mutable_data(), dY, sizeof(float)*M*N, cudaMemcpyDeviceToHost), "D2H Y");
+
+  if (dGamma) cudaFree(dGamma);
+  if (dBeta)  cudaFree(dBeta);
+  cudaFree(dX); cudaFree(dY);
+  return Y_out;
+}
+
+py::tuple rmsnorm_backward(py::array X_in,
+                           py::object gamma_in,
+                           py::array dY_in,
+                           double eps = 1e-6)
+{
+  // --- 1) NumPy → host f32 contiguous ---
+  auto X  = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+  if (X.ndim()!=2 || dY.ndim()!=2) throw std::runtime_error("rmsnorm_backward: X, dY must be 2D");
+
+  const int64_t M = X.shape(0);
+  const int64_t N = X.shape(1);
+  if (dY.shape(0)!=M || dY.shape(1)!=N) throw std::runtime_error("rmsnorm_backward: dY shape mismatch");
+
+  bool has_gamma = !gamma_in.is_none();
+  py::array_t<float> gamma_f;
+  if (has_gamma) {
+    gamma_f = py::array_t<float, py::array::c_style | py::array::forcecast>(gamma_in);
+    if (gamma_f.ndim()!=1 || gamma_f.shape(0)!=N)
+      throw std::runtime_error("rmsnorm_backward: gamma must be 1D with length N");
+  }
+
+  // --- 2) Device alloc/copy ---
+  float *dX=nullptr, *dGamma=nullptr, *dYdev=nullptr;
+  float *dDX=nullptr, *dDGamma=nullptr, *dDBeta=nullptr;
+
+  checkCuda(cudaMalloc(&dX,     sizeof(float)*M*N), "cudaMalloc X");
+  checkCuda(cudaMalloc(&dYdev,  sizeof(float)*M*N), "cudaMalloc dY");
+  checkCuda(cudaMalloc(&dDX,    sizeof(float)*M*N), "cudaMalloc dX");
+  checkCuda(cudaMemcpy(dX,    X.data(),  sizeof(float)*M*N, cudaMemcpyHostToDevice), "H2D X");
+  checkCuda(cudaMemcpy(dYdev, dY.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice), "H2D dY");
+
+  if (has_gamma) {
+    checkCuda(cudaMalloc(&dGamma,  sizeof(float)*N), "cudaMalloc gamma");
+    checkCuda(cudaMalloc(&dDGamma, sizeof(float)*N), "cudaMalloc dgamma");
+    checkCuda(cudaMemcpy(dGamma, gamma_f.data(), sizeof(float)*N, cudaMemcpyHostToDevice), "H2D gamma");
+    checkCuda(cudaMemset(dDGamma, 0, sizeof(float)*N), "memset dgamma");
+  }
+  // dbeta는 러닝 합만 필요하므로 길이 N. (Affine 사용 시에만 계산/반환)
+  if (has_gamma) {
+    checkCuda(cudaMalloc(&dDBeta, sizeof(float)*N), "cudaMalloc dbeta");
+    checkCuda(cudaMemset(dDBeta, 0, sizeof(float)*N), "memset dbeta");
+  }
+
+  // --- 3) Wrap tensors ---
+  auto make_desc_2d_local = [](int64_t r, int64_t c){
+    TensorDesc d{}; d.dtype=DType::F32; d.layout=Layout::RowMajor; d.shape={r,c}; d.stride={c,1}; return d;
+  };
+  auto make_desc_1d = [](int64_t len){
+    TensorDesc d{}; d.dtype=DType::F32; d.layout=Layout::RowMajor; d.shape={len}; d.stride={1}; return d;
+  };
+
+  Tensor tX {dX,    make_desc_2d_local(M,N), Device::CUDA, 0};
+  Tensor tdY{dYdev, make_desc_2d_local(M,N), Device::CUDA, 0};
+  Tensor tdX{dDX,   make_desc_2d_local(M,N), Device::CUDA, 0};
+
+  Tensor tGamma{}, tDGamma{}, tDBeta{};
+  Tensor *pGamma = nullptr, *pDGamma = nullptr, *pDBeta = nullptr;
+
+  if (has_gamma) {
+    tGamma  = Tensor{dGamma,  make_desc_1d(N), Device::CUDA, 0}; pGamma  = &tGamma;
+    tDGamma = Tensor{dDGamma, make_desc_1d(N), Device::CUDA, 0}; pDGamma = &tDGamma;
+    tDBeta  = Tensor{dDBeta,  make_desc_1d(N), Device::CUDA, 0}; pDBeta  = &tDBeta;
+  }
+
+  // --- 4) Call op ---
+  ai::RMSNormAttrs attrs{}; attrs.eps = static_cast<float>(eps);  // ✅ 올바른 타입/네임스페이스
+  int rc = ai::ops::rmsnorm_backward_run(tX, pGamma, tdY, tdX, pDGamma, pDBeta, attrs, /*stream*/nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after rmsnorm_backward");
+  if (rc != 0) {
+    if (dDGamma) cudaFree(dDGamma);
+    if (dDBeta)  cudaFree(dDBeta);
+    if (dGamma)  cudaFree(dGamma);
+    cudaFree(dDX); cudaFree(dX); cudaFree(dYdev);
+    throw std::runtime_error("rmsnorm_backward_run failed with code " + std::to_string(rc));
+  }
+
+  // --- 5) D2H ---
+  auto dX_out = py::array_t<float>({M, N});
+  checkCuda(cudaMemcpy(dX_out.mutable_data(), dDX, sizeof(float)*M*N, cudaMemcpyDeviceToHost), "D2H dX");
+
+  py::object dgamma_obj = py::none();
+  py::object dbeta_obj  = py::none();
+
+  if (has_gamma) {
+    auto dgamma_out = py::array_t<float>({N});
+    auto dbeta_out  = py::array_t<float>({N});
+    checkCuda(cudaMemcpy(dgamma_out.mutable_data(), dDGamma, sizeof(float)*N, cudaMemcpyDeviceToHost), "D2H dgamma");
+    checkCuda(cudaMemcpy(dbeta_out.mutable_data(),  dDBeta,  sizeof(float)*N, cudaMemcpyDeviceToHost),  "D2H dbeta");
+    dgamma_obj = std::move(dgamma_out);
+    dbeta_obj  = std::move(dbeta_out);
+  }
+
+  // --- 6) free & return ---
+  if (dDGamma) cudaFree(dDGamma);
+  if (dDBeta)  cudaFree(dDBeta);
+  if (dGamma)  cudaFree(dGamma);
+  cudaFree(dDX); cudaFree(dX); cudaFree(dYdev);
+
+  return py::make_tuple(std::move(dX_out), dgamma_obj, dbeta_obj);
+}
+
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
   // 커널 등록 보장
@@ -469,6 +657,14 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("A"), py::arg("B"), py::arg("gY"), py::arg("Z"),
         py::arg("act")="relu", py::arg("bias_kind")="none", py::arg("leaky_slope")=0.01,
         "Backward: returns dict with gA, gB, gBias, gC(None).");
+
+  m.def("rmsnorm", &rmsnorm,
+        py::arg("X"), py::arg("gamma")=py::none(), py::arg("beta")=py::none(),
+        py::arg("eps")=1e-6, "RMSNorm (CUDA, f32, row-major)");
+
+  m.def("rmsnorm_backward", &rmsnorm_backward,
+        py::arg("X"), py::arg("gamma")=py::none(), py::arg("dY"),
+        py::arg("eps")=1e-6, "RMSNorm backward (CUDA)");
 
   // GemmPlan
   py::class_<GemmPlan>(m, "GemmPlan")

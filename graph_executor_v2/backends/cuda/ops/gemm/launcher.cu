@@ -7,15 +7,14 @@
 //    * M==N인 경우 PerN을 기본으로 우선
 //    * N==1 또는 M==1일 때도 Scalar가 먼저 잡히도록 순서가 중요!
 //
-// 반환코드 약속(0=OK, <0 오류):
-//  -1 : 디바이스가 CUDA가 아님
-//  -2 : dtype(f32) 불일치
-//  -3 : 레이아웃(row-major) 불일치
-//  -4 : transpose 경로 미지원
-//  -5 : shape 차원 불일치(2D 아님 등)
-//  -6 : 행렬 크기 불일치(M,K,N 검사 실패)
-//  -7 : leading dim(ld*) 유효성 실패
-//  -8 : 정수 변환 범위 초과(int32)
+// 반환: ai::Status (Ok/Invalid/…)
+//  - DeviceMismatch          : 디바이스가 CUDA가 아님
+//  - DtypeMismatch           : dtype(f32) 불일치
+//  - LayoutMismatch          : 레이아웃(row-major) 불일치
+//  - TransposeNotSupported   : transpose 경로 미지원
+//  - ShapeMismatch           : shape 차원/크기 불일치
+//  - StrideMismatch          : leading dim(ld*) 유효성 실패
+//  - Invalid                 : (예) int32 범위 초과 등 기타 잘못된 인자
 //
 // 주의:
 //  - stream은 상위에서 void*로 전달되며 여기서 cudaStream_t로 재해석.
@@ -30,7 +29,6 @@
 #include "ai/tensor.hpp"
 #include "ai/dispatch.hpp"
 #include "ai/op_schema.hpp"
-
 
 #include "regemm/api.h"
 
@@ -86,33 +84,32 @@ inline bool fits_int32(int64_t x) {
 
 namespace ai {
 
-// 0=OK, <0 error
-Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
-                      Tensor& Y, const GemmAttrs& attrs, StreamHandle stream) {
+ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
+                          Tensor& Y, const GemmAttrs& attrs, StreamHandle stream) {
   // 1) 기본 가드: 디바이스/타입/레이아웃/transpose 지원여부
-  if (!A.is_cuda() || !B.is_cuda() || !Y.is_cuda()) return -1;
-  if (A.desc.dtype != DType::F32 || B.desc.dtype != DType::F32 || Y.desc.dtype != DType::F32) return -2;
-  if (A.desc.layout != Layout::RowMajor || B.desc.layout != Layout::RowMajor || Y.desc.layout != Layout::RowMajor) return -3;
-  if (attrs.trans_a || attrs.trans_b) return -4; // 현재 비전치만 지원
+  if (!A.is_cuda() || !B.is_cuda() || !Y.is_cuda()) return ai::Status::DeviceMismatch;
+  if (A.desc.dtype != DType::F32 || B.desc.dtype != DType::F32 || Y.desc.dtype != DType::F32) return ai::Status::DtypeMismatch;
+  if (A.desc.layout != Layout::RowMajor || B.desc.layout != Layout::RowMajor || Y.desc.layout != Layout::RowMajor) return ai::Status::LayoutMismatch;
+  if (attrs.trans_a || attrs.trans_b) return ai::Status::TransposeNotSupported; // 현재 비전치만 지원
 
   // 2) shape 검증
-  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 || Y.desc.shape.size()!=2) return -5;
+  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 || Y.desc.shape.size()!=2) return ai::Status::ShapeMismatch;
   const int64_t M = A.desc.shape[0];
   const int64_t K = A.desc.shape[1];
   const int64_t Kb= B.desc.shape[0];
   const int64_t N = B.desc.shape[1];
-  if (K!=Kb || Y.desc.shape[0]!=M || Y.desc.shape[1]!=N) return -6;
+  if (K!=Kb || Y.desc.shape[0]!=M || Y.desc.shape[1]!=N) return ai::Status::ShapeMismatch;
 
   // 3) leading dim 추론 및 유효성 체크
   const int64_t lda = infer_ld_rowmajor_2d(A);
   const int64_t ldb = infer_ld_rowmajor_2d(B);
   const int64_t ldd = infer_ld_rowmajor_2d(Y);
-  if (lda < K || ldb < N || ldd < N) return -7;
+  if (lda < K || ldb < N || ldd < N) return ai::Status::StrideMismatch;
 
   // 4) regemm 파라미터의 int32 제한 확인
   if (!fits_int32(M) || !fits_int32(N) || !fits_int32(K) ||
       !fits_int32(lda) || !fits_int32(ldb) || !fits_int32(ldd)) {
-    return -8;
+    return ai::Status::Invalid;
   }
 
   // 5) regemm 확장 파라미터 구성
@@ -146,7 +143,7 @@ Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
 
   // 6) 실행 — stream은 void* → cudaStream_t 재해석
   regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
-  return 0;
+  return ai::Status::Ok;
 }
 
 } // namespace ai

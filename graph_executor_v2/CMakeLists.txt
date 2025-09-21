@@ -27,7 +27,7 @@ find_package(pybind11 CONFIG REQUIRED)
 find_package(CUDAToolkit REQUIRED)   # CUDA::cudart, CUDA::cublas 등 제공
 
 # =========================
-# include 경로 (변수만 정의; 전역 include는 사용하지 않음)
+# include 경로 변수
 # =========================
 set(PROJECT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 set(REGEMM_INCLUDE_DIR  ${CMAKE_SOURCE_DIR}/kernels/regemm_epilogue/include)
@@ -42,11 +42,14 @@ add_library(ai_core STATIC
   src/executor/mem_planner.cpp
   src/executor/autograd_engine.cpp
   src/ops/gemm.cpp
+  src/ops/rmsnorm.cpp
 )
 
 target_include_directories(ai_core
   PUBLIC
-    ${PROJECT_INCLUDE_DIR}
+    ${PROJECT_INCLUDE_DIR}     # graph_executor_v2/include
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}        # graph_executor_v2/ (backends/... 등의 루트 기준 include 허용)
 )
 
 if (MSVC)
@@ -63,6 +66,9 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/gemm/launcher.cu
   backends/cuda/ops/gemm/backward.cu
 
+  backends/cuda/ops/rmsnorm/kernels.cu
+  backends/cuda/ops/rmsnorm/launcher.cu
+
   # 내부(regemm_epilogue) 커널
   kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu
   kernels/regemm_epilogue/src/regemm_backward.cu
@@ -77,6 +83,8 @@ target_include_directories(ai_backend_cuda
   PUBLIC
     ${PROJECT_INCLUDE_DIR}
     ${REGEMM_INCLUDE_DIR}
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}        # 루트 기준 include 허용
 )
 
 # cuBLAS & cudart 링크
@@ -87,11 +95,7 @@ target_link_libraries(ai_backend_cuda
     CUDA::cublas
 )
 
-# (선택) 포함 경로 추적 로깅을 원할 때 주석 해제
-# add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/showIncludes>)
-# add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/showIncludes>)
-
-# CUDA 컴파일러 옵션 예시
+# CUDA 컴파일러 옵션
 target_compile_options(ai_backend_cuda PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CMAKE_CUDA_ARCHITECTURES},code=[compute_${CMAKE_CUDA_ARCHITECTURES},sm_${CMAKE_CUDA_ARCHITECTURES}]>
   $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/EHsc>
@@ -126,6 +130,12 @@ if(BUILD_PYTHON)
     src/bindings/py_api.cpp
   )
   target_link_libraries(_core PRIVATE ai_core ai_backend_cuda)
+
+  target_include_directories(_core
+    PRIVATE
+      ${PROJECT_INCLUDE_DIR}
+      ${CMAKE_SOURCE_DIR}      # 루트 기준 include 허용
+  )
 
   # 빌드 산출물 위치를 패키지 폴더로 지정하여 바로 import 가능
   set_target_properties(_core PROPERTIES
