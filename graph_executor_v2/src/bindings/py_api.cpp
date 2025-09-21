@@ -14,6 +14,7 @@
 #include "ai/op_schema.hpp"
 #include "regemm/api.h"  // EX forward(Z stash) 직접 호출용
 #include "backends/cuda/ops/rmsnorm/api.hpp"  // ✅ RMSNormAttrs, 런처 시그니처 출처 통일
+#include "backends/cuda/ops/layernorm/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
@@ -63,6 +64,7 @@ static inline regemm::ActKind to_regemm_act(ActKind a) {
 
 // -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
 namespace ai { namespace ops {
+  using ::ai::LayerNormAttrs;
 int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
              Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
 
@@ -74,6 +76,8 @@ int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
 // ⬇️ RMSNorm은 attrs 타입이 ai::RMSNormAttrs 임에 유의
 int rmsnorm_run(const Tensor&, const Tensor*, const Tensor*, Tensor&, const ai::RMSNormAttrs&, StreamHandle);
 int rmsnorm_backward_run(const Tensor&, const Tensor*, const Tensor&, Tensor&, Tensor*, Tensor*, const ai::RMSNormAttrs&, StreamHandle);
+int layernorm_run(const Tensor&, const Tensor*, const Tensor*, Tensor&, const ai::LayerNormAttrs&, StreamHandle);
+int layernorm_backward_run(const Tensor&, const Tensor*, const Tensor&, Tensor&, Tensor*, Tensor*, const ai::LayerNormAttrs&, StreamHandle);
 
 }} // namespace ai::ops
 
@@ -628,6 +632,128 @@ py::tuple rmsnorm_backward(py::array X_in,
 
   return py::make_tuple(std::move(dX_out), dgamma_obj, dbeta_obj);
 }
+static inline ai::TensorDesc make_desc_2d_ln(int64_t r, int64_t c){
+  ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor; d.shape={r,c}; d.stride={c,1}; return d;
+}
+static inline ai::TensorDesc make_desc_1d_ln(int64_t n){
+  ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor; d.shape={n}; d.stride={1}; return d;
+}
+
+py::array layernorm(py::array X_in,
+                    py::object gamma_in = py::none(),
+                    py::object beta_in  = py::none(),
+                    double eps = 1e-5)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=2) throw std::runtime_error("layernorm: X must be 2D");
+  const int64_t M = X.shape(0), N = X.shape(1);
+
+  bool has_gamma = !gamma_in.is_none();
+  bool has_beta  = !beta_in.is_none();
+  py::array_t<float> gamma_f, beta_f;
+  if (has_gamma) { gamma_f = py::array_t<float, py::array::c_style | py::array::forcecast>(gamma_in);
+                   if (gamma_f.ndim()!=1 || gamma_f.shape(0)!=N) throw std::runtime_error("gamma must be 1D len N"); }
+  if (has_beta)  { beta_f  = py::array_t<float, py::array::c_style | py::array::forcecast>(beta_in);
+                   if (beta_f.ndim()!=1 || beta_f.shape(0)!=N) throw std::runtime_error("beta must be 1D len N"); }
+
+  float *dX=nullptr,*dY=nullptr,*dG=nullptr,*dB=nullptr;
+  cudaMalloc(&dX, sizeof(float)*M*N);
+  cudaMalloc(&dY, sizeof(float)*M*N);
+  cudaMemcpy(dX, X.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  if (has_gamma) { cudaMalloc(&dG, sizeof(float)*N); cudaMemcpy(dG, gamma_f.data(), sizeof(float)*N, cudaMemcpyHostToDevice); }
+  if (has_beta ) { cudaMalloc(&dB, sizeof(float)*N); cudaMemcpy(dB,  beta_f.data(), sizeof(float)*N,  cudaMemcpyHostToDevice); }
+
+  ai::Tensor tX{dX, make_desc_2d_ln(M,N), ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, make_desc_2d_ln(M,N), ai::Device::CUDA, 0};
+  ai::Tensor tG{}, tB{};
+  ai::Tensor *pG=nullptr, *pB=nullptr;
+  if (has_gamma) { tG={dG, make_desc_1d_ln(N), ai::Device::CUDA, 0}; pG=&tG; }
+  if (has_beta ) { tB={dB, make_desc_1d_ln(N), ai::Device::CUDA, 0}; pB=&tB; }
+
+  ai::LayerNormAttrs attrs{}; attrs.eps=(float)eps;
+  int rc = ai::ops::layernorm_run(tX, pG, pB, tY, attrs, nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) {
+    if (dG) cudaFree(dG); if (dB) cudaFree(dB);
+    cudaFree(dX); cudaFree(dY);
+    throw std::runtime_error("layernorm_run failed: " + std::to_string(rc));
+  }
+
+  auto Y = py::array_t<float>({M,N});
+  cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+  if (dG) cudaFree(dG); if (dB) cudaFree(dB);
+  cudaFree(dX); cudaFree(dY);
+  return Y;
+}
+
+py::tuple layernorm_backward(py::array X_in,
+                             py::object gamma_in,
+                             py::array dY_in,
+                             double eps = 1e-5)
+{
+  auto X  = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+  if (X.ndim()!=2 || dY.ndim()!=2) throw std::runtime_error("layernorm_backward: X,dY must be 2D");
+  const int64_t M=X.shape(0), N=X.shape(1);
+  if (dY.shape(0)!=M || dY.shape(1)!=N) throw std::runtime_error("dY shape mismatch");
+
+  bool has_gamma = !gamma_in.is_none();
+  py::array_t<float> gamma_f;
+  if (has_gamma) { gamma_f = py::array_t<float, py::array::c_style | py::array::forcecast>(gamma_in);
+                   if (gamma_f.ndim()!=1 || gamma_f.shape(0)!=N) throw std::runtime_error("gamma must be 1D len N"); }
+
+  float *dX=nullptr,*dYd=nullptr,*dG=nullptr,*dDX=nullptr,*dDG=nullptr,*dDB=nullptr;
+  cudaMalloc(&dX,  sizeof(float)*M*N);
+  cudaMalloc(&dYd, sizeof(float)*M*N);
+  cudaMalloc(&dDX, sizeof(float)*M*N);
+  cudaMemcpy(dX,  X.data(),  sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  cudaMemcpy(dYd, dY.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  if (has_gamma) {
+    cudaMalloc(&dG,  sizeof(float)*N);
+    cudaMalloc(&dDG, sizeof(float)*N);
+    cudaMalloc(&dDB, sizeof(float)*N);
+    cudaMemcpy(dG, gamma_f.data(), sizeof(float)*N, cudaMemcpyHostToDevice);
+    cudaMemset(dDG, 0, sizeof(float)*N);
+    cudaMemset(dDB, 0, sizeof(float)*N);
+  }
+
+  ai::Tensor tX{dX, make_desc_2d_ln(M,N), ai::Device::CUDA, 0};
+  ai::Tensor tdY{dYd, make_desc_2d_ln(M,N), ai::Device::CUDA, 0};
+  ai::Tensor tdX{dDX, make_desc_2d_ln(M,N), ai::Device::CUDA, 0};
+  ai::Tensor tG{}, tDG{}, tDB{};
+  ai::Tensor *pG=nullptr, *pDG=nullptr, *pDB=nullptr;
+  if (has_gamma) {
+    tG ={dG,  make_desc_1d_ln(N), ai::Device::CUDA, 0}; pG =&tG;
+    tDG={dDG, make_desc_1d_ln(N), ai::Device::CUDA, 0}; pDG=&tDG;
+    tDB={dDB, make_desc_1d_ln(N), ai::Device::CUDA, 0}; pDB=&tDB;
+  }
+
+  ai::LayerNormAttrs attrs{}; attrs.eps=(float)eps;
+  int rc = ai::ops::layernorm_backward_run(tX, pG, tdY, tdX, pDG, pDB, attrs, nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) {
+    if (dDG) cudaFree(dDG); if (dDB) cudaFree(dDB); if (dG) cudaFree(dG);
+    cudaFree(dDX); cudaFree(dX); cudaFree(dYd);
+    throw std::runtime_error("layernorm_backward_run failed: " + std::to_string(rc));
+  }
+
+  auto dX_out = py::array_t<float>({M,N});
+  cudaMemcpy(dX_out.mutable_data(), dDX, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+
+  py::object dgamma_obj = py::none(), dbeta_obj = py::none();
+  if (has_gamma) {
+    auto dgamma = py::array_t<float>({N});
+    auto dbeta  = py::array_t<float>({N});
+    cudaMemcpy(dgamma.mutable_data(), dDG, sizeof(float)*N, cudaMemcpyDeviceToHost);
+    cudaMemcpy(dbeta.mutable_data(),  dDB, sizeof(float)*N, cudaMemcpyDeviceToHost);
+    dgamma_obj = std::move(dgamma);
+    dbeta_obj  = std::move(dbeta);
+  }
+
+  if (dDG) cudaFree(dDG); if (dDB) cudaFree(dDB); if (dG) cudaFree(dG);
+  cudaFree(dDX); cudaFree(dX); cudaFree(dYd);
+  return py::make_tuple(std::move(dX_out), dgamma_obj, dbeta_obj);
+}
 
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
@@ -665,6 +791,16 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
   m.def("rmsnorm_backward", &rmsnorm_backward,
         py::arg("X"), py::arg("gamma")=py::none(), py::arg("dY"),
         py::arg("eps")=1e-6, "RMSNorm backward (CUDA)");
+  
+  m.def("layernorm", &layernorm,
+        py::arg("X"), py::arg("gamma")=py::none(), py::arg("beta")=py::none(),
+        py::arg("eps")=1e-5, "LayerNorm (CUDA, f32, row-major)");
+
+  m.def("layernorm_backward", &layernorm_backward,
+        py::arg("X"), py::arg("gamma")=py::none(), py::arg("dY"),
+        py::arg("eps")=1e-5, "LayerNorm backward (CUDA)");
+
+
 
   // GemmPlan
   py::class_<GemmPlan>(m, "GemmPlan")
@@ -684,4 +820,6 @@ bias_kind: "none" | "pern" | "perm" | "scalar")")
     .def_property_readonly("K", &GemmPlan::K)
     .def_property_readonly("N", &GemmPlan::N)
     .def_property_readonly("bias_len", &GemmPlan::bias_len);
+
+
 }
