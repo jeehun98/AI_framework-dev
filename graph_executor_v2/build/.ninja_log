@@ -1,17 +1,17 @@
-# ninja log v5
-17	120	7800457016782056	CMakeFiles/ai_core.dir/src/executor/scheduler.cpp.obj	5e1c9cf5d010b866
-22	121	7800457016782056	CMakeFiles/ai_core.dir/src/executor/autograd_engine.cpp.obj	7acaa21f825e93f
-20	121	7800457016782056	CMakeFiles/ai_core.dir/src/executor/mem_planner.cpp.obj	bf192a33c5c69efa
-14	216	7800457018141438	CMakeFiles/ai_core.dir/src/dispatch/selector_rules.cpp.obj	f72626eff7bdff6c
-25	222	7800457018219526	CMakeFiles/ai_core.dir/src/ops/gemm.cpp.obj	ba392dbc41638c66
-27	226	7800457018264567	CMakeFiles/ai_backend_cuda.dir/backends/cuda/register_ops.cpp.obj	4fe22be0dd95b0a8
-11	295	7800457018917937	CMakeFiles/ai_core.dir/src/dispatch/registry.cpp.obj	6fe780af2b2a5437
-296	330	7800457019280796	ai_core.lib	3d9fab060d88c1fc
-46	1974	7800457035682113	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	3e05d336a441841f
-33	4471	7800457060501863	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/gemm/launcher.cu.obj	3610cda301646883
-36	4679	7800457062619040	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/gemm/backward.cu.obj	eaa096889d9d707d
-43	4888	7800457064721094	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_backward.cu.obj	7173844a58b1773f
-40	88923	7800457904984178	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu.obj	81c227a09a617e77
-88924	88962	7800457905573269	ai_backend_cuda.lib	29fc32e551af3041
-88962	92437	7800457940131721	CMakeFiles/_core.dir/cmake_device_link.obj	f4d202cfa30e62eb
-92437	93598	7800457951680510	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	6d109455668bd816
+# ninja log v7
+63	200	7800686188758558	CMakeFiles/ai_core.dir/src/executor/autograd_engine.cpp.obj	128e10a530c08cdc
+52	207	7800686188648423	CMakeFiles/ai_core.dir/src/executor/mem_planner.cpp.obj	c1ea901f817c8f56
+41	208	7800686188543259	CMakeFiles/ai_core.dir/src/executor/scheduler.cpp.obj	ba40782f63098410
+31	552	7800686188438182	CMakeFiles/ai_core.dir/src/dispatch/selector_rules.cpp.obj	3743a136f0dd1c59
+73	554	7800686188855648	CMakeFiles/ai_core.dir/src/ops/gemm.cpp.obj	9c718cef939c1029
+83	567	7800686188963761	CMakeFiles/ai_backend_cuda.dir/backends/cuda/register_ops.cpp.obj	58c280da8b868e33
+19	758	7800686188318992	CMakeFiles/ai_core.dir/src/dispatch/registry.cpp.obj	90434d7b3c2f7b21
+759	838	7800686195721250	ai_core.lib	5b8c46f753a5e108
+130	3281	7800686189431456	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	c98f18f2852a1c48
+101	5227	7800686189149263	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/gemm/backward.cu.obj	92cbe599d3901f10
+92	5239	7800686189054109	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/gemm/launcher.cu.obj	5c33467c8aa66c75
+120	5751	7800686189329499	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_backward.cu.obj	58f6257066467332
+110	68942	7800686189224316	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu.obj	67da231e84144e01
+68950	69021	7800686877629915	ai_backend_cuda.lib	ce13fac907f8fc8c
+69021	71927	7800686878340170	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
+71927	73369	7800686907399732	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	a43204f587598969

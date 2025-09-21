@@ -8,7 +8,7 @@
 #include "regemm/nvtx_shim.h"
 
 
-namespace ge2::regemm {
+namespace regemm {
 
 // ====================================================================
 // 기존: Smoke (비타일, 소규모 행렬 최적)  — 이미 정식 스펙 준수

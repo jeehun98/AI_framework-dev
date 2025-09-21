@@ -10,7 +10,7 @@
 #include "regemm/activations.h"  // apply_act_grad_runtime()
 #include "regemm/nvtx_shim.h"
 
-namespace ge2::regemm {
+namespace regemm {
 
 // ======= 유틸: 에러 체크 =======
 #ifndef REGEMM_CHECK

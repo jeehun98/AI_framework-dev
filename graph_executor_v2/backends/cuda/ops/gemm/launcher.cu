@@ -45,9 +45,9 @@ inline int64_t infer_ld_rowmajor_2d(const ai::Tensor& t) {
 }
 
 // --- ai::ActKind → regemm::ActKind 매핑 ---
-inline ge2::regemm::ActKind to_regemm_act(ai::ActKind a) {
+inline regemm::ActKind to_regemm_act(ai::ActKind a) {
   using A = ai::ActKind;
-  using R = ge2::regemm::ActKind;
+  using R = regemm::ActKind;
   switch (a) {
     case A::None:      return R::None;
     case A::ReLU:      return R::ReLU;
@@ -64,16 +64,16 @@ inline ge2::regemm::ActKind to_regemm_act(ai::ActKind a) {
 //  * 길이==N ⇒ PerN (M==N 동률인 경우에도 PerN 우선)
 //  * 길이==M ⇒ PerM
 //  * 그 외/2D 이상 ⇒ None (보수적 무시)
-inline ge2::regemm::BiasKind infer_bias_kind(const ai::Tensor* Bias, int64_t M, int64_t N) {
-  if (!Bias || !Bias->data) return ge2::regemm::BiasKind::None;
+inline regemm::BiasKind infer_bias_kind(const ai::Tensor* Bias, int64_t M, int64_t N) {
+  if (!Bias || !Bias->data) return regemm::BiasKind::None;
   const auto& d = Bias->desc;
-  if (d.shape.size() != 1) return ge2::regemm::BiasKind::None;
+  if (d.shape.size() != 1) return regemm::BiasKind::None;
 
   const int64_t len = d.shape[0];
-  if (len == 1) return ge2::regemm::BiasKind::Scalar; // ★ scalar 먼저!
-  if (len == N) return ge2::regemm::BiasKind::PerN;   // ★ M==N이면 PerN 우선
-  if (len == M) return ge2::regemm::BiasKind::PerM;
-  return ge2::regemm::BiasKind::None;
+  if (len == 1) return regemm::BiasKind::Scalar; // ★ scalar 먼저!
+  if (len == N) return regemm::BiasKind::PerN;   // ★ M==N이면 PerN 우선
+  if (len == M) return regemm::BiasKind::PerM;
+  return regemm::BiasKind::None;
 }
 
 // --- int64→int32 안전 변환 체크 ---
@@ -116,7 +116,7 @@ Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
   }
 
   // 5) regemm 확장 파라미터 구성
-  ge2::regemm::GemmBiasActParamsEx p{};
+  regemm::GemmBiasActParamsEx p{};
   p.M = static_cast<int>(M);
   p.N = static_cast<int>(N);
   p.K = static_cast<int>(K);
@@ -145,7 +145,7 @@ Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
   p.save_preact = 0;    // 1이면 pre-activation(Z) 저장
 
   // 6) 실행 — stream은 void* → cudaStream_t 재해석
-  ge2::regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
+  regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
   return 0;
 }
 

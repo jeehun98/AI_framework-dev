@@ -4,7 +4,7 @@
 #include <cuda_runtime.h>
 #include <math_constants.h>
 
-namespace ge2::regemm {
+namespace regemm {
 
 // ============================================================
 // (1) 컴파일타임 템플릿: Forward (기존 유지)

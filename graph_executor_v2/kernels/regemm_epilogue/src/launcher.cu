@@ -3,7 +3,7 @@
 #include "regemm/api.h"
 
 
-namespace ge2::regemm {
+namespace regemm {
 
 // -------- 기존 forward(legacy) --------
 void launch_gemm_bias_act_f32_smoke (const GemmBiasActParams& p, cudaStream_t s);
