@@ -3,7 +3,7 @@
 #include <cuda_runtime_api.h>  // for cudaStream_t
 
 
-namespace ge2::regemm {
+namespace regemm {
 
 // -------------------- Enums (기존 유지) --------------------
 enum class ActKind : int {

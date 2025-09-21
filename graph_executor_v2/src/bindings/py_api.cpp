@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cctype>
+
 #include <cuda_runtime.h>
 
 #include <pybind11/pybind11.h>
@@ -11,6 +12,7 @@
 #include "ai/tensor.hpp"
 #include "ai/dispatch.hpp"
 #include "ai/op_schema.hpp"
+#include "regemm/api.h"  // EX forward(Z stash) 직접 호출용
 
 namespace py = pybind11;
 using namespace ai;
@@ -46,12 +48,30 @@ static inline ActKind parse_act(const std::string& s){
   throw std::runtime_error("unknown activation: " + s);
 }
 
-// -------------------- 기존 단발성 함수 --------------------
+static inline regemm::ActKind to_regemm_act(ActKind a) {
+  switch (a) {
+    case ActKind::None:      return regemm::ActKind::None;
+    case ActKind::ReLU:      return regemm::ActKind::ReLU;
+    case ActKind::LeakyReLU: return regemm::ActKind::LeakyReLU;
+    case ActKind::GELU:      return regemm::ActKind::GELU;
+    case ActKind::Sigmoid:   return regemm::ActKind::Sigmoid;
+    case ActKind::Tanh:      return regemm::ActKind::Tanh;
+  }
+  return regemm::ActKind::None;
+}
+
+// -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
 namespace ai { namespace ops {
 int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
              Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
+
+int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
+                 const Tensor& gY, const Tensor& Z,
+                 Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
+                 const GemmAttrs& attrs, StreamHandle stream);
 }} // namespace ai::ops
 
+// -------------------- FWD: 단발 함수 --------------------
 py::array gemm_bias_act(py::array A_in, py::array B_in,
                         py::object bias_in = py::none(),
                         std::string act = "relu",
@@ -225,13 +245,11 @@ public:
 
     if (copy_out) {
       if (out_array.is_none()) {
-        // 그냥 버퍼만 동기화
         checkCuda(cudaDeviceSynchronize(), "sync after run(copy_out)");
       } else {
-        auto Y = py::array_t<float>( {M_, N_} );
+        auto Y = py::array_t<float>({M_, N_});
         checkCuda(cudaMemcpy(Y.mutable_data(), dY_, sizeof(float)*M_*N_, cudaMemcpyDeviceToHost), "D2H Y");
-        // out_array가 제공되었으면 Python에서 받도록 반환 없이 끝낼 수도 있지만,
-        // run()은 ms만 반환하는 API이므로 여기선 D2H만 수행.
+        // run()은 ms만 반환하는 API → 값은 반환하지 않음.
       }
     }
     return ms; // 커널 시간만(ms)
@@ -255,6 +273,174 @@ private:
   GemmAttrs attrs_{};
 };
 
+// -------------------- FWD with Z: EX 경로 직접 호출 --------------------
+static py::tuple gemm_bias_act_fwd_with_z(py::array A_in, py::array B_in,
+                                          py::object bias_in = py::none(),
+                                          std::string act = "relu",
+                                          double leaky_slope = 0.01)
+{
+  auto A = py::array_t<float, py::array::c_style | py::array::forcecast>(A_in);
+  auto B = py::array_t<float, py::array::c_style | py::array::forcecast>(B_in);
+  if (A.ndim()!=2 || B.ndim()!=2) throw std::runtime_error("A,B must be 2D");
+  int64_t M=A.shape(0), K=A.shape(1), Kb=B.shape(0), N=B.shape(1);
+  if (K!=Kb) throw std::runtime_error("shape mismatch");
+
+  // Bias(optional)
+  float* dBias=nullptr; int64_t bias_len=0;
+  regemm::BiasKind bk = regemm::BiasKind::None;
+  if (!bias_in.is_none()) {
+    auto bias = py::array_t<float, py::array::c_style | py::array::forcecast>(bias_in);
+    if (bias.ndim()!=1) throw std::runtime_error("bias must be 1D");
+    bias_len = bias.shape(0);
+    if (bias_len==1)      bk = regemm::BiasKind::Scalar;
+    else if (bias_len==M) bk = regemm::BiasKind::PerM;
+    else if (bias_len==N) bk = regemm::BiasKind::PerN;
+    else throw std::runtime_error("bias length must be 1|M|N");
+    checkCuda(cudaMalloc(&dBias, sizeof(float)*bias_len), "cudaMalloc bias");
+    checkCuda(cudaMemcpy(dBias, bias.data(), sizeof(float)*bias_len, cudaMemcpyHostToDevice), "H2D bias");
+  }
+
+  // Device buffers
+  float *dA=nullptr,*dB=nullptr,*dY=nullptr,*dZ=nullptr;
+  checkCuda(cudaMalloc(&dA, sizeof(float)*M*K), "cudaMalloc A");
+  checkCuda(cudaMalloc(&dB, sizeof(float)*K*N), "cudaMalloc B");
+  checkCuda(cudaMalloc(&dY, sizeof(float)*M*N), "cudaMalloc Y");
+  checkCuda(cudaMalloc(&dZ, sizeof(float)*M*N), "cudaMalloc Z");
+  checkCuda(cudaMemcpy(dA, A.data(), sizeof(float)*M*K, cudaMemcpyHostToDevice), "H2D A");
+  checkCuda(cudaMemcpy(dB, B.data(), sizeof(float)*K*N, cudaMemcpyHostToDevice), "H2D B");
+
+  // ParamsEx
+  regemm::GemmBiasActParamsEx p{};
+  p.M=(int)M; p.N=(int)N; p.K=(int)K;
+  p.A=dA; p.lda=(int)K; p.B=dB; p.ldb=(int)N;
+  p.C=nullptr; p.ldc=0;
+  p.D=dY; p.ldd=(int)N;
+  p.alpha=1.f; p.beta=0.f;
+  p.bias=dBias; p.bias_kind=bk;
+  p.act = to_regemm_act(parse_act(act));
+  p.leaky_slope=(float)leaky_slope;
+  p.Z=dZ; p.ldZ=(int)N; p.save_preact=1;
+
+  // Launch
+  regemm::gemm_bias_act_f32_ex(p, /*stream*/0);
+  checkCuda(cudaDeviceSynchronize(), "sync after fwd_with_z");
+
+  // D2H
+  auto Y = py::array_t<float>({M,N});
+  auto Z = py::array_t<float>({M,N});
+  checkCuda(cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*M*N, cudaMemcpyDeviceToHost), "D2H Y");
+  checkCuda(cudaMemcpy(Z.mutable_data(), dZ, sizeof(float)*M*N, cudaMemcpyDeviceToHost), "D2H Z");
+
+  // free
+  if (dBias) cudaFree(dBias);
+  cudaFree(dA); cudaFree(dB); cudaFree(dY); cudaFree(dZ);
+
+  return py::make_tuple(Y, Z);
+}
+
+// -------------------- BWD: 디스패치 경유 --------------------
+static py::dict gemm_bias_act_bwd(py::array A_in, py::array B_in,
+                                  py::array gY_in, py::array Z_in,
+                                  std::string act="relu",
+                                  std::string bias_kind="none",
+                                  double leaky_slope=0.01)
+{
+  auto A = py::array_t<float, py::array::c_style | py::array::forcecast>(A_in);
+  auto B = py::array_t<float, py::array::c_style | py::array::forcecast>(B_in);
+  auto gY= py::array_t<float, py::array::c_style | py::array::forcecast>(gY_in);
+  auto Z = py::array_t<float, py::array::c_style | py::array::forcecast>(Z_in);
+  if (A.ndim()!=2||B.ndim()!=2||gY.ndim()!=2||Z.ndim()!=2) throw std::runtime_error("all must be 2D");
+  int64_t M=A.shape(0), K=A.shape(1), Kb=B.shape(0), N=B.shape(1);
+  if (K!=Kb) throw std::runtime_error("shape mismatch A,B");
+  if (gY.shape(0)!=M || gY.shape(1)!=N) throw std::runtime_error("gY shape mismatch");
+  if (Z.shape(0)!=M  || Z.shape(1)!=N)  throw std::runtime_error("Z shape mismatch");
+
+  // Device in
+  float *dA=nullptr,*dB=nullptr,*dgY=nullptr,*dZ=nullptr;
+  checkCuda(cudaMalloc(&dA, sizeof(float)*M*K), "cudaMalloc A");
+  checkCuda(cudaMalloc(&dB, sizeof(float)*K*N), "cudaMalloc B");
+  checkCuda(cudaMalloc(&dgY,sizeof(float)*M*N), "cudaMalloc gY");
+  checkCuda(cudaMalloc(&dZ, sizeof(float)*M*N), "cudaMalloc Z");
+  checkCuda(cudaMemcpy(dA, A.data(),  sizeof(float)*M*K, cudaMemcpyHostToDevice), "H2D A");
+  checkCuda(cudaMemcpy(dB, B.data(),  sizeof(float)*K*N, cudaMemcpyHostToDevice), "H2D B");
+  checkCuda(cudaMemcpy(dgY,gY.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice), "H2D gY");
+  checkCuda(cudaMemcpy(dZ, Z.data(),  sizeof(float)*M*N, cudaMemcpyHostToDevice), "H2D Z");
+
+  // Device outs
+  float *dGA=nullptr,*dGB=nullptr,*dGC=nullptr,*dGBias=nullptr;
+  checkCuda(cudaMalloc(&dGA, sizeof(float)*M*K), "cudaMalloc gA");
+  checkCuda(cudaMalloc(&dGB, sizeof(float)*K*N), "cudaMalloc gB");
+
+  // gBias shape 결정 (원래 FWD bias 축과 동일해야 함)
+  int64_t gBias_len = 0;
+  {
+    std::string b; b.reserve(bias_kind.size());
+    for (char c: bias_kind) b.push_back(std::tolower(static_cast<unsigned char>(c)));
+    if      (b=="scalar") gBias_len = 1;
+    else if (b=="perm")   gBias_len = M;
+    else if (b=="pern")   gBias_len = N;
+    else if (b=="none")   gBias_len = 0;
+    else throw std::runtime_error("bias_kind must be one of: none|scalar|perm|pern");
+  }
+  if (gBias_len>0) {
+    checkCuda(cudaMalloc(&dGBias, sizeof(float)*gBias_len), "cudaMalloc gBias");
+  }
+
+  // Wrap tensors
+  auto d2 = make_desc_2d;
+  Tensor tA{dA, d2(M,K), Device::CUDA, 0};
+  Tensor tB{dB, d2(K,N), Device::CUDA, 0};
+  Tensor tgY{dgY, d2(M,N), Device::CUDA, 0};
+  Tensor tZ {dZ,  d2(M,N), Device::CUDA, 0};
+  Tensor tGA{dGA, d2(M,K), Device::CUDA, 0};
+  Tensor tGB{dGB, d2(K,N), Device::CUDA, 0};
+
+  Tensor *pGC=nullptr, tGC{}; // C/gC 경로 미사용
+  Tensor *pGBias=nullptr, tGBias{};
+  if (gBias_len>0) {
+    TensorDesc bd{}; bd.dtype=DType::F32; bd.layout=Layout::RowMajor; bd.stride={1};
+    if      (gBias_len==1) bd.shape={1};
+    else if (gBias_len==M) bd.shape={M};
+    else                   bd.shape={N};
+    tGBias = Tensor{dGBias, bd, Device::CUDA, 0};
+    pGBias = &tGBias;
+  }
+
+  GemmAttrs at{}; at.act=parse_act(act); at.leaky_slope=(float)leaky_slope; at.with_bias=(gBias_len>0);
+
+  int rc = ai::ops::gemm_bwd_run(tA, tB, /*C*/nullptr, tgY, tZ,
+                                 &tGA, &tGB, /*gC*/pGC, /*gBias*/pGBias,
+                                 at, /*stream*/nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after bwd");
+  if (rc!=0) {
+    if (dGBias) cudaFree(dGBias);
+    cudaFree(dGA); cudaFree(dGB); cudaFree(dA); cudaFree(dB); cudaFree(dgY); cudaFree(dZ);
+    throw std::runtime_error("gemm_bwd_run failed with code " + std::to_string(rc));
+  }
+
+  // D2H
+  py::dict out;
+  auto gA = py::array_t<float>({M,K});
+  auto gB = py::array_t<float>({K,N});
+  checkCuda(cudaMemcpy(gA.mutable_data(), dGA, sizeof(float)*M*K, cudaMemcpyDeviceToHost), "D2H gA");
+  checkCuda(cudaMemcpy(gB.mutable_data(), dGB, sizeof(float)*K*N, cudaMemcpyDeviceToHost), "D2H gB");
+  out["gA"] = gA; out["gB"] = gB;
+
+  if (dGBias) {
+    py::array_t<float> gBias({gBias_len});
+    checkCuda(cudaMemcpy(gBias.mutable_data(), dGBias, sizeof(float)*gBias_len, cudaMemcpyDeviceToHost), "D2H gBias");
+    out["gBias"] = gBias;
+  } else {
+    out["gBias"] = py::none();
+  }
+  out["gC"] = py::none(); // C 경로 미사용
+
+  // free
+  if (dGBias) cudaFree(dGBias);
+  cudaFree(dGA); cudaFree(dGB); cudaFree(dA); cudaFree(dB); cudaFree(dgY); cudaFree(dZ);
+  return out;
+}
+
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
   // 커널 등록 보장
@@ -262,15 +448,29 @@ PYBIND11_MODULE(_core, m) {
 
   m.doc() = "graph_executor_v2 python bindings";
 
+  // FWD 단발
   m.def("gemm_bias_act", &gemm_bias_act,
         py::arg("A"), py::arg("B"), py::arg("bias") = py::none(),
         py::arg("act") = "relu", py::arg("leaky_slope") = 0.01,
-        R"(GEMM + optional bias + activation (CUDA, f32, row-major)
+R"(GEMM + optional bias + activation (CUDA, f32, row-major)
 A: (M,K) float32 contiguous
 B: (K,N) float32 contiguous
 bias: 1D (1|M|N) float32 or None
 act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
 
+  // FWD with Z
+  m.def("gemm_bias_act_fwd_with_z", &gemm_bias_act_fwd_with_z,
+        py::arg("A"), py::arg("B"), py::arg("bias")=py::none(),
+        py::arg("act")="relu", py::arg("leaky_slope")=0.01,
+        "Forward with Z stash: returns (Y, Z).");
+
+  // BWD
+  m.def("gemm_bias_act_bwd", &gemm_bias_act_bwd,
+        py::arg("A"), py::arg("B"), py::arg("gY"), py::arg("Z"),
+        py::arg("act")="relu", py::arg("bias_kind")="none", py::arg("leaky_slope")=0.01,
+        "Backward: returns dict with gA, gB, gBias, gC(None).");
+
+  // GemmPlan
   py::class_<GemmPlan>(m, "GemmPlan")
     .def(py::init<int64_t,int64_t,int64_t,const std::string&,const std::string&,double>(),
          py::arg("M"), py::arg("K"), py::arg("N"),
