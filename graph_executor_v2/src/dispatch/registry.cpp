@@ -74,10 +74,13 @@ int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
                  const GemmAttrs& attrs, StreamHandle s)
 {
   // 현재는 매우 단순 레지스트리 → 첫 엔트리
-  auto fn = BwdOpRegistry::inst().find_best();
+  ai::GemmBwdFn fn = ai::BwdOpRegistry::inst().find_best();
   if (!fn) return -100; // not found
-  return fn(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s);
+
+  ai::Status st = fn(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s);
+  return (st == ai::Status::Ok) ? 0 : -7;  // 필요 시 매핑 테이블로 세분화
 }
+
 
 } // namespace ops
 

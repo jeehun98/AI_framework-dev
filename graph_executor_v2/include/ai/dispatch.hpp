@@ -6,14 +6,37 @@
 
 namespace ai {
 
+
 // ------------------------------
 // 공통 타입
 // ------------------------------
 enum class OpKind { GEMM, GEMM_BWD };
 
 using StreamHandle = void*;   // reinterpret_cast<cudaStream_t>
-using Status       = int;     // 0=OK, <0 error
 
+
+// 단순 상태 코드
+enum class Status {
+  Ok = 0,
+
+  // 공통 범주
+  Invalid        = 1,   // 일반 invalid
+  Unimplemented  = 2,
+  RuntimeError   = 3,
+
+  // === 세부 오류 코드 (Backward GEMM 예시) ===
+  DeviceMismatch = 100, // 디바이스 타입 불일치 (CPU/GPU 혼용 등)
+  DtypeMismatch  = 101, // 데이터 타입 불일치 (예: F32만 지원인데 다른 dtype)
+  LayoutMismatch = 102, // 레이아웃 불일치 (RowMajor만 지원인데 ColMajor 등)
+  ShapeMismatch  = 103, // 텐서 shape 불일치
+  StrideMismatch = 104, // stride가 예상과 맞지 않음
+  TransposeNotSupported = 105, // trans_a, trans_b 아직 미지원
+
+  MissingInput   = 110, // gC 요청했는데 C 없음 등
+  RegistryNotFound = 120, // 레지스트리에서 커널 못 찾음
+
+  Unknown        = 999
+};
 // ==============================
 // Forward (GEMM + bias + act)
 // ==============================
@@ -106,5 +129,8 @@ int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
                  const GemmAttrs& attrs, StreamHandle s);
 
 } // namespace ops
+
+
+
 
 } // namespace ai

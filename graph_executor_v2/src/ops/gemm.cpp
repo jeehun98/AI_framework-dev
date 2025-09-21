@@ -38,10 +38,11 @@ int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
 
   // (4) 디스패치
   OpQuery q{OpKind::GEMM, A, B, effBias, Y, attrs};
-  auto fn = OpRegistry::inst().find_best(q);
+  ai::KernelFn fn = OpRegistry::inst().find_best(q);
   if (!fn) return -100;  // 등록 누락/미지원 조합
 
-  return fn(A, B, effBias, Y, attrs, stream);
+  ai::Status st = fn(A, B, effBias, Y, attrs, stream);
+  return (st == ai::Status::Ok) ? 0 : -7; // 필요 시 상세 매핑
 }
 
 }} // namespace ai::ops
