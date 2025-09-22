@@ -15,6 +15,7 @@
 #include "regemm/api.h"  // EX forward(Z stash) 직접 호출용
 #include "backends/cuda/ops/rmsnorm/api.hpp"  // ✅ RMSNormAttrs, 런처 시그니처 출처 통일
 #include "backends/cuda/ops/layernorm/api.hpp"
+#include "backends/cuda/ops/softmax/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
@@ -76,9 +77,12 @@ int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
 // ⬇️ RMSNorm은 attrs 타입이 ai::RMSNormAttrs 임에 유의
 int rmsnorm_run(const Tensor&, const Tensor*, const Tensor*, Tensor&, const ai::RMSNormAttrs&, StreamHandle);
 int rmsnorm_backward_run(const Tensor&, const Tensor*, const Tensor&, Tensor&, Tensor*, Tensor*, const ai::RMSNormAttrs&, StreamHandle);
+
 int layernorm_run(const Tensor&, const Tensor*, const Tensor*, Tensor&, const ai::LayerNormAttrs&, StreamHandle);
 int layernorm_backward_run(const Tensor&, const Tensor*, const Tensor&, Tensor&, Tensor*, Tensor*, const ai::LayerNormAttrs&, StreamHandle);
 
+int softmax_run(const Tensor&, const Tensor*, Tensor&, const ai::SoftmaxAttrs&, StreamHandle);
+int softmax_backward_run(const Tensor& Y, const Tensor& dY, Tensor& dX, const ai::SoftmaxAttrs&, StreamHandle);
 }} // namespace ai::ops
 
 // -------------------- FWD: 단발 함수 --------------------
@@ -755,6 +759,85 @@ py::tuple layernorm_backward(py::array X_in,
   return py::make_tuple(std::move(dX_out), dgamma_obj, dbeta_obj);
 }
 
+// 바인딩 함수
+py::array softmax(py::array X_in, py::object mask_in = py::none(),
+                  double scale=1.0, bool log=false)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=2) throw std::runtime_error("softmax: X must be 2D");
+  int64_t M=X.shape(0), N=X.shape(1);
+
+  // device alloc
+  float *dX=nullptr,*dY=nullptr,*dMask=nullptr;
+  cudaMalloc(&dX, sizeof(float)*M*N);
+  cudaMalloc(&dY, sizeof(float)*M*N);
+  cudaMemcpy(dX, X.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+
+  Tensor tX{dX, make_desc_2d(M,N), Device::CUDA, 0};
+  Tensor tY{dY, make_desc_2d(M,N), Device::CUDA, 0};
+
+  Tensor tMask{}; Tensor* pMask=nullptr;
+  if (!mask_in.is_none()) {
+    auto Mk = py::array_t<float, py::array::c_style | py::array::forcecast>(mask_in);
+    if (!((Mk.ndim()==2 && Mk.shape(0)==M && Mk.shape(1)==N) || (Mk.ndim()==1 && Mk.shape(0)==N)))
+      throw std::runtime_error("mask must be [M,N] or [N]");
+    size_t sz = (Mk.ndim()==2) ? (size_t)M*N : (size_t)N;
+    cudaMalloc(&dMask, sizeof(float)*sz);
+    cudaMemcpy(dMask, Mk.data(), sizeof(float)*sz, cudaMemcpyHostToDevice);
+    TensorDesc md{}; md.dtype=DType::F32; md.layout=Layout::RowMajor; md.stride={ (int64_t)(Mk.ndim()==2?N:1), 1 };
+    md.shape = (Mk.ndim()==2) ? std::vector<int64_t>{M,N} : std::vector<int64_t>{N};
+    tMask = Tensor{dMask, md, Device::CUDA, 0};
+    pMask = &tMask;
+  }
+
+  ai::SoftmaxAttrs attrs{}; attrs.scale=(float)scale; attrs.log=log;
+  int rc = ai::ops::softmax_run(tX, pMask, tY, attrs, /*stream*/nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) {
+    if (dMask) cudaFree(dMask); cudaFree(dX); cudaFree(dY);
+    throw std::runtime_error("softmax_run failed: " + std::to_string(rc));
+  }
+
+  auto Y = py::array_t<float>({M,N});
+  cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+  if (dMask) cudaFree(dMask); cudaFree(dX); cudaFree(dY);
+  return Y;
+}
+
+py::array softmax_backward(py::array Y_in, py::array dY_in, bool log=false)
+{
+  auto Y  = py::array_t<float, py::array::c_style | py::array::forcecast>(Y_in);
+  auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+  if (Y.ndim()!=2 || dY.ndim()!=2) throw std::runtime_error("softmax_backward: Y,dY must be 2D");
+  if (Y.shape(0)!=dY.shape(0) || Y.shape(1)!=dY.shape(1)) throw std::runtime_error("shape mismatch");
+
+  int64_t M=Y.shape(0), N=Y.shape(1);
+  float *dYd=nullptr,*dYdev=nullptr,*dX=nullptr;
+  cudaMalloc(&dYd,   sizeof(float)*M*N);
+  cudaMalloc(&dYdev, sizeof(float)*M*N);
+  cudaMemcpy(dYd, Y.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  cudaMemcpy(dYdev, dY.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  cudaMalloc(&dX, sizeof(float)*M*N);
+
+  Tensor tY{dYd,   make_desc_2d(M,N), Device::CUDA, 0};
+  Tensor tdY{dYdev,make_desc_2d(M,N), Device::CUDA, 0};
+  Tensor tdX{dX,   make_desc_2d(M,N), Device::CUDA, 0};
+
+  ai::SoftmaxAttrs attrs{}; attrs.scale=1.f; attrs.log=log;
+  int rc = ai::ops::softmax_backward_run(tY, tdY, tdX, attrs, /*stream*/nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) {
+    cudaFree(dYd); cudaFree(dYdev); cudaFree(dX);
+    throw std::runtime_error("softmax_backward_run failed: " + std::to_string(rc));
+  }
+
+  auto dX_out = py::array_t<float>({M,N});
+  cudaMemcpy(dX_out.mutable_data(), dX, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+  cudaFree(dYd); cudaFree(dYdev); cudaFree(dX);
+  return dX_out;
+}
+
+
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
   // 커널 등록 보장
@@ -799,7 +882,47 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
   m.def("layernorm_backward", &layernorm_backward,
         py::arg("X"), py::arg("gamma")=py::none(), py::arg("dY"),
         py::arg("eps")=1e-5, "LayerNorm backward (CUDA)");
+  
+  // --- Softmax (행 단위) ---
+  m.def("softmax", &softmax,
+        py::arg("X"),
+        py::arg("mask") = py::none(),   // [M,N] 또는 [N], 값은 x에 더해짐 (e.g., -inf 또는 0)
+        py::arg("scale") = 1.0,         // y = softmax(scale * (x + mask))
+        py::arg("log") = false,         // true면 logsoftmax 결과 반환
+  R"(Row-wise Softmax / LogSoftmax (CUDA, f32, row-major)
+  X: 2D ndarray (M,N), float32, contiguous
+  mask: optional [M,N] or [N] (broadcast) float32; values are added to X before softmax
+  scale: multiply inputs before softmax (e.g., 1/T)
+  log: if true, returns logsoftmax
+  Returns: Y with shape (M,N))");
 
+  m.def("softmax_backward", &softmax_backward,
+        py::arg("Y"),                  // softmax(X) 결과(또는 log=false 기준의 확률)
+        py::arg("dY"),                 // loss wrt Y
+        py::arg("log") = false,        // forward에 log=True를 썼다면 동일하게 True로
+  R"(Backward of (Log)Softmax (CUDA)
+  Inputs:
+    Y : forward softmax outputs (shape [M,N], not log-prob; if you used log=True forward, pass softmax probs here)
+    dY: gradient w.r.t. Y
+    log: set to True if forward used logsoftmax (formula changes)
+  Returns:
+    dX with shape (M,N))");
+
+  // --- 편의 함수(선택): logsoftmax 별도 이름으로 노출하고 싶다면 ---
+  m.def("logsoftmax",
+        [](py::array X, py::object mask = py::none(), double scale = 1.0){
+          return softmax(X, mask, scale, /*log=*/true);
+        },
+        py::arg("X"), py::arg("mask") = py::none(), py::arg("scale") = 1.0,
+  R"(Convenience wrapper for log-softmax(X, mask, scale))");
+
+  m.def("logsoftmax_backward",
+        [](py::array Y_softmax, py::array dY){   // 주의: logsoftmax의 bwd는 softmax 확률이 필요
+          return softmax_backward(Y_softmax, dY, /*log=*/true);
+        },
+        py::arg("Y_softmax"), py::arg("dY"),
+  R"(Backward wrapper for log-softmax.
+  NOTE: Pass softmax probabilities (not log-probs) as Y_softmax.)");
 
 
   // GemmPlan

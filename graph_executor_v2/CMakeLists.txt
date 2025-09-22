@@ -43,6 +43,7 @@ add_library(ai_core STATIC
   src/executor/autograd_engine.cpp
   src/ops/gemm.cpp
   src/ops/rmsnorm.cpp
+  src/ops/softmax.cpp
   src/ops/layernorm.cpp
 )
 
@@ -72,6 +73,9 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/layernorm/kernels.cu
   backends/cuda/ops/layernorm/launcher.cu
+
+  backends/cuda/ops/softmax/kernels.cu
+  backends/cuda/ops/softmax/launcher.cu
 
   # 내부(regemm_epilogue) 커널
   kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu
