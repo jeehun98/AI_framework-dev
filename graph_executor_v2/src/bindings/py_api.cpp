@@ -16,6 +16,7 @@
 #include "backends/cuda/ops/rmsnorm/api.hpp"  // ✅ RMSNormAttrs, 런처 시그니처 출처 통일
 #include "backends/cuda/ops/layernorm/api.hpp"
 #include "backends/cuda/ops/softmax/api.hpp"
+#include "backends/cuda/ops/cross_entropy/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
@@ -63,6 +64,24 @@ static inline regemm::ActKind to_regemm_act(ActKind a) {
   return regemm::ActKind::None;
 }
 
+static inline ai::TensorDesc make_desc_2d_any(int64_t r, int64_t c, ai::DType dt){
+  ai::TensorDesc d{};
+  d.dtype  = dt;
+  d.layout = ai::Layout::RowMajor;
+  d.shape  = {r, c};
+  d.stride = {c, 1};
+  return d;
+}
+
+static inline ai::TensorDesc make_desc_1d_any(int64_t n, ai::DType dt){
+  ai::TensorDesc d{};
+  d.dtype  = dt;
+  d.layout = ai::Layout::RowMajor;
+  d.shape  = {n};
+  d.stride = {1};
+  return d;
+}
+
 // -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
 namespace ai { namespace ops {
   using ::ai::LayerNormAttrs;
@@ -83,6 +102,10 @@ int layernorm_backward_run(const Tensor&, const Tensor*, const Tensor&, Tensor&,
 
 int softmax_run(const Tensor&, const Tensor*, Tensor&, const ai::SoftmaxAttrs&, StreamHandle);
 int softmax_backward_run(const Tensor& Y, const Tensor& dY, Tensor& dX, const ai::SoftmaxAttrs&, StreamHandle);
+
+int cross_entropy_run(const Tensor&, const Tensor&, Tensor&, const ai::CrossEntropyAttrs&, StreamHandle);
+int cross_entropy_backward_run(const Tensor&, const Tensor&, Tensor&, const ai::CrossEntropyAttrs&, StreamHandle);
+
 }} // namespace ai::ops
 
 // -------------------- FWD: 단발 함수 --------------------
@@ -837,6 +860,91 @@ py::array softmax_backward(py::array Y_in, py::array dY_in, bool log=false)
   return dX_out;
 }
 
+py::object cross_entropy(py::array X_in, py::array target_in,
+                         std::string reduction="mean")
+{
+  auto X = py::array_t<float,   py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=2) throw std::runtime_error("cross_entropy: X must be 2D");
+  const int64_t M = X.shape(0), N = X.shape(1);
+
+  auto T = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(target_in); // int32
+  if (T.ndim()!=1 || T.shape(0)!=M) throw std::runtime_error("cross_entropy: target must be 1D len M");
+
+  float *dX=nullptr, *dL=nullptr; int32_t *dT=nullptr;
+  cudaMalloc(&dX, sizeof(float)*M*N);
+  cudaMalloc(&dT, sizeof(int32_t)*M);
+  cudaMemcpy(dX, X.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  cudaMemcpy(dT, T.data(), sizeof(int32_t)*M, cudaMemcpyHostToDevice);
+
+  ai::Tensor tX{dX, make_desc_2d_any(M,N, ai::DType::F32), ai::Device::CUDA, 0};
+  ai::Tensor tT{dT, make_desc_1d_any(M,   ai::DType::I32), ai::Device::CUDA, 0};
+
+  ai::CrossEntropyAttrs attrs{};
+  if (reduction=="none") attrs.reduction = ai::Reduction::None;
+  else if (reduction=="sum") attrs.reduction = ai::Reduction::Sum;
+  else attrs.reduction = ai::Reduction::Mean;
+
+  py::object out;
+  if (attrs.reduction==ai::Reduction::None) {
+    cudaMalloc(&dL, sizeof(float)*M);
+    ai::Tensor tL{dL, make_desc_1d_any(M, ai::DType::F32), ai::Device::CUDA, 0};
+    int rc = ai::ops::cross_entropy_run(tX, tT, tL, attrs, nullptr);
+    cudaDeviceSynchronize();
+    if (rc!=0) { cudaFree(dX); cudaFree(dT); cudaFree(dL); throw std::runtime_error("cross_entropy_run failed"); }
+    auto L = py::array_t<float>({M});
+    cudaMemcpy(L.mutable_data(), dL, sizeof(float)*M, cudaMemcpyDeviceToHost);
+    out = std::move(L);
+  } else {
+    cudaMalloc(&dL, sizeof(float));
+    ai::Tensor tL{dL, make_desc_1d_any(1, ai::DType::F32), ai::Device::CUDA, 0};
+    int rc = ai::ops::cross_entropy_run(tX, tT, tL, attrs, nullptr);
+    cudaDeviceSynchronize();
+    if (rc!=0) { cudaFree(dX); cudaFree(dT); cudaFree(dL); throw std::runtime_error("cross_entropy_run failed"); }
+    float host;
+    cudaMemcpy(&host, dL, sizeof(float), cudaMemcpyDeviceToHost);
+    out = py::float_(host);
+  }
+
+  cudaFree(dX); cudaFree(dT); cudaFree(dL);
+  return out;
+}
+
+py::array cross_entropy_backward(py::array X_in, py::array target_in,
+                                 std::string reduction="mean")
+{
+  auto X = py::array_t<float,   py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=2) throw std::runtime_error("cross_entropy_backward: X must be 2D");
+  const int64_t M = X.shape(0), N = X.shape(1);
+
+  auto T = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(target_in);
+  if (T.ndim()!=1 || T.shape(0)!=M) throw std::runtime_error("cross_entropy_backward: target mismatch");
+
+  float *dX=nullptr, *dDX=nullptr; int32_t *dT=nullptr;
+  cudaMalloc(&dX,  sizeof(float)*M*N);
+  cudaMalloc(&dDX, sizeof(float)*M*N);
+  cudaMalloc(&dT,  sizeof(int32_t)*M);
+  cudaMemcpy(dX, X.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  cudaMemcpy(dT, T.data(), sizeof(int32_t)*M, cudaMemcpyHostToDevice);
+
+  ai::Tensor tX {dX,  make_desc_2d_any(M,N, ai::DType::F32), ai::Device::CUDA, 0};
+  ai::Tensor tdX{dDX, make_desc_2d_any(M,N, ai::DType::F32), ai::Device::CUDA, 0};
+  ai::Tensor tT {dT,  make_desc_1d_any(M,   ai::DType::I32), ai::Device::CUDA, 0};
+
+  ai::CrossEntropyAttrs attrs{};
+  if (reduction=="none") attrs.reduction = ai::Reduction::None;
+  else if (reduction=="sum") attrs.reduction = ai::Reduction::Sum;
+  else attrs.reduction = ai::Reduction::Mean;
+
+  int rc = ai::ops::cross_entropy_backward_run(tX, tT, tdX, attrs, nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) { cudaFree(dX); cudaFree(dDX); cudaFree(dT); throw std::runtime_error("cross_entropy_backward_run failed"); }
+
+  auto out = py::array_t<float>({M,N});
+  cudaMemcpy(out.mutable_data(), dDX, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+  cudaFree(dX); cudaFree(dDX); cudaFree(dT);
+  return out;
+}
+
 
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
@@ -924,6 +1032,20 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
   R"(Backward wrapper for log-softmax.
   NOTE: Pass softmax probabilities (not log-probs) as Y_softmax.)");
 
+
+  // 등록부:
+  m.def("cross_entropy", &cross_entropy,
+        py::arg("X"), py::arg("target"), py::arg("reduction")="mean",
+  R"(CrossEntropy with logits (CUDA, f32)
+  X: [M,N] logits
+  target: [M] int64 indices
+  reduction: 'none' | 'mean' | 'sum'
+  Returns: float (scalar) if reduction!='none', else [M] per-sample)");
+
+  m.def("cross_entropy_backward", &cross_entropy_backward,
+        py::arg("X"), py::arg("target"), py::arg("reduction")="mean",
+  R"(Backward of CrossEntropy with logits (CUDA)
+  Returns dX with shape [M,N]. For 'mean' reduction, gradients are averaged by M.)");
 
   // GemmPlan
   py::class_<GemmPlan>(m, "GemmPlan")
