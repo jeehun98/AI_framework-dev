@@ -31,17 +31,20 @@ int cross_entropy_run(const Tensor& X,
                       const ai::CrossEntropyAttrs& attrs,
                       StreamHandle  stream)
 {
-  // 기본 형식/장치/레이아웃 검증
   if (!is_rowmajor_2d_f32_cuda(X) || !is_rowmajor_1d_i32_cuda(target))
     return -2;
 
+  const int64_t M = X.desc.shape[0];
+
+  // ✅ target 길이 검증 추가
+  if (target.desc.shape[0] != M)
+    return -3;
+
   const bool want_vec = (attrs.reduction == ai::Reduction::None);
   if (want_vec) {
-    // loss:[M] F32 CUDA RowMajor
     if (!is_rowmajor_1d_f32_cuda(loss)) return -2;
-    if (loss.desc.shape[0] != X.desc.shape[0]) return -3;
+    if (loss.desc.shape[0] != M) return -3;
   } else {
-    // loss:[1] F32 CUDA RowMajor
     if (!is_rowmajor_1d_f32_cuda(loss)) return -2;
     if (loss.desc.shape[0] != 1) return -3;
   }
@@ -59,6 +62,10 @@ int cross_entropy_backward_run(const Tensor& X,
 {
   if (!is_rowmajor_2d_f32_cuda(X) || !is_rowmajor_2d_f32_cuda(dX) || !is_rowmajor_1d_i32_cuda(target))
     return -2;
+
+  // ✅ target 길이 검증 추가
+  if (target.desc.shape[0] != X.desc.shape[0])
+    return -3;
 
   if (X.desc.shape != dX.desc.shape)
     return -3;
