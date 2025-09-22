@@ -46,6 +46,7 @@ add_library(ai_core STATIC
   src/ops/softmax.cpp
   src/ops/layernorm.cpp
   src/ops/cross_entropy.cpp
+  src/ops/dropout.cpp
 )
 
 target_include_directories(ai_core
@@ -80,6 +81,9 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/cross_entropy/kernels.cu
   backends/cuda/ops/cross_entropy/launcher.cu
+
+  backends/cuda/ops/dropout/kernels.cu
+  backends/cuda/ops/dropout/launcher.cu
 
   # 내부(regemm_epilogue) 커널
   kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu

@@ -17,6 +17,7 @@
 #include "backends/cuda/ops/layernorm/api.hpp"
 #include "backends/cuda/ops/softmax/api.hpp"
 #include "backends/cuda/ops/cross_entropy/api.hpp"
+#include "backends/cuda/ops/dropout/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
@@ -82,6 +83,8 @@ static inline ai::TensorDesc make_desc_1d_any(int64_t n, ai::DType dt){
   return d;
 }
 
+
+
 // -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
 namespace ai { namespace ops {
   using ::ai::LayerNormAttrs;
@@ -106,6 +109,8 @@ int softmax_backward_run(const Tensor& Y, const Tensor& dY, Tensor& dX, const ai
 int cross_entropy_run(const Tensor&, const Tensor&, Tensor&, const ai::CrossEntropyAttrs&, StreamHandle);
 int cross_entropy_backward_run(const Tensor&, const Tensor&, Tensor&, const ai::CrossEntropyAttrs&, StreamHandle);
 
+int dropout_run(const Tensor& X, Tensor& Y, Tensor* mask, const ai::DropoutAttrs& attrs, StreamHandle);
+int dropout_backward_run(const Tensor& dY, const Tensor& mask, Tensor& dX, const ai::DropoutAttrs& attrs, StreamHandle);
 }} // namespace ai::ops
 
 // -------------------- FWD: 단발 함수 --------------------
@@ -957,6 +962,79 @@ py::array cross_entropy_backward(py::array X_in, py::array target_in,
   return out;
 }
 
+py::object dropout(py::array X_in,
+                   double p = 0.1,
+                   py::object return_mask = py::bool_(false),
+                   uint64_t seed = 0x1234,
+                   bool scale_in_train = true)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=2) throw std::runtime_error("dropout: X must be 2D");
+  int64_t M=X.shape(0), N=X.shape(1);
+
+  float *dX=nullptr, *dY=nullptr; int32_t* dM=nullptr;
+  cudaMalloc(&dX, sizeof(float)*M*N);
+  cudaMalloc(&dY, sizeof(float)*M*N);
+  cudaMemcpy(dX, X.data(), sizeof(float)*M*N, cudaMemcpyHostToDevice);
+  if (py::cast<bool>(return_mask)) {
+    cudaMalloc(&dM, sizeof(int32_t)*M*N);
+  }
+
+  ai::Tensor tX{dX, make_desc_2d_any(M,N, ai::DType::F32), ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, make_desc_2d_any(M,N, ai::DType::F32), ai::Device::CUDA, 0};
+  ai::Tensor tM{}; ai::Tensor* pM=nullptr;
+  if (dM){ tM = ai::Tensor{dM, make_desc_2d_any(M,N, ai::DType::I32), ai::Device::CUDA, 0}; pM=&tM; }
+
+  ai::DropoutAttrs attrs{}; attrs.p=(float)p; attrs.seed=seed; attrs.scale_in_train=scale_in_train;
+  int rc = ai::ops::dropout_run(tX, tY, pM, attrs, nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0){ if (dM) cudaFree(dM); cudaFree(dX); cudaFree(dY); throw std::runtime_error("dropout_run failed"); }
+
+  auto Y = py::array_t<float>({M,N});
+  cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+
+  if (dM){
+    auto Mhost = py::array_t<int32_t>({M,N});
+    cudaMemcpy(Mhost.mutable_data(), dM, sizeof(int32_t)*M*N, cudaMemcpyDeviceToHost);
+    cudaFree(dM); cudaFree(dX); cudaFree(dY);
+    return py::make_tuple(std::move(Y), std::move(Mhost));
+  } else {
+    cudaFree(dX); cudaFree(dY);
+    return Y;
+  }
+}
+
+py::array dropout_backward(py::array dY_in, py::array mask_in,
+                           double p = 0.1, uint64_t seed = 0x1234,
+                           bool scale_in_train = true)
+{
+  auto dY = py::array_t<float,   py::array::c_style | py::array::forcecast>(dY_in);
+  auto M  = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(mask_in);
+  if (dY.ndim()!=2 || M.ndim()!=2) throw std::runtime_error("dropout_backward: dY, mask must be 2D");
+  if (dY.shape(0)!=M.shape(0) || dY.shape(1)!=M.shape(1)) throw std::runtime_error("shape mismatch");
+
+  int64_t R=dY.shape(0), C=dY.shape(1);
+  float *ddY=nullptr, *ddX=nullptr; int32_t* dM=nullptr;
+  cudaMalloc(&ddY, sizeof(float)*R*C);
+  cudaMalloc(&ddX, sizeof(float)*R*C);
+  cudaMalloc(&dM,  sizeof(int32_t)*R*C);
+  cudaMemcpy(ddY, dY.data(), sizeof(float)*R*C, cudaMemcpyHostToDevice);
+  cudaMemcpy(dM,  M.data(),  sizeof(int32_t)*R*C, cudaMemcpyHostToDevice);
+
+  ai::Tensor tdY{ddY, make_desc_2d_any(R,C, ai::DType::F32), ai::Device::CUDA, 0};
+  ai::Tensor tM {dM,  make_desc_2d_any(R,C, ai::DType::I32), ai::Device::CUDA, 0};
+  ai::Tensor tdX{ddX, make_desc_2d_any(R,C, ai::DType::F32), ai::Device::CUDA, 0};
+
+  ai::DropoutAttrs attrs{}; attrs.p=(float)p; attrs.seed=seed; attrs.scale_in_train=scale_in_train;
+  int rc = ai::ops::dropout_backward_run(tdY, tM, tdX, attrs, nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0){ cudaFree(ddY); cudaFree(ddX); cudaFree(dM); throw std::runtime_error("dropout_backward_run failed"); }
+
+  auto out = py::array_t<float>({R,C});
+  cudaMemcpy(out.mutable_data(), ddX, sizeof(float)*R*C, cudaMemcpyDeviceToHost);
+  cudaFree(ddY); cudaFree(ddX); cudaFree(dM);
+  return out;
+}
 
 
 // -------------------- Module --------------------
@@ -1060,6 +1138,17 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("ignore_index")=-1,
         py::arg("label_smoothing")=0.0,
         "Backward of CrossEntropy (same options)");
+
+  m.def("dropout", &dropout,
+        py::arg("X"), py::arg("p")=0.1, py::arg("return_mask")=false,
+        py::arg("seed")=0x1234, py::arg("scale_in_train")=true,
+        "Dropout forward (CUDA, f32). Returns Y or (Y, mask).");
+
+  m.def("dropout_backward", &dropout_backward,
+        py::arg("dY"), py::arg("mask"), py::arg("p")=0.1,
+        py::arg("seed")=0x1234, py::arg("scale_in_train")=true,
+        "Dropout backward (CUDA): dX = dY * mask * scale.");
+
 
   // GemmPlan
   py::class_<GemmPlan>(m, "GemmPlan")
