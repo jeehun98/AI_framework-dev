@@ -18,7 +18,8 @@
 #include "backends/cuda/ops/softmax/api.hpp"
 #include "backends/cuda/ops/cross_entropy/api.hpp"
 #include "backends/cuda/ops/dropout/api.hpp"
-#include "backends/cuda/ops/sdpa/api.hpp"  // ✅ 추가
+#include "backends/cuda/ops/sdpa/api.hpp"  
+#include "backends/cuda/ops/conv2d/api.hpp"  
 
 namespace py = pybind11;
 using namespace ai;
@@ -31,15 +32,6 @@ static inline void checkCuda(cudaError_t e, const char* msg) {
   if (e != cudaSuccess) {
     throw std::runtime_error(std::string(msg) + ": " + cudaGetErrorString(e));
   }
-}
-
-static inline TensorDesc make_desc_2d(int64_t rows, int64_t cols){
-  TensorDesc d{};
-  d.dtype  = DType::F32;
-  d.layout = Layout::RowMajor;
-  d.shape  = {rows, cols};
-  d.stride = {cols, 1}; // contiguous row-major
-  return d;
 }
 
 static inline ActKind parse_act(const std::string& s){
@@ -65,6 +57,14 @@ static inline regemm::ActKind to_regemm_act(ActKind a) {
   }
   return regemm::ActKind::None;
 }
+static inline TensorDesc make_desc_2d(int64_t rows, int64_t cols){
+  TensorDesc d{};
+  d.dtype  = DType::F32;
+  d.layout = Layout::RowMajor;
+  d.shape  = {rows, cols};
+  d.stride = {cols, 1}; // contiguous row-major
+  return d;
+}
 
 static inline ai::TensorDesc make_desc_2d_any(int64_t r, int64_t c, ai::DType dt){
   ai::TensorDesc d{};
@@ -84,6 +84,14 @@ static inline ai::TensorDesc make_desc_1d_any(int64_t n, ai::DType dt){
   return d;
 }
 
+static inline ai::TensorDesc make_desc_1d_f32(int64_t n){
+  ai::TensorDesc d{};
+  d.dtype  = ai::DType::F32;
+  d.layout = ai::Layout::RowMajor;
+  d.shape  = {n};
+  d.stride = {1};
+  return d;
+}
 
 
 // -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
@@ -118,7 +126,22 @@ int dropout_backward_run(const Tensor& dY, const Tensor& mask, Tensor& dX, const
 int sdpa_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*, Tensor&, const SDPAAttrs&, StreamHandle);
 int sdpa_backward_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*, const Tensor&, Tensor*, Tensor*, Tensor*, const SDPAAttrs&, StreamHandle);
 
+int conv2d_run(const Tensor&, const Tensor&, const Tensor*, Tensor&, const Conv2DAttrs&, StreamHandle);
+int conv2d_backward_run(const Tensor&, const Tensor&, const Tensor&, Tensor*, Tensor*, Tensor*, const Conv2DAttrs&, StreamHandle);
+
 }} // namespace ai::ops
+
+// 헬퍼들
+static inline ai::TensorDesc make_desc_4d_nchw(int64_t N,int64_t C,int64_t H,int64_t W){
+  ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+  d.shape={N,C,H,W}; d.stride={C*H*W,H*W,W,1}; return d;
+}
+static inline ai::TensorDesc make_desc_1d(int64_t n){
+  ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+  d.shape={n}; d.stride={1}; return d;
+}
+
+
 
 // -------------------- FWD: 단발 함수 --------------------
 py::array gemm_bias_act(py::array A_in, py::array B_in,
@@ -1043,6 +1066,141 @@ py::array dropout_backward(py::array dY_in, py::array mask_in,
   return out;
 }
 
+// ---- FWD ----
+py::array conv2d(py::array X_in, py::array W_in, py::object B_in = py::none(),
+                 int stride_h=1,int stride_w=1,int pad_h=0,int pad_w=0,
+                 int dil_h=1,int dil_w=1)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  auto W = py::array_t<float, py::array::c_style | py::array::forcecast>(W_in);
+  if (X.ndim()!=4 || W.ndim()!=4) throw std::runtime_error("conv2d: X[N,C,H,W], W[Cout,Cin,Kh,Kw] required");
+
+  const int64_t N=X.shape(0), Cin=X.shape(1), H=X.shape(2), Ww=X.shape(3);
+  const int64_t Cout=W.shape(0), WCin=W.shape(1), Kh=W.shape(2), Kw=W.shape(3);
+  if (WCin!=Cin) throw std::runtime_error("conv2d: Cin mismatch between X and W");
+
+  const int64_t Ho = (H + 2*pad_h - dil_h*(Kh-1) - 1)/stride_h + 1;
+  const int64_t Wo = (Ww+ 2*pad_w - dil_w*(Kw-1) - 1)/stride_w + 1;
+  if (Ho<=0 || Wo<=0) throw std::runtime_error("conv2d: invalid output size (check stride/pad/dilation/KhKw)");
+
+  float *dX=nullptr,*dW=nullptr,*dY=nullptr,*dB=nullptr;
+  cudaMalloc(&dX, sizeof(float)*N*Cin*H*Ww);
+  cudaMalloc(&dW, sizeof(float)*Cout*Cin*Kh*Kw);
+  cudaMalloc(&dY, sizeof(float)*N*Cout*Ho*Wo);
+  cudaMemcpy(dX, X.data(), sizeof(float)*N*Cin*H*Ww, cudaMemcpyHostToDevice);
+  cudaMemcpy(dW, W.data(), sizeof(float)*Cout*Cin*Kh*Kw, cudaMemcpyHostToDevice);
+
+  ai::Tensor tX{dX, make_desc_4d_nchw(N,Cin,H,Ww), ai::Device::CUDA, 0};
+  ai::Tensor tW{dW, {ai::DType::F32, ai::Layout::RowMajor, {Cout,Cin,Kh,Kw},
+                     {Cin*Kh*Kw, Kh*Kw, Kw, 1}}, ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, make_desc_4d_nchw(N,Cout,Ho,Wo), ai::Device::CUDA, 0};
+
+  ai::Tensor tB{}, *pB=nullptr;
+  if (!B_in.is_none()) {
+    auto B = py::array_t<float, py::array::c_style | py::array::forcecast>(B_in);
+    if (B.ndim()!=1 || B.shape(0)!=Cout) {
+      cudaFree(dX); cudaFree(dW); cudaFree(dY);
+      throw std::runtime_error("conv2d: bias must be 1D [Cout]");
+    }
+    cudaMalloc(&dB, sizeof(float)*Cout);
+    cudaMemcpy(dB, B.data(), sizeof(float)*Cout, cudaMemcpyHostToDevice);
+    tB = {dB, make_desc_1d_f32(Cout), ai::Device::CUDA, 0}; pB=&tB;
+  }
+
+  ai::Conv2DAttrs attrs{};
+  attrs.stride_h = stride_h; attrs.stride_w = stride_w;
+  attrs.pad_h = pad_h;       attrs.pad_w = pad_w;
+  attrs.dil_h = dil_h;       attrs.dil_w = dil_w;
+  attrs.groups = 1;
+
+  const int rc = ai::ops::conv2d_run(tX, tW, pB, tY, attrs, /*stream*/nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) {
+    if (dB) cudaFree(dB); cudaFree(dX); cudaFree(dW); cudaFree(dY);
+    throw std::runtime_error("conv2d_run failed with code " + std::to_string(rc));
+  }
+
+  auto Y = py::array_t<float>({N, Cout, Ho, Wo});
+  cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*N*Cout*Ho*Wo, cudaMemcpyDeviceToHost);
+  if (dB) cudaFree(dB); cudaFree(dX); cudaFree(dW); cudaFree(dY);
+  return Y;
+}
+
+// ---- BWD ----
+py::tuple conv2d_backward(py::array X_in, py::array W_in, py::array dY_in,
+                          bool need_dW=true, bool need_dB=true, bool need_dX=true,
+                          int stride_h=1,int stride_w=1,int pad_h=0,int pad_w=0,
+                          int dil_h=1,int dil_w=1)
+{
+  auto X  = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  auto W  = py::array_t<float, py::array::c_style | py::array::forcecast>(W_in);
+  auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+  if (X.ndim()!=4 || W.ndim()!=4 || dY.ndim()!=4)
+    throw std::runtime_error("conv2d_backward: X,W,dY must be 4D");
+
+  const int64_t N=X.shape(0), Cin=X.shape(1), H=X.shape(2), Ww=X.shape(3);
+  const int64_t Cout=W.shape(0), WCin=W.shape(1), Kh=W.shape(2), Kw=W.shape(3);
+  if (WCin!=Cin) throw std::runtime_error("conv2d_backward: Cin mismatch");
+  const int64_t Ho=dY.shape(2), Wo=dY.shape(3);
+
+  float *dX=nullptr,*dWc=nullptr,*ddY=nullptr,*dWout=nullptr,*dBout=nullptr,*dXout=nullptr;
+  cudaMalloc(&dX,  sizeof(float)*N*Cin*H*Ww);
+  cudaMalloc(&dWc, sizeof(float)*Cout*Cin*Kh*Kw);
+  cudaMalloc(&ddY, sizeof(float)*N*Cout*Ho*Wo);
+  cudaMemcpy(dX,  X.data(),  sizeof(float)*N*Cin*H*Ww,  cudaMemcpyHostToDevice);
+  cudaMemcpy(dWc, W.data(),  sizeof(float)*Cout*Cin*Kh*Kw, cudaMemcpyHostToDevice);
+  cudaMemcpy(ddY, dY.data(), sizeof(float)*N*Cout*Ho*Wo,   cudaMemcpyHostToDevice);
+
+  ai::Tensor tX {dX,  make_desc_4d_nchw(N,Cin,H,Ww), ai::Device::CUDA, 0};
+  ai::Tensor tW {dWc, {ai::DType::F32, ai::Layout::RowMajor, {Cout,Cin,Kh,Kw},
+                       {Cin*Kh*Kw, Kh*Kw, Kw, 1}}, ai::Device::CUDA, 0};
+  ai::Tensor tdY{ddY, make_desc_4d_nchw(N,Cout,Ho,Wo), ai::Device::CUDA, 0};
+
+  ai::Tensor t_dW{}, t_dB{}, t_dX{};
+  ai::Tensor *p_dW=nullptr, *p_dB=nullptr, *p_dX=nullptr;
+  if (need_dW) { cudaMalloc(&dWout, sizeof(float)*Cout*Cin*Kh*Kw);
+                 t_dW = {dWout, {ai::DType::F32, ai::Layout::RowMajor, {Cout,Cin,Kh,Kw},
+                                   {Cin*Kh*Kw, Kh*Kw, Kw, 1}},
+                         ai::Device::CUDA, 0};
+                 p_dW = &t_dW; }
+  if (need_dB) { cudaMalloc(&dBout, sizeof(float)*Cout);
+                 t_dB = {dBout, make_desc_1d_f32(Cout), ai::Device::CUDA, 0};
+                 p_dB = &t_dB; }
+  if (need_dX) { cudaMalloc(&dXout, sizeof(float)*N*Cin*H*Ww);
+                 t_dX = {dXout, make_desc_4d_nchw(N,Cin,H,Ww), ai::Device::CUDA, 0};
+                 p_dX = &t_dX; }
+
+  ai::Conv2DAttrs attrs{};
+  attrs.stride_h=stride_h; attrs.stride_w=stride_w;
+  attrs.pad_h=pad_h;       attrs.pad_w=pad_w;
+  attrs.dil_h=dil_h;       attrs.dil_w=dil_w;
+  attrs.groups=1;
+
+  const int rc = ai::ops::conv2d_backward_run(tX, tW, tdY, p_dW, p_dB, p_dX, attrs, /*stream*/nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0) {
+    if (dWout) cudaFree(dWout);
+    if (dBout) cudaFree(dBout);
+    if (dXout) cudaFree(dXout);
+    cudaFree(dX); cudaFree(dWc); cudaFree(ddY);
+    throw std::runtime_error("conv2d_backward_run failed with code " + std::to_string(rc));
+  }
+
+  py::object out_dW = py::none(), out_dB = py::none(), out_dX = py::none();
+  if (dWout) { auto A = py::array_t<float>({Cout,Cin,Kh,Kw});
+               cudaMemcpy(A.mutable_data(), dWout, sizeof(float)*Cout*Cin*Kh*Kw, cudaMemcpyDeviceToHost);
+               out_dW = std::move(A); cudaFree(dWout); }
+  if (dBout) { auto B = py::array_t<float>({Cout});
+               cudaMemcpy(B.mutable_data(), dBout, sizeof(float)*Cout, cudaMemcpyDeviceToHost);
+               out_dB = std::move(B); cudaFree(dBout); }
+  if (dXout) { auto Xg = py::array_t<float>({N,Cin,H,Ww});
+               cudaMemcpy(Xg.mutable_data(), dXout, sizeof(float)*N*Cin*H*Ww, cudaMemcpyDeviceToHost);
+               out_dX = std::move(Xg); cudaFree(dXout); }
+
+  cudaFree(dX); cudaFree(dWc); cudaFree(ddY);
+  return py::make_tuple(out_dW, out_dB, out_dX);
+}
+
 
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
@@ -1155,6 +1313,25 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("dY"), py::arg("mask"), py::arg("p")=0.1,
         py::arg("seed")=0x1234, py::arg("scale_in_train")=true,
         "Dropout backward (CUDA): dX = dY * mask * scale.");
+
+
+  m.def("conv2d", &conv2d,
+        py::arg("X"), py::arg("W"), py::arg("B") = py::none(),
+        py::arg("stride_h")=1, py::arg("stride_w")=1,
+        py::arg("pad_h")=0,    py::arg("pad_w")=0,
+        py::arg("dil_h")=1,    py::arg("dil_w")=1,
+  R"(Conv2D forward (CUDA, NCHW, F32, groups=1)
+  X: (N,Cin,H,W), W: (Cout,Cin,Kh,Kw), B: (Cout) or None
+  Returns Y: (N,Cout,Ho,Wo))");
+
+  m.def("conv2d_backward", &conv2d_backward,
+        py::arg("X"), py::arg("W"), py::arg("dY"),
+        py::arg("need_dW")=true, py::arg("need_dB")=true, py::arg("need_dX")=true,
+        py::arg("stride_h")=1, py::arg("stride_w")=1,
+        py::arg("pad_h")=0,    py::arg("pad_w")=0,
+        py::arg("dil_h")=1,    py::arg("dil_w")=1,
+  R"(Conv2D backward (CUDA, NCHW, F32, groups=1)
+  Returns tuple (dW, dB, dX); each item can be None depending on need_* flags.)");
 
   m.def("sdpa",
     [](py::array q_in, py::array k_in, py::array v_in,
