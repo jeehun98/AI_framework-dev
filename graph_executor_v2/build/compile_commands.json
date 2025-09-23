@@ -79,6 +79,12 @@
 },
 {
   "directory": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build",
+  "command": "C:\\PROGRA~1\\MICROS~2\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2 /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /FoCMakeFiles\\ai_core.dir\\src\\ops\\pool2d.cpp.obj /FdCMakeFiles\\ai_core.dir\\ai_core.pdb /FS -c C:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\ops\\pool2d.cpp",
+  "file": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/src/ops/pool2d.cpp",
+  "output": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_core.dir/src/ops/pool2d.cpp.obj"
+},
+{
+  "directory": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build",
   "command": "C:\\PROGRA~1\\MICROS~2\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\kernels\\regemm_epilogue\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2 -external:I\"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\" -external:W0 /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /FoCMakeFiles\\ai_backend_cuda.dir\\backends\\cuda\\register_ops.cpp.obj /FdCMakeFiles\\ai_backend_cuda.dir\\ai_backend_cuda.pdb /FS -c C:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\backends\\cuda\\register_ops.cpp",
   "file": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/register_ops.cpp",
   "output": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_backend_cuda.dir/backends/cuda/register_ops.cpp.obj"
@@ -166,6 +172,18 @@
   "command": "C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\kernels\\regemm_epilogue\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2 -isystem \"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\" -D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\"-O2 -Ob2\" -DNDEBUG -std=c++17 \"--generate-code=arch=compute_86,code=[compute_86,sm_86]\" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2 -x cu -rdc=true -c C:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\backends\\cuda\\ops\\conv2d\\launcher.cu -o CMakeFiles\\ai_backend_cuda.dir\\backends\\cuda\\ops\\conv2d\\launcher.cu.obj -Xcompiler=-FdCMakeFiles\\ai_backend_cuda.dir\\ai_backend_cuda.pdb,-FS",
   "file": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/conv2d/launcher.cu",
   "output": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/conv2d/launcher.cu.obj"
+},
+{
+  "directory": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build",
+  "command": "C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\kernels\\regemm_epilogue\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2 -isystem \"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\" -D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\"-O2 -Ob2\" -DNDEBUG -std=c++17 \"--generate-code=arch=compute_86,code=[compute_86,sm_86]\" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2 -x cu -rdc=true -c C:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\backends\\cuda\\ops\\pool2d\\kernels.cu -o CMakeFiles\\ai_backend_cuda.dir\\backends\\cuda\\ops\\pool2d\\kernels.cu.obj -Xcompiler=-FdCMakeFiles\\ai_backend_cuda.dir\\ai_backend_cuda.pdb,-FS",
+  "file": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/pool2d/kernels.cu",
+  "output": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/pool2d/kernels.cu.obj"
+},
+{
+  "directory": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build",
+  "command": "C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\kernels\\regemm_epilogue\\include -IC:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2 -isystem \"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\" -D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\"-O2 -Ob2\" -DNDEBUG -std=c++17 \"--generate-code=arch=compute_86,code=[compute_86,sm_86]\" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2 -x cu -rdc=true -c C:\\Users\\as042\\Desktop\\AI_framework-dev\\graph_executor_v2\\backends\\cuda\\ops\\pool2d\\launcher.cu -o CMakeFiles\\ai_backend_cuda.dir\\backends\\cuda\\ops\\pool2d\\launcher.cu.obj -Xcompiler=-FdCMakeFiles\\ai_backend_cuda.dir\\ai_backend_cuda.pdb,-FS",
+  "file": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/pool2d/launcher.cu",
+  "output": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/pool2d/launcher.cu.obj"
 },
 {
   "directory": "C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build",
