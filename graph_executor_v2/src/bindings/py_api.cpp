@@ -20,6 +20,7 @@
 #include "backends/cuda/ops/dropout/api.hpp"
 #include "backends/cuda/ops/sdpa/api.hpp"  
 #include "backends/cuda/ops/conv2d/api.hpp"  
+#include "backends/cuda/ops/pool2d/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
@@ -62,7 +63,7 @@ static inline TensorDesc make_desc_2d(int64_t rows, int64_t cols){
   d.dtype  = DType::F32;
   d.layout = Layout::RowMajor;
   d.shape  = {rows, cols};
-  d.stride = {cols, 1}; // contiguous row-major
+  d.stride = {cols, 1};
   return d;
 }
 
@@ -93,11 +94,33 @@ static inline ai::TensorDesc make_desc_1d_f32(int64_t n){
   return d;
 }
 
+// ================== ⬇️⬇️⬇️ 추가: 풀2D 출력 크기 (정식 공식) ⬇️⬇️⬇️ ==================
+static inline int pool2d_out_dim_host(int H_in, int k, int s, int p, int d, bool ceil_mode) {
+  // floor/ceil((H_in + 2p - effK)/s) + 1
+  const int eff = (k - 1) * d + 1;
+  const int a   = H_in + 2 * p - eff;
+  if (a < 0) return 0;
+  if (ceil_mode) {
+    return ( (a + s - 1) / s ) + 1;
+  } else {
+    return ( a / s ) + 1;
+  }
+}
+
+static inline void pool2d_output_dims_host(
+    int H, int W, int kH, int kW, int sH, int sW,
+    int pH, int pW, int dH, int dW, bool ceil_mode,
+    int& Ho, int& Wo) {
+  Ho = pool2d_out_dim_host(H, kH, sH, pH, dH, ceil_mode);
+  Wo = pool2d_out_dim_host(W, kW, sW, pW, dW, ceil_mode);
+  if (Ho < 0) Ho = 0;
+  if (Wo < 0) Wo = 0;
+}
+// ================== ⬆️⬆️⬆️ 추가 끝 ⬆️⬆️⬆️ ==================
 
 // -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
 namespace ai { namespace ops {
 using ::ai::LayerNormAttrs;
-
 
 int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
              Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
@@ -129,6 +152,11 @@ int sdpa_backward_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*
 int conv2d_run(const Tensor&, const Tensor&, const Tensor*, Tensor&, const Conv2DAttrs&, StreamHandle);
 int conv2d_backward_run(const Tensor&, const Tensor&, const Tensor&, Tensor*, Tensor*, Tensor*, const Conv2DAttrs&, StreamHandle);
 
+int maxpool2d_run(const Tensor&, Tensor&, Tensor*, const ai::Pool2DAttrs&, StreamHandle);
+int maxpool2d_backward_run(const Tensor&, const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
+int avgpool2d_run(const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
+int avgpool2d_backward_run(const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
+
 }} // namespace ai::ops
 
 // 헬퍼들
@@ -141,9 +169,12 @@ static inline ai::TensorDesc make_desc_1d(int64_t n){
   d.shape={n}; d.stride={1}; return d;
 }
 
-
-
 // -------------------- FWD: 단발 함수 --------------------
+// ... (중략: GEMM, RMSNorm, LayerNorm, Softmax, CE, Dropout, Conv2D 등 기존 코드 변경 없음)
+// 위 블록은 질문에 포함된 원본 그대로 유지하세요.
+
+// ================== ⬇️⬇️⬇️ 여기부터 풀2D 바인딩 교체본 ⬇️⬇️⬇️ ==================
+
 py::array gemm_bias_act(py::array A_in, py::array B_in,
                         py::object bias_in = py::none(),
                         std::string act = "relu",
@@ -1201,6 +1232,208 @@ py::tuple conv2d_backward(py::array X_in, py::array W_in, py::array dY_in,
   return py::make_tuple(out_dW, out_dB, out_dX);
 }
 
+// bindings/py_api.cpp  (함수 구현부에 추가: 간단 버전)
+py::tuple maxpool2d(py::array X_in,
+                    int kH=2,int kW=2,int sH=2,int sW=2,
+                    int pH=0,int pW=0,int dH=1,int dW=1,
+                    bool ceil_mode=false, bool return_indices=true)
+{
+  // X: (N,C,H,W) float32
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=4) throw std::runtime_error("maxpool2d: X must be 4D (NCHW)");
+  const int64_t N=X.shape(0), C=X.shape(1), H=X.shape(2), W=X.shape(3);
+
+  // ✅ 정식 공식으로 출력 크기 계산
+  int Ho_i=0, Wo_i=0;
+  pool2d_output_dims_host((int)H,(int)W, kH,kW,sH,sW,pH,pW,dH,dW, ceil_mode, Ho_i, Wo_i);
+  const int64_t Ho = Ho_i, Wo = Wo_i;
+
+  // device alloc
+  float *dX=nullptr,*dY=nullptr; int32_t *dInd=nullptr;
+  checkCuda(cudaMalloc(&dX, sizeof(float)*N*C*H*W), "cudaMalloc X");
+  checkCuda(cudaMalloc(&dY, sizeof(float)*N*C*Ho*Wo), "cudaMalloc Y");
+  checkCuda(cudaMemcpy(dX, X.data(), sizeof(float)*N*C*H*W, cudaMemcpyHostToDevice), "H2D X");
+  if (return_indices) checkCuda(cudaMalloc(&dInd, sizeof(int32_t)*N*C*Ho*Wo), "cudaMalloc Ind");
+
+  // wrap
+  auto mk4 = [&](int64_t n,int64_t c,int64_t h,int64_t w){
+    ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+    d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+  };
+  auto mk4i = [&](int64_t n,int64_t c,int64_t h,int64_t w){
+    ai::TensorDesc d{}; d.dtype=ai::DType::I32; d.layout=ai::Layout::RowMajor;
+    d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+  };
+  ai::Tensor tX{dX, mk4(N,C,H,W), ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, mk4(N,C,Ho,Wo), ai::Device::CUDA, 0};
+  ai::Tensor tInd{}; ai::Tensor* pInd=nullptr;
+  if (return_indices){ tInd = ai::Tensor{dInd, mk4i(N,C,Ho,Wo), ai::Device::CUDA, 0}; pInd = &tInd; }
+
+  ai::Pool2DAttrs a{}; a.kH=kH;a.kW=kW;a.sH=sH;a.sW=sW;a.pH=pH;a.pW=pW;a.dH=dH;a.dW=dW;a.ceil_mode=ceil_mode;
+
+  int rc = ai::ops::maxpool2d_run(tX, tY, pInd, a, nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after maxpool2d_run");
+  if (rc!=0) { if (dInd) cudaFree(dInd); cudaFree(dX); cudaFree(dY); throw std::runtime_error("maxpool2d_run failed"); }
+
+  auto Y = py::array_t<float>({ (py::ssize_t)N,(py::ssize_t)C,(py::ssize_t)Ho,(py::ssize_t)Wo });
+  checkCuda(cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*N*C*Ho*Wo, cudaMemcpyDeviceToHost), "D2H Y");
+
+  py::object Ind_py = py::none();
+  if (return_indices) {
+    auto Ind = py::array_t<int32_t>({ (py::ssize_t)N,(py::ssize_t)C,(py::ssize_t)Ho,(py::ssize_t)Wo });
+    checkCuda(cudaMemcpy(Ind.mutable_data(), dInd, sizeof(int32_t)*N*C*Ho*Wo, cudaMemcpyDeviceToHost), "D2H Ind");
+    Ind_py = std::move(Ind);
+  }
+  if (dInd) cudaFree(dInd); cudaFree(dX); cudaFree(dY);
+  return py::make_tuple(std::move(Y), Ind_py);
+}
+
+py::array maxpool2d_backward(py::array dY_in, py::array Ind_in,
+                             int H, int W,
+                             int kH=2,int kW=2,int sH=2,int sW=2,
+                             int pH=0,int pW=0,int dH=1,int dW=1,
+                             bool ceil_mode=false)
+{
+  auto dY  = py::array_t<float,   py::array::c_style | py::array::forcecast>(dY_in);
+  auto Ind = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(Ind_in);
+  if (dY.ndim()!=4 || Ind.ndim()!=4)
+    throw std::runtime_error("maxpool2d_backward: dY/Ind must be 4D");
+
+  const int64_t N  = dY.shape(0);
+  const int64_t C  = dY.shape(1);
+  const int64_t Ho = dY.shape(2);
+  const int64_t Wo = dY.shape(3);
+
+  float   *ddY = nullptr, *ddX = nullptr;
+  int32_t *dInd = nullptr;
+
+  checkCuda(cudaMalloc(&ddY,  sizeof(float)  * N * C * Ho * Wo), "cudaMalloc dY");
+  checkCuda(cudaMalloc(&ddX,  sizeof(float)  * N * C * H  * W ), "cudaMalloc dX");
+  checkCuda(cudaMalloc(&dInd, sizeof(int32_t)* N * C * Ho * Wo), "cudaMalloc Ind");
+
+  // ✅ atomicAdd 대상인 dX는 반드시 0으로 초기화
+  checkCuda(cudaMemset(ddX, 0, sizeof(float) * N * C * H * W), "memset dX=0");
+
+  checkCuda(cudaMemcpy(ddY,  dY.data(),  sizeof(float)   * N * C * Ho * Wo, cudaMemcpyHostToDevice), "H2D dY");
+  checkCuda(cudaMemcpy(dInd, Ind.data(), sizeof(int32_t) * N * C * Ho * Wo, cudaMemcpyHostToDevice), "H2D Ind");
+
+  auto mk4 = [&](int64_t n,int64_t c,int64_t h,int64_t w){
+    ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+    d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+  };
+  auto mk4i = [&](int64_t n,int64_t c,int64_t h,int64_t w){
+    ai::TensorDesc d{}; d.dtype=ai::DType::I32; d.layout=ai::Layout::RowMajor;
+    d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+  };
+
+  ai::Tensor tdY {ddY,  mk4 (N,C,Ho,Wo), ai::Device::CUDA, 0};
+  ai::Tensor tInd{dInd, mk4i(N,C,Ho,Wo), ai::Device::CUDA, 0};
+  ai::Tensor tdX {ddX,  mk4 (N,C,H, W ), ai::Device::CUDA, 0};
+
+  ai::Pool2DAttrs a{};
+  a.kH=kH; a.kW=kW; a.sH=sH; a.sW=sW; a.pH=pH; a.pW=pW; a.dH=dH; a.dW=dW; a.ceil_mode=ceil_mode;
+
+  const int rc = ai::ops::maxpool2d_backward_run(tdY, tInd, tdX, a, /*stream*/nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after maxpool2d_backward_run");
+  if (rc != 0) {
+    cudaFree(ddY); cudaFree(dInd); cudaFree(ddX);
+    throw std::runtime_error("maxpool2d_backward_run failed");
+  }
+
+  auto dX = py::array_t<float>({ (py::ssize_t)N, (py::ssize_t)C, (py::ssize_t)H, (py::ssize_t)W });
+  checkCuda(cudaMemcpy(dX.mutable_data(), ddX, sizeof(float)*N*C*H*W, cudaMemcpyDeviceToHost), "D2H dX");
+
+  cudaFree(ddY); cudaFree(dInd); cudaFree(ddX);
+  return dX;
+}
+
+
+// === AvgPool2D: Forward ===
+py::array avgpool2d(py::array X_in,
+                    int kH=2,int kW=2,
+                    int sH=2,int sW=2,
+                    int pH=0,int pW=0,
+                    int dH=1,int dW=1,
+                    bool ceil_mode=false,
+                    bool count_include_pad=false)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim()!=4) throw std::runtime_error("avgpool2d: X must be 4D (NCHW)");
+  const int64_t N=X.shape(0), C=X.shape(1), H=X.shape(2), W=X.shape(3);
+
+  // ✅ 정식 공식으로 출력 크기 계산
+  int Ho_i=0, Wo_i=0;
+  pool2d_output_dims_host((int)H,(int)W, kH,kW,sH,sW,pH,pW,dH,dW, ceil_mode, Ho_i, Wo_i);
+  const int64_t Ho = Ho_i, Wo = Wo_i;
+
+  // device alloc/copy
+  float *dX=nullptr, *dY=nullptr;
+  checkCuda(cudaMalloc(&dX, sizeof(float)*N*C*H*W), "cudaMalloc X");
+  checkCuda(cudaMalloc(&dY, sizeof(float)*N*C*Ho*Wo), "cudaMalloc Y");
+  checkCuda(cudaMemcpy(dX, X.data(), sizeof(float)*N*C*H*W, cudaMemcpyHostToDevice), "H2D X");
+
+  auto mk4 = [&](int64_t n,int64_t c,int64_t h,int64_t w){
+    ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+    d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+  };
+
+  ai::Tensor tX{dX, mk4(N,C,H,W), ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, mk4(N,C,Ho,Wo), ai::Device::CUDA, 0};
+
+  ai::Pool2DAttrs a{};
+  a.kH=kH; a.kW=kW; a.sH=sH; a.sW=sW; a.pH=pH; a.pW=pW; a.dH=dH; a.dW=dW;
+  a.ceil_mode=ceil_mode; a.count_include_pad=count_include_pad;
+
+  int rc = ai::ops::avgpool2d_run(tX, tY, a, /*stream*/nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after avgpool2d_run");
+  if (rc!=0) { cudaFree(dX); cudaFree(dY); throw std::runtime_error("avgpool2d_run failed"); }
+
+  auto Y = py::array_t<float>({ (py::ssize_t)N,(py::ssize_t)C,(py::ssize_t)Ho,(py::ssize_t)Wo });
+  checkCuda(cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*N*C*Ho*Wo, cudaMemcpyDeviceToHost), "D2H Y");
+  cudaFree(dX); cudaFree(dY);
+  return Y;
+}
+
+// === AvgPool2D: Backward ===
+py::array avgpool2d_backward(py::array dY_in,
+                             int H, int W,
+                             int kH=2,int kW=2,
+                             int sH=2,int sW=2,
+                             int pH=0,int pW=0,
+                             int dH=1,int dW=1,
+                             bool ceil_mode=false,
+                             bool count_include_pad=false)
+{
+  auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+  if (dY.ndim()!=4) throw std::runtime_error("avgpool2d_backward: dY must be 4D (NCHW)");
+  const int64_t N=dY.shape(0), C=dY.shape(1), Ho=dY.shape(2), Wo=dY.shape(3);
+
+  float *ddY=nullptr, *ddX=nullptr;
+  checkCuda(cudaMalloc(&ddY, sizeof(float)*N*C*Ho*Wo), "cudaMalloc dY");
+  checkCuda(cudaMalloc(&ddX, sizeof(float)*N*C*H*W), "cudaMalloc dX");
+  checkCuda(cudaMemcpy(ddY, dY.data(), sizeof(float)*N*C*Ho*Wo, cudaMemcpyHostToDevice), "H2D dY");
+
+  auto mk4 = [&](int64_t n,int64_t c,int64_t h,int64_t w){
+    ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+    d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+  };
+
+  ai::Tensor tdY{ddY, mk4(N,C,Ho,Wo), ai::Device::CUDA, 0};
+  ai::Tensor tdX{ddX, mk4(N,C,H,W),   ai::Device::CUDA, 0};
+
+  ai::Pool2DAttrs a{};
+  a.kH=kH; a.kW=kW; a.sH=sH; a.sW=sW; a.pH=pH; a.pW=pW; a.dH=dH; a.dW=dW;
+  a.ceil_mode=ceil_mode; a.count_include_pad=count_include_pad;
+
+  int rc = ai::ops::avgpool2d_backward_run(tdY, tdX, a, /*stream*/nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync after avgpool2d_backward_run");
+  if (rc!=0) { cudaFree(ddY); cudaFree(ddX); throw std::runtime_error("avgpool2d_backward_run failed"); }
+
+  auto dX = py::array_t<float>({ (py::ssize_t)N, (py::ssize_t)C, (py::ssize_t)H, (py::ssize_t)W });
+  checkCuda(cudaMemcpy(dX.mutable_data(), ddX, sizeof(float)*N*C*H*W, cudaMemcpyDeviceToHost), "D2H dX");
+  cudaFree(ddY); cudaFree(ddX);
+  return dX;
+}
 
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
@@ -1332,6 +1565,47 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("dil_h")=1,    py::arg("dil_w")=1,
   R"(Conv2D backward (CUDA, NCHW, F32, groups=1)
   Returns tuple (dW, dB, dX); each item can be None depending on need_* flags.)");
+
+  m.def("maxpool2d", &maxpool2d,
+        py::arg("X"),
+        py::arg("kH")=2, py::arg("kW")=2,
+        py::arg("sH")=2, py::arg("sW")=2,
+        py::arg("pH")=0, py::arg("pW")=0,
+        py::arg("dH")=1, py::arg("dW")=1,
+        py::arg("ceil_mode")=false, py::arg("return_indices")=true,
+        "MaxPool2D forward (NCHW). Returns (Y, Indices or None)");
+
+  m.def("maxpool2d_backward", &maxpool2d_backward,
+        py::arg("dY"), py::arg("Indices"),
+        py::arg("H"), py::arg("W"),
+        py::arg("kH")=2, py::arg("kW")=2,
+        py::arg("sH")=2, py::arg("sW")=2,
+        py::arg("pH")=0, py::arg("pW")=0,
+        py::arg("dH")=1, py::arg("dW")=1,
+        py::arg("ceil_mode")=false,
+        "MaxPool2D backward (NCHW).");
+
+  m.def("avgpool2d", &avgpool2d,
+        py::arg("X"),
+        py::arg("kH")=2, py::arg("kW")=2,
+        py::arg("sH")=2, py::arg("sW")=2,
+        py::arg("pH")=0, py::arg("pW")=0,
+        py::arg("dH")=1, py::arg("dW")=1,
+        py::arg("ceil_mode")=false,
+        py::arg("count_include_pad")=false,
+        "AvgPool2D forward (NCHW).");
+
+  m.def("avgpool2d_backward", &avgpool2d_backward,
+        py::arg("dY"),
+        py::arg("H"), py::arg("W"),
+        py::arg("kH")=2, py::arg("kW")=2,
+        py::arg("sH")=2, py::arg("sW")=2,
+        py::arg("pH")=0, py::arg("pW")=0,
+        py::arg("dH")=1, py::arg("dW")=1,
+        py::arg("ceil_mode")=false,
+        py::arg("count_include_pad")=false,
+        "AvgPool2D backward (NCHW).");
+
 
   m.def("sdpa",
     [](py::array q_in, py::array k_in, py::array v_in,
