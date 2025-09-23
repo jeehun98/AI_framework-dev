@@ -48,6 +48,7 @@ add_library(ai_core STATIC
   src/ops/cross_entropy.cpp
   src/ops/dropout.cpp
   src/ops/sdpa.cpp
+  src/ops/conv2d.cpp
 )
 
 target_include_directories(ai_core
@@ -85,6 +86,9 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/dropout/kernels.cu
   backends/cuda/ops/dropout/launcher.cu
+
+  backends/cuda/ops/conv2d/kernels.cu
+  backends/cuda/ops/conv2d/launcher.cu
 
   backends/cuda/ops/sdpa/launcher.cu
 
