@@ -18,6 +18,7 @@
 #include "backends/cuda/ops/softmax/api.hpp"
 #include "backends/cuda/ops/cross_entropy/api.hpp"
 #include "backends/cuda/ops/dropout/api.hpp"
+#include "backends/cuda/ops/sdpa/api.hpp"  // ✅ 추가
 
 namespace py = pybind11;
 using namespace ai;
@@ -87,7 +88,9 @@ static inline ai::TensorDesc make_desc_1d_any(int64_t n, ai::DType dt){
 
 // -------------------- 디스패치 엔트리(정의는 src/dispatch/registry.cpp) --------------------
 namespace ai { namespace ops {
-  using ::ai::LayerNormAttrs;
+using ::ai::LayerNormAttrs;
+
+
 int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
              Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
 
@@ -111,6 +114,10 @@ int cross_entropy_backward_run(const Tensor&, const Tensor&, Tensor&, const ai::
 
 int dropout_run(const Tensor& X, Tensor& Y, Tensor* mask, const ai::DropoutAttrs& attrs, StreamHandle);
 int dropout_backward_run(const Tensor& dY, const Tensor& mask, Tensor& dX, const ai::DropoutAttrs& attrs, StreamHandle);
+
+int sdpa_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*, Tensor&, const SDPAAttrs&, StreamHandle);
+int sdpa_backward_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*, const Tensor&, Tensor*, Tensor*, Tensor*, const SDPAAttrs&, StreamHandle);
+
 }} // namespace ai::ops
 
 // -------------------- FWD: 단발 함수 --------------------
@@ -1148,6 +1155,98 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("dY"), py::arg("mask"), py::arg("p")=0.1,
         py::arg("seed")=0x1234, py::arg("scale_in_train")=true,
         "Dropout backward (CUDA): dX = dY * mask * scale.");
+
+  m.def("sdpa",
+    [](py::array q_in, py::array k_in, py::array v_in,
+      py::object mask_in, double scale, bool causal,
+      double dropout_p, bool scale_in_train, uint64_t seed)
+    {
+      // 1) NumPy → host float32 C-연속 4D 보장
+      auto Qh = py::array_t<float, py::array::c_style | py::array::forcecast>(q_in);
+      auto Kh = py::array_t<float, py::array::c_style | py::array::forcecast>(k_in);
+      auto Vh = py::array_t<float, py::array::c_style | py::array::forcecast>(v_in);
+      if (Qh.ndim()!=4 || Kh.ndim()!=4 || Vh.ndim()!=4)
+        throw std::runtime_error("sdpa: q,k,v must be 4D (B,H,M/D or N/D)");
+
+      const int64_t B  = Qh.shape(0);
+      const int64_t H  = Qh.shape(1);
+      const int64_t M  = Qh.shape(2);
+      const int64_t D  = Qh.shape(3);
+      const int64_t NB = Kh.shape(2); // N
+
+      if (Kh.shape(0)!=B || Kh.shape(1)!=H || Kh.shape(3)!=D)
+        throw std::runtime_error("sdpa: k must be [B,H,N,D] and match q on B,H,D");
+      if (Vh.shape(0)!=B || Vh.shape(1)!=H || Vh.shape(2)!=NB || Vh.shape(3)!=D)
+        throw std::runtime_error("sdpa: v must be [B,H,N,D] and match k on B,H,N,D");
+
+      // 2) Device alloc & H2D
+      float *dQ=nullptr, *dK=nullptr, *dV=nullptr, *dY=nullptr;
+      size_t bytesQ = (size_t)B*H*M*D*sizeof(float);
+      size_t bytesK = (size_t)B*H*NB*D*sizeof(float);
+      size_t bytesV = (size_t)B*H*NB*D*sizeof(float);
+      size_t bytesY = (size_t)B*H*M*D*sizeof(float);
+
+      checkCuda(cudaMalloc(&dQ, bytesQ), "cudaMalloc dQ");
+      checkCuda(cudaMalloc(&dK, bytesK), "cudaMalloc dK");
+      checkCuda(cudaMalloc(&dV, bytesV), "cudaMalloc dV");
+      checkCuda(cudaMalloc(&dY, bytesY), "cudaMalloc dY");
+
+      checkCuda(cudaMemcpy(dQ, Qh.data(), bytesQ, cudaMemcpyHostToDevice), "H2D Q");
+      checkCuda(cudaMemcpy(dK, Kh.data(), bytesK, cudaMemcpyHostToDevice), "H2D K");
+      checkCuda(cudaMemcpy(dV, Vh.data(), bytesV, cudaMemcpyHostToDevice), "H2D V");
+
+      // 3) Wrap tensors (RowMajor BHMD)
+      auto make_bhxd = [](int64_t B, int64_t H, int64_t X, int64_t D){
+        ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+        d.shape  = {B,H,X,D};
+        d.stride = {H*X*D, X*D, D, 1};
+        return d;
+      };
+      ai::Tensor tQ{dQ, make_bhxd(B,H,M,D), ai::Device::CUDA, 0};
+      ai::Tensor tK{dK, make_bhxd(B,H,NB,D), ai::Device::CUDA, 0};
+      ai::Tensor tV{dV, make_bhxd(B,H,NB,D), ai::Device::CUDA, 0};
+      ai::Tensor tY{dY, make_bhxd(B,H,M,D),  ai::Device::CUDA, 0};
+
+      // 4) mask: 아직 미구현 → None만 허용
+      const ai::Tensor* pMask = nullptr;
+      if (!mask_in.is_none()) {
+        // 추후 [B,1,M,N]/[B,H,M,N] 브로드캐스트 지원 예정
+        cudaFree(dQ); cudaFree(dK); cudaFree(dV); cudaFree(dY);
+        throw std::runtime_error("sdpa: mask is not implemented yet (pass None).");
+      }
+
+      // 5) attrs 채우기
+      ai::SDPAAttrs a{};
+      a.scale          = static_cast<float>(scale);      // 0 → 내부에서 1/sqrt(D)
+      a.causal         = causal;
+      a.dropout_p      = static_cast<float>(dropout_p);
+      a.scale_in_train = scale_in_train;
+      a.seed           = seed;
+
+      // 6) 디스패치 호출 (동기화/에러 처리 동일 스타일)
+      int rc = ai::ops::sdpa_run(tQ, tK, tV, pMask, tY, a, /*stream*/nullptr);
+      checkCuda(cudaDeviceSynchronize(), "sync after sdpa_run");
+      if (rc != 0) {
+        cudaFree(dQ); cudaFree(dK); cudaFree(dV); cudaFree(dY);
+        throw std::runtime_error(std::string("sdpa_run failed with code ") + std::to_string(rc));
+      }
+
+      // 7) D2H & free
+      auto Y = py::array_t<float>({B,H,M,D});
+      checkCuda(cudaMemcpy(Y.mutable_data(), dY, bytesY, cudaMemcpyDeviceToHost), "D2H Y");
+      cudaFree(dQ); cudaFree(dK); cudaFree(dV); cudaFree(dY);
+      return Y;
+    },
+    py::arg("q"), py::arg("k"), py::arg("v"),
+    py::arg("mask") = py::none(),
+    py::arg("scale") = 0.0,        // 0이면 내부에서 1/sqrt(D)
+    py::arg("causal") = false,
+    py::arg("dropout_p") = 0.0,
+    py::arg("scale_in_train") = true,
+    py::arg("seed") = 0,
+    "Scaled Dot-Product Attention (FWD)"
+  );
+
 
 
   // GemmPlan
