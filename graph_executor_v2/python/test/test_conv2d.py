@@ -109,6 +109,9 @@ def test_forward_basic():
     Wt = np.random.randn(C_out, C_in, KH, KW).astype(np.float32)
     Bt = np.random.randn(C_out).astype(np.float32)
 
+    # Bt = np.zeros(C_out, dtype=np.float32)
+    # Wt *= 0
+
     # ge.conv2d (NCHW, stride/pad/dil)
     Y = ge.conv2d(X, Wt, Bt, stride_h=sh, stride_w=sw, pad_h=ph, pad_w=pw, dil_h=dh, dil_w=dw)
 
