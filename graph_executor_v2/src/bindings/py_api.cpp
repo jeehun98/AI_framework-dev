@@ -5,11 +5,13 @@
 #include <cctype>
 #include <cstdint>
 #include <algorithm>
+#include <optional>
 
 #include <cuda_runtime.h>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl.h>
 
 #include "ai/tensor.hpp"
 #include "ai/dispatch.hpp"
@@ -24,6 +26,8 @@
 #include "backends/cuda/ops/conv2d/api.hpp"  
 #include "backends/cuda/ops/pool2d/api.hpp"
 #include "backends/cuda/ops/elementwise/api.hpp"
+#include "backends/cuda/ops/reduction/api.hpp"
+
 
 
 namespace py = pybind11;
@@ -37,6 +41,30 @@ static inline void checkCuda(cudaError_t e, const char* msg) {
   if (e != cudaSuccess) {
     throw std::runtime_error(std::string(msg) + ": " + cudaGetErrorString(e));
   }
+}
+
+// numpy-style shape 계산
+static std::vector<int64_t> reduced_shape(const std::vector<int64_t>& shp,
+                                          const std::vector<int>& axes,
+                                          bool keepdim)
+{
+  std::vector<int64_t> out;
+  const int nd = (int)shp.size();
+  std::vector<char> is_ax(nd, 0);
+  for (int a: axes) {
+    int aa=a;
+    if (aa<0) aa+=nd;
+    is_ax[aa]=1;
+  }
+
+  if (keepdim){
+    out = shp;
+    for (int i=0;i<nd;i++) if (is_ax[i]) out[i]=1;
+  } else {
+    for (int i=0;i<nd;i++) if (!is_ax[i]) out.push_back(shp[i]);
+    if (out.empty()) out.push_back(1); // all-reduce → scalar [1]
+  }
+  return out;
 }
 
 static inline ActKind parse_act(const std::string& s){
@@ -1606,6 +1634,103 @@ py::array ewise_binary(py::array A_in, py::array B_in, std::string kind = "add",
 }
 
 
+// 공통 reduce 실행기
+static py::array do_reduce(py::array X_in,
+                           py::object axes_in,
+                           bool keepdim,
+                           ai::ReduceOp op)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  const int nd = X.ndim();
+
+  // axes 파싱
+  std::vector<int> axes;
+  if (!axes_in.is_none()) {
+    for (auto v: axes_in.cast<std::vector<int>>())
+      axes.push_back(v);
+  } else {
+    axes.resize(nd);
+    for (int i=0;i<nd;i++) axes[i]=i;
+  }
+
+  // 입력 shape
+  int64_t elems=1;
+  std::vector<int64_t> xshape(nd);
+  for (int i=0;i<nd;i++){ xshape[i]=X.shape(i); elems*=xshape[i]; }
+
+  // Host→Device
+  float *dX=nullptr, *dY=nullptr;
+  checkCuda(cudaMalloc(&dX, sizeof(float)*elems), "malloc dX");
+  checkCuda(cudaMemcpy(dX, X.data(), sizeof(float)*elems, cudaMemcpyHostToDevice), "H2D X");
+
+  // 출력 shape
+  auto yshape = reduced_shape(xshape, axes, keepdim);
+  int64_t y_elems=1; for (auto v: yshape) y_elems*=v;
+  checkCuda(cudaMalloc(&dY, sizeof(float)*y_elems), "malloc dY");
+
+  // Tensor wrap
+  ai::TensorDesc dx{}; dx.dtype=ai::DType::F32; dx.layout=ai::Layout::RowMajor; dx.shape=xshape;
+  ai::Tensor tX{dX, dx, ai::Device::CUDA, 0};
+  ai::TensorDesc dy{}; dy.dtype=ai::DType::F32; dy.layout=ai::Layout::RowMajor; dy.shape=yshape;
+  ai::Tensor tY{dY, dy, ai::Device::CUDA, 0};
+
+  // attrs
+  ai::ReduceAttrs a{};
+  a.axes = axes;
+  a.keepdim = keepdim;
+  a.op = op;
+
+  auto st = ai::ReduceCudaLaunch(tX, tY, a, nullptr);
+  checkCuda(cudaDeviceSynchronize(), "sync reduce");
+  if (st != ai::Status::Ok){
+    cudaFree(dX); cudaFree(dY);
+    throw std::runtime_error("ReduceCudaLaunch failed");
+  }
+
+  // 결과 복사
+  std::vector<size_t> yshape_size_t(yshape.begin(), yshape.end());
+  auto Y = py::array_t<float>(yshape_size_t);
+  checkCuda(cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*y_elems, cudaMemcpyDeviceToHost), "D2H Y");
+
+  cudaFree(dX); cudaFree(dY);
+  return Y;
+}
+
+// ----------------- API wrappers -----------------
+
+py::array reduce_sum(py::array X,
+                     std::optional<std::vector<int>> axes = std::nullopt,
+                     bool keepdim=false)
+{
+    return do_reduce(X, axes.has_value() ? py::cast(axes.value()) : py::none(),
+                     keepdim, ai::ReduceOp::Sum);
+}
+
+py::array reduce_mean(py::array X,
+                      std::optional<std::vector<int>> axes = std::nullopt,
+                      bool keepdim=false)
+{
+    return do_reduce(X, axes.has_value() ? py::cast(axes.value()) : py::none(),
+                     keepdim, ai::ReduceOp::Mean);
+}
+
+py::array reduce_max(py::array X,
+                     std::optional<std::vector<int>> axes = std::nullopt,
+                     bool keepdim=false)
+{
+    return do_reduce(X, axes.has_value() ? py::cast(axes.value()) : py::none(),
+                     keepdim, ai::ReduceOp::Max);
+}
+
+py::array reduce_min(py::array X,
+                     std::optional<std::vector<int>> axes = std::nullopt,
+                     bool keepdim=false)
+{
+    return do_reduce(X, axes.has_value() ? py::cast(axes.value()) : py::none(),
+                     keepdim, ai::ReduceOp::Min);
+}
+
+
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
   // 커널 등록 보장
@@ -1786,6 +1911,22 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("A"), py::arg("B"), py::arg("kind")="add",
         py::arg("alpha")=1.0, py::arg("beta")=1.0,
         "Elementwise binary (CUDA, f32, broadcasting).");
+
+  m.def("reduce_sum",  &reduce_sum,
+        py::arg("X"), py::arg("axes")=py::none(), py::arg("keepdim")=false,
+        "Sum reduction over specified axes");
+
+  m.def("reduce_mean", &reduce_mean,
+        py::arg("X"), py::arg("axes")=py::none(), py::arg("keepdim")=false,
+        "Mean reduction over specified axes");
+
+  m.def("reduce_max",  &reduce_max,
+        py::arg("X"), py::arg("axes")=py::none(), py::arg("keepdim")=false,
+        "Max reduction over specified axes");
+
+  m.def("reduce_min",  &reduce_min,
+        py::arg("X"), py::arg("axes")=py::none(), py::arg("keepdim")=false,
+        "Min reduction over specified axes");
 
 
   m.def("sdpa",

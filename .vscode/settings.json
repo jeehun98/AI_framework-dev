@@ -98,7 +98,10 @@
     "xtree": "cpp",
     "xutility": "cpp",
     "ranges": "cpp",
-    "stack": "cpp"
+    "stack": "cpp",
+    "filesystem": "cpp",
+    "queue": "cpp",
+    "stdfloat": "cpp"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
