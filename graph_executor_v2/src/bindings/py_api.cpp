@@ -28,6 +28,7 @@
 #include "backends/cuda/ops/elementwise/api.hpp"
 #include "backends/cuda/ops/reduction/api.hpp"
 #include "backends/cuda/ops/concat/api.hpp"
+#include "backends/cuda/ops/slice/api.hpp"
 
 
 namespace py = pybind11;
@@ -1817,6 +1818,68 @@ py::array concat(py::list Xs_in, int axis=0)
 }
 
 
+py::array slice(py::array X_in,
+                std::vector<int64_t> start,
+                std::vector<int64_t> stop,
+                std::vector<int64_t> step)
+{
+  // 호스트 배열 확보/검증 (GIL 필요)
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  const int nd = X.ndim();
+  if ((int)start.size()!=nd || (int)stop.size()!=nd || (int)step.size()!=nd)
+    throw std::runtime_error("slice: start/stop/step must match ndim");
+  for (int i=0;i<nd;i++) if (step[i]<=0)
+    throw std::runtime_error("slice: step must be > 0");
+
+  // 출력 shape 계산
+  std::vector<int64_t> yshape(nd);
+  for (int i=0;i<nd;i++){
+    int64_t len = stop[i] - start[i];
+    yshape[i] = (len<=0) ? 0 : ( (len + step[i]-1)/step[i] );
+  }
+  int64_t y_elems=1; for (auto v: yshape) y_elems*=v;
+
+  // 0-size fast path
+  auto Y = py::array_t<float>(yshape);
+  if (y_elems==0) return Y;
+
+  // H2D 업로드
+  int64_t x_elems=1; for (int i=0;i<nd;i++) x_elems*=X.shape(i);
+  float *dX=nullptr, *dY=nullptr;
+  checkCuda(cudaMalloc(&dX, sizeof(float)*x_elems), "malloc dX");
+  try {
+    checkCuda(cudaMemcpy(dX, X.data(), sizeof(float)*x_elems, cudaMemcpyHostToDevice), "H2D X");
+    checkCuda(cudaMalloc(&dY, sizeof(float)*y_elems), "malloc dY");
+
+    ai::TensorDesc dx{}; dx.dtype=ai::DType::F32; dx.layout=ai::Layout::RowMajor;
+    dx.shape.resize(nd); for (int i=0;i<nd;i++) dx.shape[i]=X.shape(i);
+    ai::Tensor tX{dX, dx, ai::Device::CUDA, 0};
+
+    ai::TensorDesc dy{}; dy.dtype=ai::DType::F32; dy.layout=ai::Layout::RowMajor; dy.shape=yshape;
+    ai::Tensor tY{dY, dy, ai::Device::CUDA, 0};
+
+    ai::SliceAttrs a{}; a.start=start; a.stop=stop; a.step=step;
+
+    // ⬇️ ops 호출만 GIL 해제
+    {
+      py::gil_scoped_release nogil;
+      const int rc = ai::ops::slice_run(tX, tY, a, nullptr);
+      checkCuda(cudaDeviceSynchronize(), "sync slice");
+      if (rc!=0) throw std::runtime_error("slice_run failed");
+    } // ⬆️ 여기서 GIL 복귀
+
+    // D2H (NumPy 버퍼 접근은 GIL 보유 상태에서)
+    checkCuda(cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*y_elems, cudaMemcpyDeviceToHost), "D2H Y");
+
+    cudaFree(dX); cudaFree(dY);
+    return Y;
+
+  } catch (...) {
+    if (dX) cudaFree(dX);
+    if (dY) cudaFree(dY);
+    throw;
+  }
+}
 
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
@@ -2140,5 +2203,7 @@ bias_kind: "none" | "pern" | "perm" | "scalar")")
   Xs : Sequence[np.ndarray], all float32, C-contiguous, same ndim; all non-concat dims must match
   axis : int (can be negative)
   )doc");
+
+  m.def("slice",  &slice,  py::arg("X"), py::arg("start"), py::arg("stop"), py::arg("step"));
 
 }
