@@ -27,7 +27,7 @@
 #include "backends/cuda/ops/pool2d/api.hpp"
 #include "backends/cuda/ops/elementwise/api.hpp"
 #include "backends/cuda/ops/reduction/api.hpp"
-
+#include "backends/cuda/ops/concat/api.hpp"
 
 
 namespace py = pybind11;
@@ -1730,6 +1730,93 @@ py::array reduce_min(py::array X,
                      keepdim, ai::ReduceOp::Min);
 }
 
+py::array concat(py::list Xs_in, int axis=0)
+{
+  // 호스트 수집 (GIL 필요)
+  std::vector<py::array_t<float, py::array::c_style | py::array::forcecast>> host;
+  host.reserve((size_t)Xs_in.size());
+  for (auto obj: Xs_in) host.emplace_back(py::cast<py::array>(obj));
+  if (host.empty()) throw std::runtime_error("concat: empty input");
+
+  const int nd = host[0].ndim();
+  std::vector<int64_t> yshape(nd);
+  for (int i=0;i<nd;i++) yshape[i] = host[0].shape(i);
+
+  if (axis<0) axis += nd;
+  if (axis<0 || axis>=nd) throw std::runtime_error("concat: bad axis");
+
+  yshape[axis] = 0;
+  for (auto& a: host){
+    if (a.ndim()!=nd) throw std::runtime_error("concat: ndim mismatch");
+    for (int i=0;i<nd;i++) if (i!=axis && a.shape(i)!=yshape[i])
+      throw std::runtime_error("concat: non-concat dims must match");
+    yshape[axis] += a.shape(axis);
+  }
+
+  int64_t y_elems=1; for (auto v: yshape) y_elems*=v;
+
+  // 0-size fast path
+  auto Y = py::array_t<float>(yshape);
+  if (y_elems == 0) return Y;
+
+  // Device 준비
+  float *dY=nullptr;
+  checkCuda(cudaMalloc(&dY, sizeof(float)*y_elems), "malloc dY");
+
+  // 입력 업로드 (GIL 유지)
+  std::vector<ai::Tensor> Xs; Xs.reserve(host.size());
+  std::vector<float*> dXs;    dXs.reserve(host.size());
+
+  try {
+    for (auto& a: host){
+      int64_t elems=1; for (int i=0;i<nd;i++) elems*=a.shape(i);
+      float* d=nullptr; checkCuda(cudaMalloc(&d, sizeof(float)*elems), "malloc dX");
+      try {
+        checkCuda(cudaMemcpy(d, a.data(), sizeof(float)*elems, cudaMemcpyHostToDevice), "H2D X");
+      } catch (...) {
+        cudaFree(d);
+        throw;
+      }
+      std::vector<int64_t> shp(nd); for (int i=0;i<nd;i++) shp[i]=a.shape(i);
+      Xs.push_back( ai::Tensor{ d, {ai::DType::F32, ai::Layout::RowMajor, shp, {/*ignored*/}}, ai::Device::CUDA, 0 } );
+      dXs.push_back(d);
+    }
+
+    ai::Tensor tY{
+      dY,
+      {ai::DType::F32, ai::Layout::RowMajor, yshape, {/*row-major strides ignored*/}},
+      ai::Device::CUDA, 0
+    };
+
+    ai::ConcatAttrs attrs{}; attrs.axis=axis;
+
+    // ⬇️ 여기만 GIL 해제해서 GPU 작업 수행
+    {
+      py::gil_scoped_release nogil;
+      const int rc = ai::ops::concat_run(Xs, tY, attrs, nullptr);
+      // 우리의 ConcatCudaLaunch 내부가 stream sync를 하므로 여기서 추가 sync는 옵션.
+      // 안전하게 한 번 더 막아두고 싶으면 다음 줄 유지:
+      checkCuda(cudaDeviceSynchronize(), "sync concat");
+      if (rc!=0) throw std::runtime_error("concat_run failed");
+    } // ⬆️ 여기서 GIL 자동 복귀
+
+    // 결과 복사 (GIL 보유 상태에서 NumPy 버퍼 포인터 접근)
+    checkCuda(cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*y_elems, cudaMemcpyDeviceToHost), "D2H Y");
+
+    // 해제
+    for (auto d: dXs) cudaFree(d);
+    cudaFree(dY);
+    return Y;
+
+  } catch (...) {
+    // 예외 시 리소스 정리 확실히
+    for (auto d: dXs) if (d) cudaFree(d);
+    if (dY) cudaFree(dY);
+    throw;
+  }
+}
+
+
 
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
@@ -2041,5 +2128,17 @@ bias_kind: "none" | "pern" | "perm" | "scalar")")
     .def_property_readonly("N", &GemmPlan::N)
     .def_property_readonly("bias_len", &GemmPlan::bias_len);
 
+
+  m.def("concat", &concat,
+          py::arg("Xs"), py::arg("axis")=0,
+          
+          R"doc(
+  Concatenate float32, row-major arrays on CUDA along given axis.
+
+  Parameters
+  ----------
+  Xs : Sequence[np.ndarray], all float32, C-contiguous, same ndim; all non-concat dims must match
+  axis : int (can be negative)
+  )doc");
 
 }
