@@ -30,6 +30,7 @@
 #include "backends/cuda/ops/concat/api.hpp"
 #include "backends/cuda/ops/slice/api.hpp"
 #include "backends/cuda/ops/indexing/api.hpp"
+#include "src/ops/pad.cpp"
 
 
 namespace py = pybind11;
@@ -2304,7 +2305,119 @@ bias_kind: "none" | "pern" | "perm" | "scalar")")
 
   m.def("gather", &gather, py::arg("X"), py::arg("index"), py::arg("axis")=-1,
       "Gather along axis using int32 indices.");
-      
+
   m.def("scatter_add", &scatter_add, py::arg("out"), py::arg("index"), py::arg("src"), py::arg("axis")=-1,
       "Out[*, index, *] += src along axis (inplace on device, returns host array).");
+
+  // --- PAD: constant ---
+  m.def("pad",
+    [](py::array X_in, std::vector<std::pair<int,int>> pads, double value)
+    {
+      auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+      const int D = X.ndim();
+      if (D < 1 || D > 8) throw std::runtime_error("pad: 1~8D supported");
+      if ((int)pads.size() != D) throw std::runtime_error("pad: len(pads) must equal ndim");
+
+      // shapes
+      std::vector<int64_t> ish(D), osh(D);
+      for (int i=0;i<D;++i){
+        ish[i] = X.shape(i);
+        osh[i] = ish[i] + pads[i].first + pads[i].second;
+        if (osh[i] <= 0) throw std::runtime_error("pad: invalid output shape");
+      }
+
+      // strides (row-major contiguous)
+      auto make_desc = [](const std::vector<int64_t>& sh){
+        ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+        d.shape = sh; d.stride.resize((int)sh.size());
+        d.stride.back() = 1;
+        for (int i=(int)sh.size()-2;i>=0;--i) d.stride[i] = d.stride[i+1]*sh[i+1];
+        return d;
+      };
+
+      // device alloc
+      size_t bytesX = sizeof(float); for (auto v: ish) bytesX *= (size_t)v;
+      size_t bytesY = sizeof(float); for (auto v: osh) bytesY *= (size_t)v;
+      float *dX=nullptr,*dY=nullptr;
+      cudaMalloc(&dX, bytesX);
+      cudaMalloc(&dY, bytesY);
+      cudaMemcpy(dX, X.data(), bytesX, cudaMemcpyHostToDevice);
+
+      ai::Tensor tX{dX, make_desc(ish), ai::Device::CUDA, 0};
+      ai::Tensor tY{dY, make_desc(osh), ai::Device::CUDA, 0};
+
+      ai::PadSpec spec;
+      spec.value = (float)value;
+      spec.before.reserve(D); spec.after.reserve(D);
+      for (auto &p : pads){ spec.before.push_back(p.first); spec.after.push_back(p.second); }
+
+      int rc = ai::ops::pad_run(tX, tY, spec, /*stream*/nullptr);
+      cudaDeviceSynchronize();
+      if (rc != 0) { cudaFree(dX); cudaFree(dY); throw std::runtime_error("pad_run failed"); }
+
+      auto Y = py::array_t<float>(osh);
+      cudaMemcpy(Y.mutable_data(), dY, bytesY, cudaMemcpyDeviceToHost);
+      cudaFree(dX); cudaFree(dY);
+      return Y;
+    },
+    py::arg("X"), py::arg("pads"), py::arg("value")=0.0,
+    R"(Constant pad: pads is [(before, after), ...] per dimension. value is fill constant.)"
+  );
+
+  m.def("pad_backward",
+    [](py::array dY_in, std::vector<std::pair<int,int>> pads, std::vector<int64_t> in_shape)
+    {
+      auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+      const int D = dY.ndim();
+      if (D < 1 || D > 8) throw std::runtime_error("pad_backward: 1~8D supported");
+      if ((int)pads.size() != D) throw std::runtime_error("pad_backward: len(pads) must equal ndim");
+      if ((int)in_shape.size() != D) throw std::runtime_error("pad_backward: in_shape mismatches ndim");
+
+      // expect dY.shape == in_shape + pads
+      std::vector<int64_t> dysh(D), dxsh = in_shape;
+      for (int i=0;i<D;++i){
+        dysh[i] = dY.shape(i);
+        if (dysh[i] != in_shape[i] + pads[i].first + pads[i].second)
+          throw std::runtime_error("pad_backward: dY shape doesn't match in_shape+pads");
+      }
+
+      auto make_desc = [](const std::vector<int64_t>& sh){
+        ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+        d.shape = sh; d.stride.resize((int)sh.size());
+        d.stride.back() = 1;
+        for (int i=(int)sh.size()-2;i>=0;--i) d.stride[i] = d.stride[i+1]*sh[i+1];
+        return d;
+      };
+
+      size_t bytesY = sizeof(float); for (auto v: dysh) bytesY *= (size_t)v;
+      size_t bytesX = sizeof(float); for (auto v: dxsh) bytesX *= (size_t)v;
+      float *ddY=nullptr, *ddX=nullptr;
+      cudaMalloc(&ddY, bytesY);
+      cudaMalloc(&ddX, bytesX);
+      cudaMemcpy(ddY, dY.data(), bytesY, cudaMemcpyHostToDevice);
+
+      ai::Tensor tdY{ddY, make_desc(dysh), ai::Device::CUDA, 0};
+      ai::Tensor tdX{ddX, make_desc(dxsh), ai::Device::CUDA, 0};
+
+      ai::PadSpec spec;
+      spec.value = 0.0f; // not used in backward
+      spec.before.reserve(D); spec.after.reserve(D);
+      for (auto &p : pads){ spec.before.push_back(p.first); spec.after.push_back(p.second); }
+
+      int rc = ai::ops::pad_backward_run(tdY, tdX, spec, /*stream*/nullptr);
+      cudaDeviceSynchronize();
+      if (rc != 0) { cudaFree(ddY); cudaFree(ddX); throw std::runtime_error("pad_backward_run failed"); }
+
+      auto dX = py::array_t<float>(dxsh);
+      cudaMemcpy(dX.mutable_data(), ddX, bytesX, cudaMemcpyDeviceToHost);
+      cudaFree(ddY); cudaFree(ddX);
+      return dX;
+    },
+    py::arg("dY"), py::arg("pads"), py::arg("in_shape"),
+    R"(Pad backward: returns gradient wrt X (unpadded slice from dY).)"
+  );
+
+
+
+
 }
