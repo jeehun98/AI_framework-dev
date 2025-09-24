@@ -52,6 +52,7 @@ add_library(ai_core STATIC
   src/ops/pool2d.cpp
   src/ops/elementwise.cpp
   src/ops/reduction.cpp
+  src/ops/concat.cpp
 )
 
 target_include_directories(ai_core
@@ -103,6 +104,8 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/reduction/kernels.cu
   backends/cuda/ops/reduction/launcher.cu
+
+  backends/cuda/ops/concat/launcher.cu
 
   # 내부(regemm_epilogue) 커널
   kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu
