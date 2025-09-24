@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <cctype>
+#include <cstdint>
+#include <algorithm>
 
 #include <cuda_runtime.h>
 
@@ -21,6 +23,8 @@
 #include "backends/cuda/ops/sdpa/api.hpp"  
 #include "backends/cuda/ops/conv2d/api.hpp"  
 #include "backends/cuda/ops/pool2d/api.hpp"
+#include "backends/cuda/ops/elementwise/api.hpp"
+
 
 namespace py = pybind11;
 using namespace ai;
@@ -154,8 +158,11 @@ int conv2d_backward_run(const Tensor&, const Tensor&, const Tensor&, Tensor*, Te
 
 int maxpool2d_run(const Tensor&, Tensor&, Tensor*, const ai::Pool2DAttrs&, StreamHandle);
 int maxpool2d_backward_run(const Tensor&, const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
+
 int avgpool2d_run(const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
 int avgpool2d_backward_run(const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
+
+
 
 }} // namespace ai::ops
 
@@ -1435,6 +1442,170 @@ py::array avgpool2d_backward(py::array dY_in,
   return dX;
 }
 
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+#include <vector>
+#include <cstdint>
+#include <stdexcept>
+#include <cctype>
+
+#include "ai/tensor.hpp"
+#include "backends/cuda/ops/elementwise/api.hpp"
+
+namespace py = pybind11;
+
+// ---- Elementwise: Unary ----
+py::array ewise_unary(py::array X_in, std::string kind = "relu",
+                      double alpha = 0.01, double clip_min = -1e30, double clip_max = 1e30)
+{
+  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+  if (X.ndim() < 1) throw std::runtime_error("ewise_unary: X must have >=1 dim");
+
+  int64_t nElem = 1;
+  std::vector<int64_t> shape_i64(X.ndim());
+  for (py::ssize_t i=0; i<X.ndim(); ++i) {
+      shape_i64[i] = static_cast<int64_t>(X.shape()[i]);
+      nElem *= shape_i64[i];
+  }
+
+  float *dX=nullptr, *dY=nullptr;
+  cudaMalloc(&dX, sizeof(float)*nElem);
+  cudaMalloc(&dY, sizeof(float)*nElem);
+  cudaMemcpy(dX, X.data(), sizeof(float)*nElem, cudaMemcpyHostToDevice);
+
+  ai::TensorDesc desc{};
+  desc.dtype = ai::DType::F32;
+  desc.layout = ai::Layout::RowMajor;
+  desc.shape = shape_i64;
+  desc.stride.resize(shape_i64.size());
+  {
+    int64_t s = 1;
+    for (int i=(int)shape_i64.size()-1; i>=0; --i) {
+      desc.stride[i] = s;
+      s *= shape_i64[i];
+    }
+  }
+
+  ai::Tensor tX{dX, desc, ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, desc, ai::Device::CUDA, 0};
+
+  auto to_unary = [](const std::string& s) -> ai::UnaryOp {
+    std::string k; k.reserve(s.size());
+    for (char c: s) k.push_back((char)std::tolower((unsigned char)c));
+    if (k=="identity") return ai::UnaryOp::Identity;
+    if (k=="relu")     return ai::UnaryOp::ReLU;
+    if (k=="leakyrelu"||k=="leaky_relu"||k=="lrelu") return ai::UnaryOp::LeakyReLU;
+    if (k=="sigmoid")  return ai::UnaryOp::Sigmoid;
+    if (k=="tanh")     return ai::UnaryOp::Tanh;
+    if (k=="gelu")     return ai::UnaryOp::GELU;
+    if (k=="exp")      return ai::UnaryOp::Exp;
+    if (k=="log")      return ai::UnaryOp::Log;
+    if (k=="sqrt")     return ai::UnaryOp::Sqrt;
+    if (k=="rsqrt")    return ai::UnaryOp::Rsqrt;
+    if (k=="clip")     return ai::UnaryOp::Clip;
+    throw std::runtime_error("ewise_unary: unknown kind: " + s);
+  };
+
+  ai::EWiseUnaryAttrs attrs{};
+  attrs.alpha    = (float)alpha;
+  attrs.clip_min = (float)clip_min;
+  attrs.clip_max = (float)clip_max;
+
+  auto st = ai::EWiseUnaryCudaLaunch(tX, tY, to_unary(kind), attrs, nullptr);
+  cudaError_t sync_st = cudaDeviceSynchronize();
+  if (st != ai::Status::Ok || sync_st != cudaSuccess) {
+    cudaFree(dX); cudaFree(dY);
+    throw std::runtime_error("EWiseUnaryCudaLaunch failed");
+  }
+
+  // 🔧 pybind11 array 생성 (size_t 기반 shape)
+  std::vector<size_t> shape;
+  shape.reserve(shape_i64.size());
+  for (auto v : shape_i64) shape.push_back(static_cast<size_t>(v));
+
+  auto Y = py::array_t<float>(shape);
+  cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*nElem, cudaMemcpyDeviceToHost);
+  cudaFree(dX); cudaFree(dY);
+  return Y;
+}
+
+// ---- Elementwise: Binary ----
+py::array ewise_binary(py::array A_in, py::array B_in, std::string kind = "add",
+                       double alpha = 1.0, double beta = 1.0)
+{
+  auto A = py::array_t<float, py::array::c_style | py::array::forcecast>(A_in);
+  auto B = py::array_t<float, py::array::c_style | py::array::forcecast>(B_in);
+  if (A.ndim()<1 || B.ndim()<1) throw std::runtime_error("ewise_binary: A,B must have >=1 dim");
+
+  const py::ssize_t nd = std::max(A.ndim(), B.ndim());
+  std::vector<int64_t> out(nd, 1);
+  for (py::ssize_t i=0; i<nd; ++i) {
+    int64_t a = (i < nd - A.ndim()) ? 1 : (int64_t)A.shape(i - (nd - A.ndim()));
+    int64_t b = (i < nd - B.ndim()) ? 1 : (int64_t)B.shape(i - (nd - B.ndim()));
+    if (a!=b && a!=1 && b!=1) throw std::runtime_error("ewise_binary: shapes not broadcastable");
+    out[i] = (a==1)? b : a;
+  }
+  int64_t nElem = 1; for (auto v: out) nElem *= v;
+
+  float *dA=nullptr, *dB=nullptr, *dY=nullptr;
+  cudaMalloc(&dA, sizeof(float)*(int64_t)A.size());
+  cudaMalloc(&dB, sizeof(float)*(int64_t)B.size());
+  cudaMalloc(&dY, sizeof(float)*nElem);
+  cudaMemcpy(dA, A.data(), sizeof(float)*(int64_t)A.size(), cudaMemcpyHostToDevice);
+  cudaMemcpy(dB, B.data(), sizeof(float)*(int64_t)B.size(), cudaMemcpyHostToDevice);
+
+  auto mk_desc = [](const std::vector<int64_t>& s){
+    ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+    d.shape = s; d.stride.resize(s.size());
+    int64_t st=1; for (int i=(int)s.size()-1;i>=0;--i){ d.stride[i]=st; st*=s[i]; }
+    return d;
+  };
+  auto vec_i64 = [](const py::array& arr){
+    std::vector<int64_t> v(arr.ndim());
+    for (py::ssize_t i=0;i<arr.ndim();++i) v[i] = (int64_t)arr.shape(i);
+    return v;
+  };
+
+  ai::Tensor tA{dA, mk_desc(vec_i64(A)), ai::Device::CUDA, 0};
+  ai::Tensor tB{dB, mk_desc(vec_i64(B)), ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, mk_desc(out),        ai::Device::CUDA, 0};
+
+  auto to_binary = [](const std::string& s) -> ai::BinaryOp {
+    std::string k; k.reserve(s.size());
+    for (char c: s) k.push_back((char)std::tolower((unsigned char)c));
+    if (k=="add") return ai::BinaryOp::Add;
+    if (k=="sub") return ai::BinaryOp::Sub;
+    if (k=="mul") return ai::BinaryOp::Mul;
+    if (k=="div") return ai::BinaryOp::Div;
+    if (k=="max") return ai::BinaryOp::Max;
+    if (k=="min") return ai::BinaryOp::Min;
+    if (k=="pow") return ai::BinaryOp::Pow;
+    throw std::runtime_error("ewise_binary: unknown kind: " + s);
+  };
+
+  ai::EWiseBinaryAttrs attrs{};
+  attrs.alpha = (float)alpha;
+  attrs.beta  = (float)beta;
+
+  auto st = ai::EWiseBinaryCudaLaunch(tA, tB, tY, to_binary(kind), attrs, nullptr);
+  cudaError_t sync_st = cudaDeviceSynchronize();
+  if (st != ai::Status::Ok || sync_st != cudaSuccess){
+    cudaFree(dA); cudaFree(dB); cudaFree(dY);
+    throw std::runtime_error("EWiseBinaryCudaLaunch failed");
+  }
+
+  // 🔧 pybind11 array 생성 (size_t 기반 shape)
+  std::vector<size_t> shape;
+  shape.reserve(out.size());
+  for (auto v: out) shape.push_back(static_cast<size_t>(v));
+
+  auto Y = py::array_t<float>(shape);
+  cudaMemcpy(Y.mutable_data(), dY, sizeof(float)*nElem, cudaMemcpyDeviceToHost);
+  cudaFree(dA); cudaFree(dB); cudaFree(dY);
+  return Y;
+}
+
+
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
   // 커널 등록 보장
@@ -1605,6 +1776,16 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         py::arg("ceil_mode")=false,
         py::arg("count_include_pad")=false,
         "AvgPool2D backward (NCHW).");
+
+  m.def("ewise_unary",  &ewise_unary,
+        py::arg("X"), py::arg("kind")="relu",
+        py::arg("alpha")=0.01, py::arg("clip_min")=-1e30, py::arg("clip_max")=1e30,
+        "Elementwise unary (CUDA, f32, broadcasting).");
+
+  m.def("ewise_binary", &ewise_binary,
+        py::arg("A"), py::arg("B"), py::arg("kind")="add",
+        py::arg("alpha")=1.0, py::arg("beta")=1.0,
+        "Elementwise binary (CUDA, f32, broadcasting).");
 
 
   m.def("sdpa",
