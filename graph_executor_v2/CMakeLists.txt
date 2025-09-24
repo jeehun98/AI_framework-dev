@@ -54,6 +54,7 @@ add_library(ai_core STATIC
   src/ops/reduction.cpp
   src/ops/concat.cpp
   src/ops/slice.cpp
+  src/ops/indexing.cpp
 )
 
 target_include_directories(ai_core
@@ -109,6 +110,9 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/concat/launcher.cu
 
   backends/cuda/ops/slice/launcher.cu
+
+  backends/cuda/ops/indexing/kernels.cu
+  backends/cuda/ops/indexing/launcher.cu
 
   # 내부(regemm_epilogue) 커널
   kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu
