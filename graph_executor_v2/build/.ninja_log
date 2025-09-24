@@ -34,7 +34,7 @@
 884	12567	7804303404403275	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/gemm/launcher.cu.obj	6797bf94ae5f6d51
 902	12597	7804303404573551	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/gemm/backward.cu.obj	7fd598847b6545fb
 1646	13105	7804303412024918	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/conv2d/launcher.cu.obj	fd931e1afba84a6a
-13112	21843	7804303526685609	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	4c1c28a13ce26573
+30	4008	7804335825308402	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	4c1c28a13ce26573
 11615	22635	7804303511709056	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/pool2d/kernels.cu.obj	612b31e77c930a81
 11798	22681	7804303513541847	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/elementwise/kernels.cu.obj	98fb7f769e8b26bb
 12485	22694	7804303520423911	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/indexing/kernels.cu.obj	a8926f776fba1864
@@ -49,5 +49,11 @@
 12607	24466	7804303521626358	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_backward.cu.obj	472ee0b8dd7a2873
 12581	93171	7804303521376002	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu.obj	a9859e199da6ce03
 93178	93264	7804304327333620	ai_backend_cuda.lib	129ebc66eea426e0
-93264	96301	7804304328195057	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
+4010	7054	7804335865107907	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
 96302	99661	7804304358573314	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	a43204f587598969
+27	321	7804338151385700	CMakeFiles/ai_core.dir/src/ops/pad.cpp.obj	7a7e1273adc4ceb4
+322	392	7804338154337730	ai_core.lib	6b4e22cc4e10c819
+37	4041	7804338151487458	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/pad/launcher.cu.obj	eb4f0f8f55b3d080
+4044	4125	7804338191558352	ai_backend_cuda.lib	d996a8eac51b38e1
+4125	7181	7804338192368397	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
+7181	10746	7804338222929246	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	a43204f587598969

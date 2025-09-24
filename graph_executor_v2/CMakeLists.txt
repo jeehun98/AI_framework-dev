@@ -55,6 +55,7 @@ add_library(ai_core STATIC
   src/ops/concat.cpp
   src/ops/slice.cpp
   src/ops/indexing.cpp
+  src/ops/pad.cpp
 )
 
 target_include_directories(ai_core
@@ -110,6 +111,8 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/concat/launcher.cu
 
   backends/cuda/ops/slice/launcher.cu
+
+  backends/cuda/ops/pad/launcher.cu
 
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
