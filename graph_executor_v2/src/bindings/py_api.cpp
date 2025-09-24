@@ -29,6 +29,7 @@
 #include "backends/cuda/ops/reduction/api.hpp"
 #include "backends/cuda/ops/concat/api.hpp"
 #include "backends/cuda/ops/slice/api.hpp"
+#include "backends/cuda/ops/indexing/api.hpp"
 
 
 namespace py = pybind11;
@@ -42,6 +43,20 @@ static inline void checkCuda(cudaError_t e, const char* msg) {
   if (e != cudaSuccess) {
     throw std::runtime_error(std::string(msg) + ": " + cudaGetErrorString(e));
   }
+}
+
+// 헬퍼: ND contiguous desc 생성 (RowMajor)
+static inline ai::TensorDesc make_desc_nd_f32(const std::vector<int64_t>& shape){
+  ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+  d.shape = shape; d.stride.resize(shape.size());
+  int64_t s=1; for (int i=(int)shape.size()-1;i>=0;--i){ d.stride[i]=s; s*=shape[i];}
+  return d;
+}
+static inline ai::TensorDesc make_desc_nd_i32(const std::vector<int64_t>& shape){
+  ai::TensorDesc d{}; d.dtype=ai::DType::I32; d.layout=ai::Layout::RowMajor;
+  d.shape = shape; d.stride.resize(shape.size());
+  int64_t s=1; for (int i=(int)shape.size()-1;i>=0;--i){ d.stride[i]=s; s*=shape[i];}
+  return d;
 }
 
 // numpy-style shape 계산
@@ -191,7 +206,8 @@ int maxpool2d_backward_run(const Tensor&, const Tensor&, Tensor&, const ai::Pool
 int avgpool2d_run(const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
 int avgpool2d_backward_run(const Tensor&, Tensor&, const ai::Pool2DAttrs&, StreamHandle);
 
-
+int gather_run(const Tensor& X, const Tensor& Index, Tensor& Y, int axis, StreamHandle);
+int scatter_add_run(Tensor& Out, const Tensor& Index, const Tensor& Src, int axis, StreamHandle);
 
 }} // namespace ai::ops
 
@@ -1881,6 +1897,85 @@ py::array slice(py::array X_in,
   }
 }
 
+
+// gather(X, index, axis=-1) -> Y
+py::array gather(py::array X_in, py::array Index_in, int axis=-1){
+  auto Xh = py::array_t<float,   py::array::c_style | py::array::forcecast>(X_in);
+  auto Ih = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(Index_in);
+  if (Xh.ndim()!=Ih.ndim()) throw std::runtime_error("gather: rank mismatch");
+  int nd = (int)Xh.ndim();
+  if (axis<0) axis += nd;
+  if (axis<0 || axis>=nd) throw std::runtime_error("gather: invalid axis");
+
+  // 출력 shape = Index shape (축 제외 동일)
+  std::vector<int64_t> Yshape(nd);
+  for (int d=0; d<nd; ++d){
+    if (d!=axis && (Xh.shape(d)!=Ih.shape(d))) throw std::runtime_error("gather: shape mismatch (non-axis dims)");
+    Yshape[d] = Ih.shape(d);
+  }
+
+  // device alloc
+  size_t bytesX=1, bytesI=1, bytesY=1;
+  for (int d=0; d<nd; ++d){ bytesX *= (size_t)Xh.shape(d); bytesI *= (size_t)Ih.shape(d); bytesY *= (size_t)Yshape[d]; }
+  float *dX=nullptr,*dY=nullptr; int32_t* dI=nullptr;
+  cudaMalloc(&dX, bytesX*sizeof(float));
+  cudaMalloc(&dY, bytesY*sizeof(float));
+  cudaMalloc(&dI, bytesI*sizeof(int32_t));
+  cudaMemcpy(dX, Xh.data(), bytesX*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dI, Ih.data(), bytesI*sizeof(int32_t), cudaMemcpyHostToDevice);
+
+  ai::Tensor tX{dX, make_desc_nd_f32([&](){ std::vector<int64_t>s(nd); for(int i=0;i<nd;++i)s[i]=Xh.shape(i); return s;}()), ai::Device::CUDA, 0};
+  ai::Tensor tI{dI, make_desc_nd_i32([&](){ std::vector<int64_t>s(nd); for(int i=0;i<nd;++i)s[i]=Ih.shape(i); return s;}()), ai::Device::CUDA, 0};
+  ai::Tensor tY{dY, make_desc_nd_f32(Yshape), ai::Device::CUDA, 0};
+  int rc = ai::ops::gather_run(tX, tI, tY, axis, /*stream*/nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0){ cudaFree(dX); cudaFree(dY); cudaFree(dI); throw std::runtime_error("gather_run failed"); }
+
+  auto Y = py::array_t<float>(Yshape);
+  cudaMemcpy(Y.mutable_data(), dY, bytesY*sizeof(float), cudaMemcpyDeviceToHost);
+  cudaFree(dX); cudaFree(dY); cudaFree(dI);
+  return Y;
+}
+
+// scatter_add(out, index, src, axis=-1) -> out (inplace on device; returns out host copy)
+py::array scatter_add(py::array Out_in, py::array Index_in, py::array Src_in, int axis=-1){
+  auto Oh = py::array_t<float,   py::array::c_style | py::array::forcecast>(Out_in);
+  auto Ih = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(Index_in);
+  auto Sh = py::array_t<float,   py::array::c_style | py::array::forcecast>(Src_in);
+  if (Oh.ndim()!=Ih.ndim() || Oh.ndim()!=Sh.ndim()) throw std::runtime_error("scatter_add: rank mismatch");
+  int nd=(int)Oh.ndim();
+  if (axis<0) axis+=nd;
+  if (axis<0||axis>=nd) throw std::runtime_error("scatter_add: invalid axis");
+  for (int d=0; d<nd; ++d){
+    if (d==axis) continue;
+    if (Oh.shape(d)!=Ih.shape(d) || Oh.shape(d)!=Sh.shape(d)) throw std::runtime_error("scatter_add: shape mismatch (non-axis dims)");
+  }
+  int64_t K = Oh.shape(axis);
+  if (Ih.shape(axis)!=Sh.shape(axis)) throw std::runtime_error("scatter_add: M mismatch on axis");
+
+  size_t bytesO=1, bytesI=1, bytesS=1;
+  for (int d=0; d<nd; ++d){ bytesO*=(size_t)Oh.shape(d); bytesI*=(size_t)Ih.shape(d); bytesS*=(size_t)Sh.shape(d); }
+  float *dO=nullptr,*dS=nullptr; int32_t* dI=nullptr;
+  cudaMalloc(&dO, bytesO*sizeof(float));
+  cudaMalloc(&dS, bytesS*sizeof(float));
+  cudaMalloc(&dI, bytesI*sizeof(int32_t));
+  cudaMemcpy(dO, Oh.data(), bytesO*sizeof(float), cudaMemcpyHostToDevice);   // 초기값 포함
+  cudaMemcpy(dS, Sh.data(), bytesS*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dI, Ih.data(), bytesI*sizeof(int32_t), cudaMemcpyHostToDevice);
+
+  ai::Tensor tO{dO, make_desc_nd_f32([&](){ std::vector<int64_t>s(nd); for(int i=0;i<nd;++i)s[i]=Oh.shape(i); return s;}()), ai::Device::CUDA, 0};
+  ai::Tensor tI{dI, make_desc_nd_i32([&](){ std::vector<int64_t>s(nd); for(int i=0;i<nd;++i)s[i]=Ih.shape(i); return s;}()), ai::Device::CUDA, 0};
+  ai::Tensor tS{dS, make_desc_nd_f32([&](){ std::vector<int64_t>s(nd); for(int i=0;i<nd;++i)s[i]=Sh.shape(i); return s;}()), ai::Device::CUDA, 0};
+  int rc = ai::ops::scatter_add_run(tO, tI, tS, axis, /*stream*/nullptr);
+  cudaDeviceSynchronize();
+  if (rc!=0){ cudaFree(dO); cudaFree(dS); cudaFree(dI); throw std::runtime_error("scatter_add_run failed"); }
+
+  auto Out = py::array_t<float>([&](){ std::vector<int64_t>s(nd); for(int i=0;i<nd;++i)s[i]=Oh.shape(i); return s;}());
+  cudaMemcpy(Out.mutable_data(), dO, bytesO*sizeof(float), cudaMemcpyDeviceToHost);
+  cudaFree(dO); cudaFree(dS); cudaFree(dI);
+  return Out;
+}
+
 // -------------------- Module --------------------
 PYBIND11_MODULE(_core, m) {
   // 커널 등록 보장
@@ -2206,4 +2301,10 @@ bias_kind: "none" | "pern" | "perm" | "scalar")")
 
   m.def("slice",  &slice,  py::arg("X"), py::arg("start"), py::arg("stop"), py::arg("step"));
 
+
+  m.def("gather", &gather, py::arg("X"), py::arg("index"), py::arg("axis")=-1,
+      "Gather along axis using int32 indices.");
+      
+  m.def("scatter_add", &scatter_add, py::arg("out"), py::arg("index"), py::arg("src"), py::arg("axis")=-1,
+      "Out[*, index, *] += src along axis (inplace on device, returns host array).");
 }
