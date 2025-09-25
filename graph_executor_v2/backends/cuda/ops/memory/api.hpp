@@ -8,4 +8,6 @@ namespace ai {
 // shape/stride는 Tensor.desc 기반
 Status ContiguousCopyCudaLaunch(const Tensor& X, Tensor& Y, StreamHandle stream);
 
+
+
 } // namespace ai

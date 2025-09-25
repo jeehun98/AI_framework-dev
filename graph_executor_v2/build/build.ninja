@@ -247,6 +247,15 @@ build CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj: CXX_COMPILER__ai_core_u
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
   TARGET_PDB = ai_core.pdb
 
+build CMakeFiles\ai_core.dir\src\ops\view.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\view.cpp || cmake_object_order_depends_target_ai_core
+  CONFIG = Release
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  OBJECT_DIR = CMakeFiles\ai_core.dir
+  OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
+  TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
+  TARGET_PDB = ai_core.pdb
+
 
 # =============================================================================
 # Link build statements for STATIC_LIBRARY target ai_core
@@ -255,7 +264,7 @@ build CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj: CXX_COMPILER__ai_core_u
 #############################################
 # Link the static library ai_core.lib
 
-build ai_core.lib: CXX_STATIC_LIBRARY_LINKER__ai_core_Release CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\softmax.cpp.obj CMakeFiles\ai_core.dir\src\ops\layernorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\cross_entropy.cpp.obj CMakeFiles\ai_core.dir\src\ops\dropout.cpp.obj CMakeFiles\ai_core.dir\src\ops\sdpa.cpp.obj CMakeFiles\ai_core.dir\src\ops\conv2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\pool2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\elementwise.cpp.obj CMakeFiles\ai_core.dir\src\ops\reduction.cpp.obj CMakeFiles\ai_core.dir\src\ops\concat.cpp.obj CMakeFiles\ai_core.dir\src\ops\slice.cpp.obj CMakeFiles\ai_core.dir\src\ops\indexing.cpp.obj CMakeFiles\ai_core.dir\src\ops\pad.cpp.obj CMakeFiles\ai_core.dir\src\ops\memory.cpp.obj CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj
+build ai_core.lib: CXX_STATIC_LIBRARY_LINKER__ai_core_Release CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\softmax.cpp.obj CMakeFiles\ai_core.dir\src\ops\layernorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\cross_entropy.cpp.obj CMakeFiles\ai_core.dir\src\ops\dropout.cpp.obj CMakeFiles\ai_core.dir\src\ops\sdpa.cpp.obj CMakeFiles\ai_core.dir\src\ops\conv2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\pool2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\elementwise.cpp.obj CMakeFiles\ai_core.dir\src\ops\reduction.cpp.obj CMakeFiles\ai_core.dir\src\ops\concat.cpp.obj CMakeFiles\ai_core.dir\src\ops\slice.cpp.obj CMakeFiles\ai_core.dir\src\ops\indexing.cpp.obj CMakeFiles\ai_core.dir\src\ops\pad.cpp.obj CMakeFiles\ai_core.dir\src\ops\memory.cpp.obj CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\view.cpp.obj
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64
@@ -534,6 +543,16 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj: C
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
   TARGET_PDB = ai_backend_cuda.pdb
 
+build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
+  OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory
+  TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
+  TARGET_PDB = ai_backend_cuda.pdb
+
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\upsample2d\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj.d
@@ -541,6 +560,16 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.ob
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d
+  TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
+  TARGET_PDB = ai_backend_cuda.pdb
+
+build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD --generate-code=arch=compute_86,code=[compute_86,sm_86] -Xcompiler=/EHsc -Xcompiler=/MD -Xcompiler=/W4 -Xcompiler=/O2 -Xcompiler=/Ob2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\kernels\regemm_epilogue\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
+  OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
   TARGET_PDB = ai_backend_cuda.pdb
 
@@ -592,7 +621,7 @@ build CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward
 #############################################
 # Link the static library ai_backend_cuda.lib
 
-build ai_backend_cuda.lib: CXX_STATIC_LIBRARY_LINKER__ai_backend_cuda_Release CMakeFiles\ai_backend_cuda.dir\backends\cuda\register_ops.cpp.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\backward.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_gemm_bias_act.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward.cu.obj || ai_core.lib
+build ai_backend_cuda.lib: CXX_STATIC_LIBRARY_LINKER__ai_backend_cuda_Release CMakeFiles\ai_backend_cuda.dir\backends\cuda\register_ops.cpp.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\gemm\backward.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_gemm_bias_act.cu.obj CMakeFiles\ai_backend_cuda.dir\kernels\regemm_epilogue\src\regemm_backward.cu.obj || ai_core.lib
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64
