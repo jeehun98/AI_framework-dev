@@ -31,6 +31,7 @@
 #include "backends/cuda/ops/slice/api.hpp"
 #include "backends/cuda/ops/indexing/api.hpp"
 #include "src/ops/pad.cpp"
+#include "src/ops/memory.cpp"
 
 
 namespace py = pybind11;
@@ -58,6 +59,25 @@ static inline ai::TensorDesc make_desc_nd_i32(const std::vector<int64_t>& shape)
   d.shape = shape; d.stride.resize(shape.size());
   int64_t s=1; for (int i=(int)shape.size()-1;i>=0;--i){ d.stride[i]=s; s*=shape[i];}
   return d;
+}
+
+// === 헬퍼: desc→contig 출력 텐서 생성 ===
+static inline ai::Tensor make_device_tensor_like_contig(const ai::Tensor& X){
+  ai::TensorDesc yd = X.desc;
+  // contig stride
+  yd.stride.resize(yd.shape.size());
+  int D=(int)yd.shape.size();
+  yd.stride[D-1] = 1;
+  for (int i=D-2;i>=0;--i) yd.stride[i] = yd.stride[i+1] * yd.shape[i+1];
+
+  size_t total = 1;
+  for (auto v: yd.shape) total *= (size_t)v;
+
+  // device alloc
+  float* dY=nullptr;
+  cudaMalloc(&dY, sizeof(float)*total);
+  ai::Tensor Y{dY, yd, ai::Device::CUDA, 0};
+  return Y;
 }
 
 // numpy-style shape 계산
@@ -2418,6 +2438,126 @@ bias_kind: "none" | "pern" | "perm" | "scalar")")
   );
 
 
+// === permute ===
+m.def("permute",
+  [](py::array X_in, std::vector<int> axes){
+    // X_in -> device Tensor X
+    auto Xh = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+    const int D = (int)Xh.ndim();
+
+    // host→device
+    size_t total = 1;
+    for (int i=0;i<D;++i) total *= (size_t)Xh.shape(i);
+    float* dX=nullptr; cudaMalloc(&dX, sizeof(float)*total);
+    cudaMemcpy(dX, Xh.data(), sizeof(float)*total, cudaMemcpyHostToDevice);
+
+    ai::TensorDesc dx{}; dx.dtype=ai::DType::F32; dx.layout=ai::Layout::RowMajor;
+    dx.shape.resize(D); dx.stride.resize(D);
+    // row-major stride (입력은 contiguous라 가정)
+    for (int i=0;i<D;++i) dx.shape[i] = (int64_t)Xh.shape(i);
+    dx.stride[D-1]=1; for(int i=D-2;i>=0;--i) dx.stride[i]=dx.stride[i+1]*dx.shape[i+1];
+    ai::Tensor X{dX, dx, ai::Device::CUDA, 0};
+
+    // view desc
+    ai::TensorDesc vdesc;
+    int rc = ai::ops::permute_view(X, vdesc, axes);
+    if (rc!=0){ cudaFree(dX); throw std::runtime_error("permute_view failed"); }
+
+    ai::Tensor Xview{dX, vdesc, ai::Device::CUDA, 0};
+    ai::Tensor Y = make_device_tensor_like_contig(Xview);
+
+    // copy
+    rc = ai::ops::contiguous_copy_run(Xview, Y, /*stream*/nullptr);
+    if (rc!=0){ cudaFree(dX); cudaFree((void*)Y.data); throw std::runtime_error("contiguous_copy_run failed"); }
+
+    // D2H
+    auto Yh = py::array_t<float>(vdesc.shape);
+    cudaMemcpy(Yh.mutable_data(), Y.data, sizeof(float)*total, cudaMemcpyDeviceToHost);
+
+    cudaFree(dX); cudaFree((void*)Y.data);
+    return Yh;
+  },
+  py::arg("X"), py::arg("axes"),
+  R"(permute(X, axes): 즉시 contiguous 결과를 반환하는 간편 버전)"
+);
+
+// === expand ===
+m.def("expand",
+  [](py::array X_in, std::vector<int64_t> out_shape){
+    auto Xh = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+    const int Din = (int)Xh.ndim();
+
+    size_t total_out = 1;
+    for (auto v: out_shape) total_out *= (size_t)v;
+
+    // host→device
+    size_t total_in = 1; for (int i=0;i<Din;++i) total_in *= (size_t)Xh.shape(i);
+    float* dX=nullptr; cudaMalloc(&dX, sizeof(float)*total_in);
+    cudaMemcpy(dX, Xh.data(), sizeof(float)*total_in, cudaMemcpyHostToDevice);
+
+    ai::TensorDesc dx{}; dx.dtype=ai::DType::F32; dx.layout=ai::Layout::RowMajor;
+    dx.shape.resize(Din); dx.stride.resize(Din);
+    dx.stride[Din-1]=1; for(int i=Din-2;i>=0;--i) dx.stride[i]=dx.stride[i+1]* (int64_t)Xh.shape(i+1);
+    for (int i=0;i<Din;++i) dx.shape[i] = (int64_t)Xh.shape(i);
+    ai::Tensor X{dX, dx, ai::Device::CUDA, 0};
+
+    ai::TensorDesc vdesc;
+    int rc = ai::ops::expand_view(X, vdesc, out_shape);
+    if (rc!=0){ cudaFree(dX); throw std::runtime_error("expand_view failed"); }
+
+    ai::Tensor Xview{dX, vdesc, ai::Device::CUDA, 0};
+    ai::Tensor Y = make_device_tensor_like_contig(Xview);
+
+    rc = ai::ops::contiguous_copy_run(Xview, Y, /*stream*/nullptr);
+    if (rc!=0){ cudaFree(dX); cudaFree((void*)Y.data); throw std::runtime_error("contiguous_copy_run failed"); }
+
+    auto Yh = py::array_t<float>(vdesc.shape);
+    cudaMemcpy(Yh.mutable_data(), Y.data, sizeof(float)*total_out, cudaMemcpyDeviceToHost);
+
+    cudaFree(dX); cudaFree((void*)Y.data);
+    return Yh;
+  },
+  py::arg("X"), py::arg("out_shape"),
+  R"(expand(X, out_shape): 즉시 contiguous 결과를 반환하는 간편 버전 (broadcast read))"
+);
+
+// === contiguous (명시적) ===
+m.def("contiguous",
+  [](py::array X_in){
+    auto Xh = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+    const int D = (int)Xh.ndim();
+    // 입력 자체가 이미 contiguous면 바로 리턴
+    // (여기선 단순화: 항상 D2H roundtrip로 통일)
+    size_t total = 1;
+    for (int i=0;i<D;++i) total *= (size_t)Xh.shape(i);
+
+    float* dX=nullptr; cudaMalloc(&dX, sizeof(float)*total);
+    cudaMemcpy(dX, Xh.data(), sizeof(float)*total, cudaMemcpyHostToDevice);
+
+    ai::TensorDesc dx{}; dx.dtype=ai::DType::F32; dx.layout=ai::Layout::RowMajor;
+    dx.shape.resize(D); dx.stride.resize(D);
+    for (int i=0;i<D;++i) dx.shape[i] = (int64_t)Xh.shape(i);
+    dx.stride[D-1]=1; for (int i=D-2;i>=0;--i) dx.stride[i] = dx.stride[i+1]*dx.shape[i+1];
+
+    ai::Tensor X{dX, dx, ai::Device::CUDA, 0};
+    ai::Tensor Y = X; // 이미 contig이므로 동일 desc로 새 버퍼에 복사만 하고 싶다면:
+    // 실제로는 in-place일 필요 없고, 여기서는 새 버퍼 생성
+    ai::Tensor Ybuf = Y; // 재활용 변수 이름
+    Ybuf = ai::Tensor{nullptr, dx, ai::Device::CUDA, 0};
+    float* dY=nullptr; cudaMalloc(&dY, sizeof(float)*total);
+    Ybuf.data = dY;
+
+    int rc = ai::ops::contiguous_copy_run(X, Ybuf, /*stream*/nullptr);
+    if (rc!=0){ cudaFree(dX); cudaFree(dY); throw std::runtime_error("contiguous_copy_run failed"); }
+
+    auto Yh = py::array_t<float>(dx.shape);
+    cudaMemcpy(Yh.mutable_data(), dY, sizeof(float)*total, cudaMemcpyDeviceToHost);
+    cudaFree(dX); cudaFree(dY);
+    return Yh;
+  },
+  py::arg("X"),
+  R"(contiguous(X): 임의 stride 입력을 row-major contiguous 로 복사)"
+);
 
 
 }
