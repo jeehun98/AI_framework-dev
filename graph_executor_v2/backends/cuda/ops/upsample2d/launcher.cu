@@ -129,4 +129,152 @@ Status Upsample2DNearestBackwardCudaLaunch(const Tensor& dY, Tensor& dX,
   return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
 }
 
+
+// ---------- 좌표 매핑 유틸 ----------
+// align_corners 규칙:
+//  - true : src = i * (in-1) / max(out-1,1)
+//  - false: src = (i + 0.5) * (in / out) - 0.5
+__device__ __forceinline__ float map_src_pos(int i, int out_len, int in_len, bool align_corners){
+  if (in_len == out_len) return (float)i;
+  if (align_corners) {
+    if (out_len == 1) return 0.f;
+    return (float)i * (float)(in_len - 1) / (float)(out_len - 1);
+  } else {
+    float scale = (float)in_len / (float)out_len;
+    return ((float)i + 0.5f) * scale - 0.5f;
+  }
+}
+
+// ========== Bilinear FWD ==========
+__global__ void upsample2d_bilinear_fwd_kernel(
+  const float* __restrict__ X, float* __restrict__ Y,
+  int N,int C,int H,int W, int Ho,int Wo, bool align_corners)
+{
+  const int nOut = N*C*Ho*Wo;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nOut) return;
+
+  int tmp = tid;
+  const int wo = tmp % Wo; tmp /= Wo;
+  const int ho = tmp % Ho; tmp /= Ho;
+  const int c  = tmp % C;  tmp /= C;
+  const int n  = tmp;
+
+  float src_h = map_src_pos(ho, Ho, H, align_corners);
+  float src_w = map_src_pos(wo, Wo, W, align_corners);
+
+  int h0 = (int)floorf(src_h); int h1 = h0 + 1;
+  int w0 = (int)floorf(src_w); int w1 = w0 + 1;
+
+  float ah = src_h - (float)h0; float bh = 1.f - ah;
+  float aw = src_w - (float)w0; float bw = 1.f - aw;
+
+  // 경계 클램프
+  h0 = max(0, min(H-1, h0));
+  h1 = max(0, min(H-1, h1));
+  w0 = max(0, min(W-1, w0));
+  w1 = max(0, min(W-1, w1));
+
+  const int base_in  = ((n*C + c)*H)*W;
+  const int base_out = ((n*C + c)*Ho + ho)*Wo + wo;
+
+  float v00 = X[base_in + h0*W + w0];
+  float v01 = X[base_in + h0*W + w1];
+  float v10 = X[base_in + h1*W + w0];
+  float v11 = X[base_in + h1*W + w1];
+
+  // (bh,bw)는 (1-ah, 1-aw)
+  float top    = bw * v00 + aw * v01;
+  float bottom = bw * v10 + aw * v11;
+  Y[base_out] = bh * top + ah * bottom;
+}
+
+// ========== Bilinear BWD ==========
+// 각 (ho,wo)의 dY를 4개 이웃 (h0/w0, h0/w1, h1/w0, h1/w1)에 분배(atomicAdd).
+__global__ void upsample2d_bilinear_bwd_kernel(
+  const float* __restrict__ dY, float* __restrict__ dX,
+  int N,int C,int H,int W, int Ho,int Wo, bool align_corners)
+{
+  const int nOut = N*C*Ho*Wo;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= nOut) return;
+
+  int tmp = tid;
+  const int wo = tmp % Wo; tmp /= Wo;
+  const int ho = tmp % Ho; tmp /= Ho;
+  const int c  = tmp % C;  tmp /= C;
+  const int n  = tmp;
+
+  float src_h = map_src_pos(ho, Ho, H, align_corners);
+  float src_w = map_src_pos(wo, Wo, W, align_corners);
+
+  int h0 = (int)floorf(src_h); int h1 = h0 + 1;
+  int w0 = (int)floorf(src_w); int w1 = w0 + 1;
+
+  float ah = src_h - (float)h0; float bh = 1.f - ah;
+  float aw = src_w - (float)w0; float bw = 1.f - aw;
+
+  // 경계 클램프
+  h0 = max(0, min(H-1, h0));
+  h1 = max(0, min(H-1, h1));
+  w0 = max(0, min(W-1, w0));
+  w1 = max(0, min(W-1, w1));
+
+  const int base_out = ((n*C + c)*Ho + ho)*Wo + wo;
+  const float g = dY[base_out];
+
+  const int base_in = ((n*C + c)*H)*W;
+
+  // 가중치: (bh*bw) → (h0,w0), (bh*aw) → (h0,w1), (ah*bw) → (h1,w0), (ah*aw) → (h1,w1)
+  atomicAdd(&dX[base_in + h0*W + w0], g * (bh*bw));
+  atomicAdd(&dX[base_in + h0*W + w1], g * (bh*aw));
+  atomicAdd(&dX[base_in + h1*W + w0], g * (ah*bw));
+  atomicAdd(&dX[base_in + h1*W + w1], g * (ah*aw));
+}
+
+// ---------- 런처 ----------
+Status Upsample2DBilinearCudaLaunch(const Tensor& X, Tensor& Y,
+                                    const Upsample2DAttrs& attrs,
+                                    StreamHandle stream)
+{
+  if (!is_nchw_f32_4d_cuda(X) || !is_nchw_f32_4d_cuda(Y)) return Status::Invalid;
+  const int N=(int)X.desc.shape[0], C=(int)X.desc.shape[1];
+  const int H=(int)X.desc.shape[2], W=(int)X.desc.shape[3];
+  const int Ho=(int)Y.desc.shape[2], Wo=(int)Y.desc.shape[3];
+
+  const int BS=256, nOut=N*C*Ho*Wo;
+  dim3 block(BS), grid((nOut+BS-1)/BS);
+  upsample2d_bilinear_fwd_kernel<<<grid, block, 0, to_cuda(stream)>>>(
+    static_cast<const float*>(X.data),
+    static_cast<float*>(Y.data),
+    N,C,H,W,Ho,Wo, attrs.align_corners
+  );
+  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+}
+
+Status Upsample2DBilinearBackwardCudaLaunch(const Tensor& dY, Tensor& dX,
+                                            const Upsample2DAttrs& attrs,
+                                            StreamHandle stream)
+{
+  if (!is_nchw_f32_4d_cuda(dY) || !is_nchw_f32_4d_cuda(dX)) return Status::Invalid;
+  const int N=(int)dX.desc.shape[0], C=(int)dX.desc.shape[1];
+  const int H=(int)dX.desc.shape[2], W=(int)dX.desc.shape[3];
+  const int Ho=(int)dY.desc.shape[2], Wo=(int)dY.desc.shape[3];
+
+  cudaMemsetAsync(dX.data, 0, sizeof(float)*(size_t)N*C*H*W, to_cuda(stream));
+
+  const int BS=256, nOut=N*C*Ho*Wo;
+  dim3 block(BS), grid((nOut+BS-1)/BS);
+  upsample2d_bilinear_bwd_kernel<<<grid, block, 0, to_cuda(stream)>>>(
+    static_cast<const float*>(dY.data),
+    static_cast<float*>(dX.data),
+    N,C,H,W,Ho,Wo, attrs.align_corners
+  );
+  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+}
+
+
+
+
 } // namespace ai
+

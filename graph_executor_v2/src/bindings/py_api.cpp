@@ -2661,5 +2661,102 @@ m.def("upsample2d_nearest_backward",
   R"(Nearest Upsample2D backward (NCHW).)"
 );
 
+// ---- Upsample2D Bilinear: Forward ----
+m.def("upsample2d_bilinear",
+  [](py::array X_in,
+     py::object out_h, py::object out_w,    // None or int
+     py::object scale_h, py::object scale_w, // None or float
+     bool align_corners)
+  {
+    auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
+    if (X.ndim()!=4) throw std::runtime_error("upsample2d_bilinear: X must be 4D NCHW");
+    const int64_t N=X.shape(0), C=X.shape(1), H=X.shape(2), W=X.shape(3);
+
+    int Ho=0, Wo=0;
+    if (!out_h.is_none() && !out_w.is_none()) {
+      Ho = py::cast<int>(out_h);
+      Wo = py::cast<int>(out_w);
+    } else if (!scale_h.is_none() && !scale_w.is_none()) {
+      float sh = py::cast<float>(scale_h);
+      float sw = py::cast<float>(scale_w);
+      if (sh<=0.f || sw<=0.f) throw std::runtime_error("scale_h/scale_w must be >0");
+      Ho = (int)std::max<int64_t>(1, (int64_t)std::llround((double)H * sh));
+      Wo = (int)std::max<int64_t>(1, (int64_t)std::llround((double)W * sw));
+    } else {
+      throw std::runtime_error("Specify either (out_h,out_w) or (scale_h,scale_w).");
+    }
+
+    float *dX=nullptr,*dY=nullptr;
+    size_t bytesX=(size_t)N*C*H*W*sizeof(float);
+    size_t bytesY=(size_t)N*C*Ho*Wo*sizeof(float);
+    cudaMalloc(&dX, bytesX);
+    cudaMalloc(&dY, bytesY);
+    cudaMemcpy(dX, X.data(), bytesX, cudaMemcpyHostToDevice);
+
+    auto mk4=[&](int64_t n,int64_t c,int64_t h,int64_t w){
+      ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+      d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+    };
+    ai::Tensor tX{dX, mk4(N,C,H,W), ai::Device::CUDA, 0};
+    ai::Tensor tY{dY, mk4(N,C,Ho,Wo), ai::Device::CUDA, 0};
+
+    ai::Upsample2DAttrs a{}; a.out_h=Ho; a.out_w=Wo; a.align_corners=align_corners;
+
+    int rc = ai::ops::upsample2d_bilinear_run(tX, tY, a, nullptr);
+    cudaDeviceSynchronize();
+    if (rc!=0){ cudaFree(dX); cudaFree(dY); throw std::runtime_error("upsample2d_bilinear_run failed"); }
+
+    auto Y = py::array_t<float>({
+        (py::ssize_t)N, (py::ssize_t)C, (py::ssize_t)Ho, (py::ssize_t)Wo
+    });
+    cudaMemcpy(Y.mutable_data(), dY, bytesY, cudaMemcpyDeviceToHost);
+    cudaFree(dX); cudaFree(dY);
+    return Y;
+  },
+  py::arg("X"),
+  py::arg("out_h")=py::none(), py::arg("out_w")=py::none(),
+  py::arg("scale_h")=py::none(), py::arg("scale_w")=py::none(),
+  py::arg("align_corners")=false,
+  R"(Bilinear Upsample2D forward (NCHW). Specify either (out_h,out_w) or (scale_h,scale_w).)"
+);
+
+// ---- Upsample2D Bilinear: Backward ----
+m.def("upsample2d_bilinear_backward",
+  [](py::array dY_in, int H, int W, bool align_corners)
+  {
+    auto dY = py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+    if (dY.ndim()!=4) throw std::runtime_error("upsample2d_bilinear_backward: dY must be 4D");
+    const int64_t N=dY.shape(0), C=dY.shape(1), Ho=dY.shape(2), Wo=dY.shape(3);
+
+    float *ddY=nullptr,*ddX=nullptr;
+    size_t bytesY=(size_t)N*C*Ho*Wo*sizeof(float);
+    size_t bytesX=(size_t)N*C*H*W*sizeof(float);
+    cudaMalloc(&ddY, bytesY);
+    cudaMalloc(&ddX, bytesX);
+    cudaMemcpy(ddY, dY.data(), bytesY, cudaMemcpyHostToDevice);
+
+    auto mk4=[&](int64_t n,int64_t c,int64_t h,int64_t w){
+      ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
+      d.shape={n,c,h,w}; d.stride={c*h*w,h*w,w,1}; return d;
+    };
+    ai::Tensor tdY{ddY, mk4(N,C,Ho,Wo), ai::Device::CUDA, 0};
+    ai::Tensor tdX{ddX, mk4(N,C,H,W),   ai::Device::CUDA, 0};
+
+    ai::Upsample2DAttrs a{}; a.out_h=(int)Ho; a.out_w=(int)Wo; a.align_corners=align_corners;
+
+    int rc = ai::ops::upsample2d_bilinear_backward_run(tdY, tdX, a, nullptr);
+    cudaDeviceSynchronize();
+    if (rc!=0){ cudaFree(ddY); cudaFree(ddX); throw std::runtime_error("upsample2d_bilinear_backward_run failed"); }
+
+    auto dX = py::array_t<float>({ (py::ssize_t)N,(py::ssize_t)C,(py::ssize_t)H,(py::ssize_t)W });
+    cudaMemcpy(dX.mutable_data(), ddX, bytesX, cudaMemcpyDeviceToHost);
+    cudaFree(ddY); cudaFree(ddX);
+    return dX;
+  },
+  py::arg("dY"), py::arg("H"), py::arg("W"),
+  py::arg("align_corners")=false,
+  R"(Bilinear Upsample2D backward (NCHW).)"
+);
+
 
 }
