@@ -58,6 +58,7 @@ add_library(ai_core STATIC
   src/ops/pad.cpp
   src/ops/memory.cpp
   src/ops/upsample2d.cpp
+  src/ops/view.cpp
 )
 
 target_include_directories(ai_core
@@ -117,8 +118,11 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/pad/launcher.cu
 
   backends/cuda/ops/memory/launcher.cu
+  backends/cuda/ops/memory/kernels.cu
 
   backends/cuda/ops/upsample2d/launcher.cu
+
+  backends/cuda/ops/view/launcher.cu
 
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
