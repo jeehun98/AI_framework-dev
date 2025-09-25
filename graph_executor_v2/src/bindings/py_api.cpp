@@ -266,7 +266,7 @@ int dropout_run(const Tensor& X, Tensor& Y, Tensor* mask, const ai::DropoutAttrs
 int dropout_backward_run(const Tensor& dY, const Tensor& mask, Tensor& dX, const ai::DropoutAttrs& attrs, StreamHandle);
 
 int sdpa_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*, Tensor&, const SDPAAttrs&, StreamHandle);
-int sdpa_backward_run(const Tensor&, const Tensor&, const Tensor&, const Tensor*, const Tensor&, Tensor*, Tensor*, Tensor*, const SDPAAttrs&, StreamHandle);
+int sdpa_backward_run(const Tensor&, const Tensor&, const Tensor&, const Tensor&, Tensor*, Tensor*, Tensor*, const SDPAAttrs&, StreamHandle);
 
 int conv2d_run(const Tensor&, const Tensor&, const Tensor*, Tensor&, const Conv2DAttrs&, StreamHandle);
 int conv2d_backward_run(const Tensor&, const Tensor&, const Tensor&, Tensor*, Tensor*, Tensor*, const Conv2DAttrs&, StreamHandle);
@@ -2982,6 +2982,137 @@ m.def("contiguous_from_perm", &contiguous_from_perm,
 R"(Materialize a permuted non-contiguous view into a contiguous buffer on CUDA.
 X: float32 ndarray (C-contiguous on host)
 axes: permutation of range(ndim). Example: (0,2,3,1) for NCHW->NHWC
-Returns: a new contiguous ndarray with permuted layout.)");
+Retu  rns: a new contiguous ndarray with permuted layout.)");
+
+// py_api.cpp (모듈 정의 부분 근처)
+m.def("sdpa_backward",
+  [](py::array q_in, py::array k_in, py::array v_in, py::array dY_in,
+     double scale, bool causal)
+  {
+    using namespace ai;
+
+    // ---- NumPy -> py::array_t<float, C-contig, forcecast) ----
+    auto Qh = py::array_t<float, py::array::c_style | py::array::forcecast>(q_in);
+    auto Kh = py::array_t<float, py::array::c_style | py::array::forcecast>(k_in);
+    auto Vh = py::array_t<float, py::array::c_style | py::array::forcecast>(v_in);
+    auto dYh= py::array_t<float, py::array::c_style | py::array::forcecast>(dY_in);
+
+    if (Qh.ndim()!=4 || Kh.ndim()!=4 || Vh.ndim()!=4 || dYh.ndim()!=4)
+      throw std::runtime_error("sdpa_backward: q,k,v,dY must be 4D [B,H,M/N,D]");
+
+    const int64_t B = Qh.shape(0);
+    const int64_t Hh= Qh.shape(1);
+    const int64_t M = Qh.shape(2);
+    const int64_t D = Qh.shape(3);
+    const int64_t N = Kh.shape(2);
+
+    if (Kh.shape(0)!=B || Kh.shape(1)!=Hh || Kh.shape(3)!=D)
+      throw std::runtime_error("sdpa_backward: K shape mismatch");
+    if (Vh.shape(0)!=B || Vh.shape(1)!=Hh || Vh.shape(2)!=N || Vh.shape(3)!=D)
+      throw std::runtime_error("sdpa_backward: V shape mismatch");
+    if (dYh.shape(0)!=B || dYh.shape(1)!=Hh || dYh.shape(2)!=M || dYh.shape(3)!=D)
+      throw std::runtime_error("sdpa_backward: dY shape mismatch");
+
+    // ---- device alloc ----
+    float *Qdev=nullptr, *Kdev=nullptr, *Vdev=nullptr, *dYdev=nullptr;
+    float *dQdev=nullptr, *dKdev=nullptr, *dVdev=nullptr;
+
+    const size_t bytesQ = (size_t)B*Hh*M*D * sizeof(float);
+    const size_t bytesK = (size_t)B*Hh*N*D * sizeof(float);
+    const size_t bytesV = (size_t)B*Hh*N*D * sizeof(float);
+
+    auto checkCudaThrow = [](cudaError_t err, const char* where){
+      if (err != cudaSuccess) {
+        throw std::runtime_error(std::string("[CUDA] ") + where + ": " + cudaGetErrorString(err));
+      }
+    };
+
+    checkCudaThrow(cudaMalloc(&Qdev,  bytesQ), "cudaMalloc Q");
+    checkCudaThrow(cudaMalloc(&Kdev,  bytesK), "cudaMalloc K");
+    checkCudaThrow(cudaMalloc(&Vdev,  bytesV), "cudaMalloc V");
+    checkCudaThrow(cudaMalloc(&dYdev, bytesQ), "cudaMalloc dY");
+
+    checkCudaThrow(cudaMemcpy(Qdev,  Qh.data(),  bytesQ, cudaMemcpyHostToDevice), "H2D Q");
+    checkCudaThrow(cudaMemcpy(Kdev,  Kh.data(),  bytesK, cudaMemcpyHostToDevice), "H2D K");
+    checkCudaThrow(cudaMemcpy(Vdev,  Vh.data(),  bytesV, cudaMemcpyHostToDevice), "H2D V");
+    checkCudaThrow(cudaMemcpy(dYdev, dYh.data(), bytesQ, cudaMemcpyHostToDevice), "H2D dY");
+
+    checkCudaThrow(cudaMalloc(&dQdev, bytesQ), "cudaMalloc dQ");
+    checkCudaThrow(cudaMalloc(&dKdev, bytesK), "cudaMalloc dK");
+    checkCudaThrow(cudaMalloc(&dVdev, bytesV), "cudaMalloc dV");
+
+    // ---- TensorDesc helper (RowMajor contiguous) ----
+    auto mk = [](int64_t B_, int64_t H_, int64_t X_, int64_t D_) {
+      TensorDesc d{};
+      d.dtype  = DType::F32;
+      d.layout = Layout::RowMajor;
+      d.shape  = { B_, H_, X_, D_ };
+      d.stride = { H_*X_*D_, X_*D_, D_, 1 };  // C-연속
+      return d;
+    };
+
+    // ---- wrap device buffers into ai::Tensor ----
+    Tensor tQ { Qdev,  mk(B,Hh,M,D), Device::CUDA, 0 };
+    Tensor tK { Kdev,  mk(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tV { Vdev,  mk(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tdY{ dYdev, mk(B,Hh,M,D), Device::CUDA, 0 };
+
+    Tensor tdQ{ dQdev, mk(B,Hh,M,D), Device::CUDA, 0 };
+    Tensor tdK{ dKdev, mk(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tdV{ dVdev, mk(B,Hh,N,D), Device::CUDA, 0 };
+
+    SDPAAttrs attrs{};
+    attrs.scale = (float)scale;
+    attrs.causal = causal;
+    attrs.dropout_p = 0.f;
+    attrs.scale_in_train = true;
+    attrs.seed = 0;
+
+    // ---- 직접 런처 호출해 Status를 받자 ----
+    Status st = SDPACudaBackwardLaunch(tQ, tK, tV, tdY,
+                                       /*dQ*/ &tdQ, /*dK*/ &tdK, /*dV*/ &tdV,
+                                       attrs,
+                                       /*stream*/ nullptr);
+
+    // 커널 에러 프로파게이션
+    cudaError_t last = cudaDeviceSynchronize();
+
+    if (st != Status::Ok || last != cudaSuccess) {
+      // 리소스 정리 후, 상세 메시지로 throw
+      std::string msg = "sdpa_backward failed: ";
+      switch (st) {
+        case Status::Ok:            msg += "Status::Ok"; break;
+        case Status::Invalid:       msg += "Status::Invalid"; break;
+        case Status::ShapeMismatch: msg += "Status::ShapeMismatch"; break;
+        case Status::RuntimeError:  msg += "Status::RuntimeError"; break;
+        case Status::Unimplemented: msg += "Status::Unimplemented"; break;
+        default:                    msg += "Status::Unknown"; break;
+      }
+      if (last != cudaSuccess) {
+        msg += std::string(", cuda: ") + cudaGetErrorString(last);
+      }
+      cudaFree(Qdev); cudaFree(Kdev); cudaFree(Vdev); cudaFree(dYdev);
+      cudaFree(dQdev); cudaFree(dKdev); cudaFree(dVdev);
+      throw std::runtime_error(msg);
+    }
+
+    // ---- D2H ----
+    auto dQh = py::array_t<float>({B, Hh, M, D});
+    auto dKh = py::array_t<float>({B, Hh, N, D});
+    auto dVh = py::array_t<float>({B, Hh, N, D});
+
+    checkCudaThrow(cudaMemcpy(dQh.mutable_data(), dQdev, bytesQ, cudaMemcpyDeviceToHost), "D2H dQ");
+    checkCudaThrow(cudaMemcpy(dKh.mutable_data(), dKdev, bytesK, cudaMemcpyDeviceToHost), "D2H dK");
+    checkCudaThrow(cudaMemcpy(dVh.mutable_data(), dVdev, bytesV, cudaMemcpyDeviceToHost), "D2H dV");
+
+    // ---- free ----
+    cudaFree(Qdev); cudaFree(Kdev); cudaFree(Vdev); cudaFree(dYdev);
+    cudaFree(dQdev); cudaFree(dKdev); cudaFree(dVdev);
+
+    return py::make_tuple(std::move(dQh), std::move(dKh), std::move(dVh));
+  },
+  py::arg("q"), py::arg("k"), py::arg("v"), py::arg("dY"),
+  py::arg("scale")=0.0, py::arg("causal")=false,
+  "SDPA backward (no mask/dropout): returns (dQ,dK,dV)");
 
 }
