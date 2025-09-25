@@ -1,161 +1,454 @@
+// backends/cuda/ops/sdpa/launcher.cu
 #include <cuda_runtime.h>
 #include <cmath>
 #include "backends/cuda/ops/sdpa/api.hpp"
 #include "backends/cuda/ops/dropout/api.hpp"
+#include "backends/cuda/ops/softmax/api.hpp"
 #include "ai/op_schema.hpp"
 #include "ai/dispatch.hpp"
 
+
 namespace ai { namespace ops {
+  // GEMM
   int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
                Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
+
+  // Softmax (attrs 기반)
   int softmax_run(const Tensor& X, const Tensor* mask, Tensor& Y,
-                  float scale, bool log, StreamHandle stream);
+                  const ai::SoftmaxAttrs& attrs, StreamHandle stream);
+  int softmax_backward_run(const Tensor& Y, const Tensor& dY, Tensor& dX,
+                           const ai::SoftmaxAttrs& attrs, StreamHandle stream);
+
+  // Dropout
   int dropout_run(const Tensor& X, Tensor& Y, Tensor* mask,
                   const ai::DropoutAttrs& attrs, StreamHandle stream);
 }}
 
 namespace ai {
 
-// --- helpers ---
-static inline bool is_bhmd_f32_cuda_4d(const Tensor& t){
+static inline bool is_bhxd_f32_4d_cuda(const Tensor& t){
   return t.device==Device::CUDA && t.desc.dtype==DType::F32 &&
          t.desc.layout==Layout::RowMajor && t.desc.shape.size()==4;
 }
 static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
 
-// 간단한 RowMajor 2D transpose 커널: in[R,C] -> out[C,R]
+// RowMajor 2D transpose: in[R,C] -> out[C,R]
 __global__ void transpose_rm_f32(const float* __restrict__ in, float* __restrict__ out,
-                                 int R, int C)
-{
+                                 int R, int C){
   int r = blockIdx.y * blockDim.y + threadIdx.y;
   int c = blockIdx.x * blockDim.x + threadIdx.x;
-  if (r < R && c < C) {
-    out[c * R + r] = in[r * C + c];
-  }
+  if (r < R && c < C) out[c * R + r] = in[r * C + c];
 }
 
+// ---- 로컬 유틸: 4D F32 CUDA 텐서 확인 (RowMajor) ----
+static inline bool is4d_f32_cuda(const ai::Tensor& t){
+  return t.device==ai::Device::CUDA &&
+         t.desc.dtype==ai::DType::F32 &&
+         t.desc.layout==ai::Layout::RowMajor &&
+         t.desc.shape.size()==4;
+}
+
+// causal mask: S[b,h,m,n] += huge_neg if n>m
+__global__ void causal_mask_add_kernel(float* S, int B,int H,int M,int N, float huge_neg){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*M*N;
+  if (idx >= total) return;
+  int t = idx;
+  int n = t % N; t /= N;
+  int m = t % M; t /= M;
+  if (n > m) S[idx] += huge_neg;
+}
+
+// zero gS on upper triangle
+__global__ void causal_gs_zero_kernel(float* gS, int B,int H,int M,int N){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*M*N;
+  if (idx >= total) return;
+  int t = idx;
+  int n = t % N; t /= N;
+  int m = t % M; t /= M;
+  if (n > m) gS[idx] = 0.f;
+}
+
+__global__ void scale_kernel(float* X, int64_t n, float s){
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) X[i] *= s;
+}
+
+// =============== Forward ===============
 Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
                       const Tensor* mask, Tensor& Y,
                       const SDPAAttrs& attrs, StreamHandle stream)
 {
-  if (!is_bhmd_f32_cuda_4d(Q) || !is_bhmd_f32_cuda_4d(K) ||
-      !is_bhmd_f32_cuda_4d(V) || !is_bhmd_f32_cuda_4d(Y))
+  if (!is_bhxd_f32_4d_cuda(Q) || !is_bhxd_f32_4d_cuda(K) ||
+      !is_bhxd_f32_4d_cuda(V) || !is_bhxd_f32_4d_cuda(Y))
     return Status::Invalid;
 
-  // shape: [B,H,M,D], [B,H,N,D], Y:[B,H,M,D]
   const int B  = (int)Q.desc.shape[0];
   const int H  = (int)Q.desc.shape[1];
   const int M  = (int)Q.desc.shape[2];
   const int D  = (int)Q.desc.shape[3];
-  const int NB = (int)K.desc.shape[2]; // N
+  const int N  = (int)K.desc.shape[2];
 
   if (K.desc.shape[0]!=B || K.desc.shape[1]!=H || K.desc.shape[3]!=D) return Status::ShapeMismatch;
-  if (V.desc.shape[0]!=B || V.desc.shape[1]!=H || V.desc.shape[2]!=NB || V.desc.shape[3]!=D) return Status::ShapeMismatch;
+  if (V.desc.shape[0]!=B || V.desc.shape[1]!=H || V.desc.shape[2]!=N || V.desc.shape[3]!=D) return Status::ShapeMismatch;
   if (Y.desc.shape[0]!=B || Y.desc.shape[1]!=H || Y.desc.shape[2]!=M  || Y.desc.shape[3]!=D) return Status::ShapeMismatch;
 
-  // 임시 텐서: S:[B,H,M,N], P:[B,H,M,N], Kt:[D,N] (슬라이스마다 재사용)
-  size_t S_elems = (size_t)B*H*(size_t)M*(size_t)NB;
+  // 현재 외부 mask 미지원(필요 시 softmax 전 주입)
+  if (mask) return Status::Invalid;
+
+  // workspace
+  size_t nScores = (size_t)B*H*M*N;
   float *dS=nullptr, *dP=nullptr, *dKt=nullptr;
+  if (cudaMalloc(&dS,  sizeof(float)*nScores)!=cudaSuccess) return Status::RuntimeError;
+  if (cudaMalloc(&dP,  sizeof(float)*nScores)!=cudaSuccess){ cudaFree(dS); return Status::RuntimeError; }
+  if (cudaMalloc(&dKt, sizeof(float)*(size_t)D*(size_t)N)!=cudaSuccess){ cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
 
-  if (cudaMalloc(&dS, sizeof(float)*S_elems)!=cudaSuccess) return Status::RuntimeError;
-  if (cudaMalloc(&dP, sizeof(float)*S_elems)!=cudaSuccess){ cudaFree(dS); return Status::RuntimeError; }
-  // Kt는 한 슬라이스(D,N) 크기만 필요 (루프 내 재사용)
-  if (cudaMalloc(&dKt, sizeof(float)*(size_t)D*(size_t)NB)!=cudaSuccess){ cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
-
-  // Gemm 설정: transpose 플래그는 사용 안 함(항상 false)
-  GemmAttrs g{};
-  g.act        = ActKind::None;
-  g.with_bias  = false;
-
+  GemmAttrs g{}; g.act=ActKind::None; g.with_bias=false;
   const float scale = (attrs.scale!=0.f) ? attrs.scale : (1.f/std::sqrt((float)D));
-  cudaStream_t cstream = to_cuda(stream);
+  cudaStream_t s = to_cuda(stream);
 
-  // 슬라이스 도우미
   auto slice2d = [](const Tensor& T, int b, int h, int R, int C)->Tensor{
     size_t offset = ((size_t)b*T.desc.shape[1] + h) * (size_t)R*C;
     TensorDesc d{}; d.dtype=DType::F32; d.layout=Layout::RowMajor; d.shape={R,C}; d.stride={C,1};
     return Tensor{ (void*)((float*)T.data + offset), d, Device::CUDA, T.device_index };
   };
 
-  auto S4 = Tensor{ dS, {DType::F32, Layout::RowMajor, {B,H,M,NB}, {H*M*NB, M*NB, NB, 1}}, Device::CUDA, Q.device_index };
-  auto P4 = Tensor{ dP, {DType::F32, Layout::RowMajor, {B,H,M,NB}, {H*M*NB, M*NB, NB, 1}}, Device::CUDA, Q.device_index };
+  Tensor S4{ dS, {DType::F32, Layout::RowMajor, {B,H,M,N}, {H*M*N, M*N, N, 1}}, Device::CUDA, Q.device_index };
+  Tensor P4{ dP, {DType::F32, Layout::RowMajor, {B,H,M,N}, {H*M*N, M*N, N, 1}}, Device::CUDA, Q.device_index };
 
-  // transpose launch config
-  dim3 blk(32, 8);
-  dim3 grd( (NB + blk.x - 1)/blk.x, (D + blk.y - 1)/blk.y );
+  dim3 blk(32, 8), grdKT((N + blk.x - 1)/blk.x, (D + blk.y - 1)/blk.y);
 
   for (int b=0;b<B;++b){
     for (int h=0; h<H; ++h){
-      Tensor Q2 = slice2d(Q, b,h,M,D);         // (M,D)
-      Tensor K2 = slice2d(K, b,h,NB,D);        // (N,D)
-      Tensor V2 = slice2d(V, b,h,NB,D);        // (N,D)
+      Tensor Q2 = slice2d(Q, b,h,M,D);
+      Tensor K2 = slice2d(K, b,h,N,D);
+      Tensor V2 = slice2d(V, b,h,N,D);
 
-      // --- K(N,D) -> Kt(D,N) 전치 (연속 RowMajor로 보장) ---
+      // K(N,D) -> Kt(D,N)
       const float* Kptr = static_cast<const float*>(K2.data);
-      transpose_rm_f32<<<grd, blk, 0, cstream>>>(Kptr, dKt, /*R*/NB, /*C*/D);
+      transpose_rm_f32<<<grdKT, blk, 0, s>>>(Kptr, dKt, /*R*/N, /*C*/D);
       if (cudaPeekAtLastError()!=cudaSuccess){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
 
-      // Kt Tensor 래핑: [D, N], stride={N,1}
-      TensorDesc kt_d{}; kt_d.dtype=DType::F32; kt_d.layout=Layout::RowMajor;
-      kt_d.shape={D,NB}; kt_d.stride={NB,1};
+      TensorDesc kt_d{}; kt_d.dtype=DType::F32; kt_d.layout=Layout::RowMajor; kt_d.shape={D,N}; kt_d.stride={N,1};
       Tensor Kt{ dKt, kt_d, Device::CUDA, Q.device_index };
 
-      // S = Q(M,D) @ Kt(D,N)
-      Tensor S2 = slice2d(S4, b,h,M,NB);  // (M,N)
-      {
-        GemmAttrs gg = g;
-        gg.trans_b = false;
-        if (ai::ops::gemm_run(Q2, Kt, nullptr, S2, gg, stream)!=0){
-          cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
-        }
-      }
+      // S = Q @ Kt
+      Tensor S2 = slice2d(S4, b,h,M,N);
+      if (ops::gemm_run(Q2, Kt, nullptr, S2, g, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
 
-      // softmax(scale) → P2
-      Tensor P2 = slice2d(P4, b,h,M,NB);
-      const Tensor* m2 = nullptr; // (mask 브로드캐스트 향후)
-      if (ai::ops::softmax_run(S2, m2, P2, /*scale*/scale, /*log*/false, stream)!=0){
-        cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
-      }
+      // P = softmax(scale * S)
+      SoftmaxAttrs sa{}; sa.scale=scale; sa.log=false;
+      Tensor P2 = slice2d(P4, b,h,M,N);
+      if (ops::softmax_run(S2, /*mask*/nullptr, P2, sa, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
 
-      // (선택) dropout
+      // (option) dropout on P
       if (attrs.dropout_p > 0.f){
-        ai::DropoutAttrs da{};
-        da.p              = attrs.dropout_p;
-        da.scale_in_train = attrs.scale_in_train;
-        da.seed           = attrs.seed;
-        if (ai::ops::dropout_run(P2, P2, /*mask*/nullptr, da, stream)!=0){
-          cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
-        }
+        DropoutAttrs da{}; da.p=attrs.dropout_p; da.scale_in_train=attrs.scale_in_train; da.seed=attrs.seed;
+        if (ops::dropout_run(P2, P2, /*mask*/nullptr, da, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
       }
 
-      // Y = P(M,N) @ V(N,D)
+      // Y = P @ V
       Tensor Y2 = slice2d(Y, b,h,M,D);
+      if (ops::gemm_run(P2, V2, nullptr, Y2, g, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+    }
+  }
+
+  cudaFree(dKt); cudaFree(dS); cudaFree(dP);
+  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+}
+
+// 런타임 에러 리턴 헬퍼: 태그와 CUDA 에러 문자열(있다면) 출력
+static inline ai::Status RTERR(const char* tag, cudaError_t err = cudaSuccess) {
+  if (err != cudaSuccess) {
+    fprintf(stderr, "[SDPA-BWD][RuntimeError] at %s | cuda: %s\n", tag, cudaGetErrorString(err));
+  } else {
+    fprintf(stderr, "[SDPA-BWD][RuntimeError] at %s\n", tag);
+  }
+  return ai::Status::RuntimeError;
+}
+
+ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, const ai::Tensor& V,
+                                  const ai::Tensor& dY,
+                                  ai::Tensor* dQ, ai::Tensor* dK, ai::Tensor* dV,
+                                  const ai::SDPAAttrs& a, ai::StreamHandle stream)
+{
+  // 최소 정책: 셋 다 null이면 안 됨
+  if (!dQ && !dK && !dV) { fprintf(stderr, "[SDPA-BWD] invalid: all outputs null\n"); return ai::Status::Invalid; }
+
+  // 타입/차원 체크
+  if (!is4d_f32_cuda(Q) || !is4d_f32_cuda(K) || !is4d_f32_cuda(V) || !is4d_f32_cuda(dY)) {
+    fprintf(stderr, "[SDPA-BWD] invalid: dtype/layout/device/ndim check failed for inputs\n");
+    return ai::Status::Invalid;
+  }
+  if (dQ && !is4d_f32_cuda(*dQ)) { fprintf(stderr, "[SDPA-BWD] invalid: dQ bad\n"); return ai::Status::Invalid; }
+  if (dK && !is4d_f32_cuda(*dK)) { fprintf(stderr, "[SDPA-BWD] invalid: dK bad\n"); return ai::Status::Invalid; }
+  if (dV && !is4d_f32_cuda(*dV)) { fprintf(stderr, "[SDPA-BWD] invalid: dV bad\n"); return ai::Status::Invalid; }
+
+  const int B = (int)Q.desc.shape[0];
+  const int H = (int)Q.desc.shape[1];
+  const int M = (int)Q.desc.shape[2];
+  const int D = (int)Q.desc.shape[3];
+  const int N = (int)K.desc.shape[2];
+
+  if ((int)K.desc.shape[0]!=B || (int)K.desc.shape[1]!=H || (int)K.desc.shape[3]!=D) {
+    fprintf(stderr, "[SDPA-BWD] shape mismatch: K\n"); return ai::Status::ShapeMismatch;
+  }
+  if ((int)V.desc.shape[0]!=B || (int)V.desc.shape[1]!=H || (int)V.desc.shape[2]!=N || (int)V.desc.shape[3]!=D) {
+    fprintf(stderr, "[SDPA-BWD] shape mismatch: V\n"); return ai::Status::ShapeMismatch;
+  }
+  if ((int)dY.desc.shape[0]!=B || (int)dY.desc.shape[1]!=H || (int)dY.desc.shape[2]!=M || (int)dY.desc.shape[3]!=D) {
+    fprintf(stderr, "[SDPA-BWD] shape mismatch: dY\n"); return ai::Status::ShapeMismatch;
+  }
+  if (dQ && dQ->desc.shape!=Q.desc.shape) { fprintf(stderr, "[SDPA-BWD] shape mismatch: dQ vs Q\n"); return ai::Status::ShapeMismatch; }
+  if (dK && dK->desc.shape!=K.desc.shape) { fprintf(stderr, "[SDPA-BWD] shape mismatch: dK vs K\n"); return ai::Status::ShapeMismatch; }
+  if (dV && dV->desc.shape!=V.desc.shape) { fprintf(stderr, "[SDPA-BWD] shape mismatch: dV vs V\n"); return ai::Status::ShapeMismatch; }
+
+  if (a.dropout_p != 0.f) { fprintf(stderr, "[SDPA-BWD] invalid: dropout not supported yet\n"); return ai::Status::Invalid; }
+
+  cudaStream_t s = to_cuda(stream);
+
+  // workspace: S,P,gP,gS (all [B,H,M,N])
+  size_t nScores = (size_t)B*H*M*N;
+  float *dS=nullptr, *dP=nullptr, *dgP=nullptr, *dgS=nullptr;
+  if (cudaMalloc(&dS,  sizeof(float)*nScores)!=cudaSuccess) return RTERR("cudaMalloc dS");
+  if (cudaMalloc(&dP,  sizeof(float)*nScores)!=cudaSuccess){ cudaFree(dS); return RTERR("cudaMalloc dP"); }
+  if (cudaMalloc(&dgP, sizeof(float)*nScores)!=cudaSuccess){ cudaFree(dP); cudaFree(dS); return RTERR("cudaMalloc dgP"); }
+  if (cudaMalloc(&dgS, sizeof(float)*nScores)!=cudaSuccess){ cudaFree(dgP); cudaFree(dP); cudaFree(dS); return RTERR("cudaMalloc dgS"); }
+
+  ai::GemmAttrs g{}; g.act=ai::ActKind::None; g.with_bias=false;
+  float scale = a.scale; if (scale==0.f) scale = 1.f / std::sqrt((float)D);
+
+  float* dKt = nullptr;
+  if (cudaMalloc(&dKt, sizeof(float) * (size_t)D * (size_t)N) != cudaSuccess) {
+    cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+    return RTERR("cudaMalloc K^T (step1)");
+  }
+  
+  // 1) S = scale * (Q @ K^T)
+  for (int b=0; b<B; ++b){
+    for (int h=0; h<H; ++h){
+      ai::Tensor tQ{ (char*)Q.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                    {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, Q.device_index };
+      ai::Tensor tK{ (char*)K.data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
+                    {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, K.device_index };
+      ai::Tensor tS{ (char*)dS  + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                    {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+
+      // --- (N×D) -> (D×N) 전치 ---
       {
-        GemmAttrs gy = g;
-        gy.trans_b = false;
-        if (ai::ops::gemm_run(P2, V2, nullptr, Y2, gy, stream)!=0){
-          cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
+        dim3 blk(32, 8);
+        dim3 grd((D + blk.x - 1) / blk.x, (N + blk.y - 1) / blk.y);
+        // src: N×D, dst: D×N
+        transpose_rm_f32<<<grd, blk, 0, s>>>((const float*)tK.data, dKt, /*R*/N, /*C*/D);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("transpose K->Kt (step1)", cudaGetLastError());
+        }
+      }
+      ai::Tensor tKt{ dKt,
+                      {ai::DType::F32, ai::Layout::RowMajor, {D,N}, {N,1}},
+                      ai::Device::CUDA, K.device_index };
+
+      // --- 이제 표준 GEMM: (M×D) @ (D×N) = (M×N) ---
+      if (ai::ops::gemm_run(tQ, tKt, nullptr, tS, g, stream)!=0){
+        cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+        return RTERR("gemm S = Q @ K^T");
+      }
+
+      long long n = (long long)M*(long long)N; int BS=256, GRID=(int)((n+BS-1)/BS);
+      scale_kernel<<<GRID,BS,0,s>>>((float*)tS.data, n, scale);
+      if (cudaPeekAtLastError()!=cudaSuccess){
+        cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+        return RTERR("scale S (step1)", cudaGetLastError());
+      }
+    }
+  }
+
+
+  // 2) causal mask
+  if (a.causal){
+    int BS=256, GRID=(int)((nScores + BS - 1)/BS);
+    causal_mask_add_kernel<<<GRID,BS,0,s>>>(dS, B,H,M,N, -1e9f);
+    if (cudaPeekAtLastError()!=cudaSuccess){
+      cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+      return RTERR("causal_mask_add_kernel", cudaGetLastError());
+    }
+  }
+
+  // 3) P = softmax(S)
+  {
+    ai::SoftmaxAttrs sa{}; sa.scale=1.f; sa.log=false;
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        ai::Tensor tS{ (char*)dS + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                       {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tP{ (char*)dP + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                       {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        if (ai::ops::softmax_run(tS, /*mask*/nullptr, tP, sa, stream)!=0){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("softmax forward P");
         }
       }
     }
   }
 
-  cudaFree(dKt);
-  cudaFree(dS);
-  cudaFree(dP);
-  if (cudaPeekAtLastError()!=cudaSuccess) return Status::RuntimeError;
-  return Status::Ok;
-}
+  // 4) dV = P^T @ dY
+  if (dV){
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        ai::Tensor tP{  (char*)dP + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tdY{ (char*)dY.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tdV{ (char*)dV->data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, dV->device_index };
 
-// Backward: 현재 미구현(링크 스텁)
-Status SDPACudaBackwardLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
-                              const Tensor* mask, const Tensor& dY,
-                              Tensor* dQ, Tensor* dK, Tensor* dV,
-                              const SDPAAttrs& attrs, StreamHandle stream)
-{
-  (void)Q; (void)K; (void)V; (void)mask; (void)dY;
-  (void)dQ; (void)dK; (void)dV; (void)attrs; (void)stream;
-  return Status::Unimplemented;
+        float* dT1=nullptr;
+        if (cudaMalloc(&dT1, sizeof(float)*(size_t)D*(size_t)N)!=cudaSuccess){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("cudaMalloc T1 (dV path)");
+        }
+        ai::Tensor tYt{ (char*)dY.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {D,M}, {M,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tT1{ dT1, {ai::DType::F32, ai::Layout::RowMajor, {D,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        if (ai::ops::gemm_run(tYt, tP, nullptr, tT1, g, stream)!=0){
+          cudaFree(dT1); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("gemm T1 = dY^T @ P");
+        }
+        dim3 blk2(32,8), grd2((N + blk2.x -1)/blk2.x, (D + blk2.y -1)/blk2.y);
+        transpose_rm_f32<<<grd2,blk2,0,s>>>(dT1, (float*)tdV.data, /*R*/D, /*C*/N);
+        cudaFree(dT1);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("transpose tdV", cudaGetLastError());
+        }
+      }
+    }
+  }
+
+  // 5) gP = dY @ V^T  (M×D)@(N×D)^T = M×N
+  for (int b=0; b<B; ++b){
+    for (int h=0; h<H; ++h){
+      ai::Tensor tdY{ (char*)dY.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                      {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, Q.device_index };
+      ai::Tensor tV { (char*)V.data  + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
+                      {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, V.device_index };
+      ai::Tensor tgP{ (char*)dgP     + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                      {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+      if (ai::ops::gemm_run(tdY, tV, nullptr, tgP, g, stream)!=0){
+        cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+        return RTERR("gemm gP = dY @ V^T");
+      }
+    }
+  }
+
+  // 6) gS = softmax_backward(P, gP)
+  {
+    ai::SoftmaxAttrs sa{}; sa.scale=1.f; sa.log=false;
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        ai::Tensor tP { (char*)dP  + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tgP{ (char*)dgP + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tgS{ (char*)dgS + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        if (ai::ops::softmax_backward_run(tP, tgP, tgS, sa, stream)!=0){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("softmax backward gS");
+        }
+      }
+    }
+  }
+
+  // 7) causal ⇒ gS 상삼각 0
+  if (a.causal){
+    int BS=256, GRID=(int)((nScores + BS - 1)/BS);
+    causal_gs_zero_kernel<<<GRID,BS,0,s>>>(dgS, B,H,M,N);
+    if (cudaPeekAtLastError()!=cudaSuccess){
+      cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+      return RTERR("causal_gs_zero_kernel", cudaGetLastError());
+    }
+  }
+
+  // 8) dQ = scale * (gS @ K)
+  if (dQ){
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        ai::Tensor tgS{ (char*)dgS + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tK { (char*)K.data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, K.device_index };
+        ai::Tensor tdQ{ (char*)dQ->data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, dQ->device_index };
+        if (ai::ops::gemm_run(tgS, tK, nullptr, tdQ, g, stream)!=0){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("gemm dQ = gS @ K");
+        }
+        long long n = (long long)M*(long long)D; int BS=256, GRID=(int)((n+BS-1)/BS);
+        scale_kernel<<<GRID,BS,0,s>>>((float*)tdQ.data, n, scale);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("scale dQ", cudaGetLastError());
+        }
+      }
+    }
+  }
+
+  // 9) dK = scale * (Q^T @ gS)^T  (안전 경로: T2 = Q^T @ gS, 그 뒤 전치)
+  if (dK){
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        ai::Tensor tgS{ (char*)dgS + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tQ{ (char*)Q.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                       {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tdK{ (char*)dK->data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, dK->device_index };
+
+        float* dT2 = nullptr;
+        if (cudaMalloc(&dT2, sizeof(float)*(size_t)D*(size_t)N)!=cudaSuccess){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("cudaMalloc T2 (dK path)");
+        }
+        ai::Tensor tQt{ (char*)Q.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {D,M}, {M,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tT2{ dT2, {ai::DType::F32, ai::Layout::RowMajor, {D,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+
+        if (ai::ops::gemm_run(tQt, tgS, nullptr, tT2, g, stream)!=0){
+          cudaFree(dT2); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("gemm T2 = Q^T @ gS");
+        }
+
+        dim3 blk2(32,8);
+        dim3 grd2((N + blk2.x -1)/blk2.x, (D + blk2.y -1)/blk2.y);
+        transpose_rm_f32<<<grd2,blk2,0,s>>>(dT2, (float*)tdK.data, /*R*/D, /*C*/N);
+        cudaFree(dT2);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("transpose tdK", cudaGetLastError());
+        }
+
+        long long n = (long long)N*(long long)D; int BS=256, GRID=(int)((n+BS-1)/BS);
+        scale_kernel<<<GRID,BS,0,s>>>((float*)tdK.data, n, scale);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("scale dK", cudaGetLastError());
+        }
+      }
+    }
+  }
+
+  // 최종 커널 에러 체크
+  cudaError_t e = cudaPeekAtLastError();
+  if (e != cudaSuccess) {
+    cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+    return RTERR("final cudaPeekAtLastError", e);
+  }
+
+  cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+  return ai::Status::Ok;
 }
 
 } // namespace ai
