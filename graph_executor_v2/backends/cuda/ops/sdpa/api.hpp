@@ -23,11 +23,10 @@ Status SDPACudaLaunch(const Tensor& Q,
                       const SDPAAttrs& attrs,
                       StreamHandle stream);
 
-// BWD: dY -> dQ,dK,dV (필요한 것만 non-null)
-Status SDPACudaBackwardLaunch(const Tensor& Q,
-                              const Tensor& K,
-                              const Tensor& V,
+// 변경: mask 추가
+Status SDPACudaBackwardLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
                               const Tensor& dY,
+                              const Tensor* mask,              // <-- 추가
                               Tensor* dQ, Tensor* dK, Tensor* dV,
                               const SDPAAttrs& attrs,
                               StreamHandle stream);

@@ -295,6 +295,26 @@ static inline ai::TensorDesc make_desc_1d(int64_t n){
   d.shape={n}; d.stride={1}; return d;
 }
 
+// ---- RowMajor 4D(B,H,X,D) desc helper ----
+static inline ai::TensorDesc make_bhxd_desc(int64_t B, int64_t H, int64_t X, int64_t D){
+  ai::TensorDesc d{};
+  d.dtype  = ai::DType::F32;
+  d.layout = ai::Layout::RowMajor;
+  d.shape  = { B, H, X, D };
+  d.stride = { H*X*D, X*D, D, 1 };
+  return d;
+}
+
+// ---- RowMajor 4D(B,1,M,N) mask desc helper ----
+static inline ai::TensorDesc make_mask_desc(int64_t B, int64_t M, int64_t N, ai::DType dt){
+  ai::TensorDesc d{};
+  d.dtype  = dt;
+  d.layout = ai::Layout::RowMajor;
+  d.shape  = { B, 1, M, N };
+  d.stride = { 1*M*N, M*N, N, 1 };
+  return d;
+}
+
 // -------------------- FWD: 단발 함수 --------------------
 // ... (중략: GEMM, RMSNorm, LayerNorm, Softmax, CE, Dropout, Conv2D 등 기존 코드 변경 없음)
 // 위 블록은 질문에 포함된 원본 그대로 유지하세요.
@@ -2369,97 +2389,6 @@ act: one of ["none","relu","leaky_relu","gelu","sigmoid","tanh"])");
         "Min reduction over specified axes");
 
 
-  m.def("sdpa",
-    [](py::array q_in, py::array k_in, py::array v_in,
-      py::object mask_in, double scale, bool causal,
-      double dropout_p, bool scale_in_train, uint64_t seed)
-    {
-      // 1) NumPy → host float32 C-연속 4D 보장
-      auto Qh = py::array_t<float, py::array::c_style | py::array::forcecast>(q_in);
-      auto Kh = py::array_t<float, py::array::c_style | py::array::forcecast>(k_in);
-      auto Vh = py::array_t<float, py::array::c_style | py::array::forcecast>(v_in);
-      if (Qh.ndim()!=4 || Kh.ndim()!=4 || Vh.ndim()!=4)
-        throw std::runtime_error("sdpa: q,k,v must be 4D (B,H,M/D or N/D)");
-
-      const int64_t B  = Qh.shape(0);
-      const int64_t H  = Qh.shape(1);
-      const int64_t M  = Qh.shape(2);
-      const int64_t D  = Qh.shape(3);
-      const int64_t NB = Kh.shape(2); // N
-
-      if (Kh.shape(0)!=B || Kh.shape(1)!=H || Kh.shape(3)!=D)
-        throw std::runtime_error("sdpa: k must be [B,H,N,D] and match q on B,H,D");
-      if (Vh.shape(0)!=B || Vh.shape(1)!=H || Vh.shape(2)!=NB || Vh.shape(3)!=D)
-        throw std::runtime_error("sdpa: v must be [B,H,N,D] and match k on B,H,N,D");
-
-      // 2) Device alloc & H2D
-      float *dQ=nullptr, *dK=nullptr, *dV=nullptr, *dY=nullptr;
-      size_t bytesQ = (size_t)B*H*M*D*sizeof(float);
-      size_t bytesK = (size_t)B*H*NB*D*sizeof(float);
-      size_t bytesV = (size_t)B*H*NB*D*sizeof(float);
-      size_t bytesY = (size_t)B*H*M*D*sizeof(float);
-
-      checkCuda(cudaMalloc(&dQ, bytesQ), "cudaMalloc dQ");
-      checkCuda(cudaMalloc(&dK, bytesK), "cudaMalloc dK");
-      checkCuda(cudaMalloc(&dV, bytesV), "cudaMalloc dV");
-      checkCuda(cudaMalloc(&dY, bytesY), "cudaMalloc dY");
-
-      checkCuda(cudaMemcpy(dQ, Qh.data(), bytesQ, cudaMemcpyHostToDevice), "H2D Q");
-      checkCuda(cudaMemcpy(dK, Kh.data(), bytesK, cudaMemcpyHostToDevice), "H2D K");
-      checkCuda(cudaMemcpy(dV, Vh.data(), bytesV, cudaMemcpyHostToDevice), "H2D V");
-
-      // 3) Wrap tensors (RowMajor BHMD)
-      auto make_bhxd = [](int64_t B, int64_t H, int64_t X, int64_t D){
-        ai::TensorDesc d{}; d.dtype=ai::DType::F32; d.layout=ai::Layout::RowMajor;
-        d.shape  = {B,H,X,D};
-        d.stride = {H*X*D, X*D, D, 1};
-        return d;
-      };
-      ai::Tensor tQ{dQ, make_bhxd(B,H,M,D), ai::Device::CUDA, 0};
-      ai::Tensor tK{dK, make_bhxd(B,H,NB,D), ai::Device::CUDA, 0};
-      ai::Tensor tV{dV, make_bhxd(B,H,NB,D), ai::Device::CUDA, 0};
-      ai::Tensor tY{dY, make_bhxd(B,H,M,D),  ai::Device::CUDA, 0};
-
-      // 4) mask: 아직 미구현 → None만 허용
-      const ai::Tensor* pMask = nullptr;
-      if (!mask_in.is_none()) {
-        // 추후 [B,1,M,N]/[B,H,M,N] 브로드캐스트 지원 예정
-        cudaFree(dQ); cudaFree(dK); cudaFree(dV); cudaFree(dY);
-        throw std::runtime_error("sdpa: mask is not implemented yet (pass None).");
-      }
-
-      // 5) attrs 채우기
-      ai::SDPAAttrs a{};
-      a.scale          = static_cast<float>(scale);      // 0 → 내부에서 1/sqrt(D)
-      a.causal         = causal;
-      a.dropout_p      = static_cast<float>(dropout_p);
-      a.scale_in_train = scale_in_train;
-      a.seed           = seed;
-
-      // 6) 디스패치 호출 (동기화/에러 처리 동일 스타일)
-      int rc = ai::ops::sdpa_run(tQ, tK, tV, pMask, tY, a, /*stream*/nullptr);
-      checkCuda(cudaDeviceSynchronize(), "sync after sdpa_run");
-      if (rc != 0) {
-        cudaFree(dQ); cudaFree(dK); cudaFree(dV); cudaFree(dY);
-        throw std::runtime_error(std::string("sdpa_run failed with code ") + std::to_string(rc));
-      }
-
-      // 7) D2H & free
-      auto Y = py::array_t<float>({B,H,M,D});
-      checkCuda(cudaMemcpy(Y.mutable_data(), dY, bytesY, cudaMemcpyDeviceToHost), "D2H Y");
-      cudaFree(dQ); cudaFree(dK); cudaFree(dV); cudaFree(dY);
-      return Y;
-    },
-    py::arg("q"), py::arg("k"), py::arg("v"),
-    py::arg("mask") = py::none(),
-    py::arg("scale") = 0.0,        // 0이면 내부에서 1/sqrt(D)
-    py::arg("causal") = false,
-    py::arg("dropout_p") = 0.0,
-    py::arg("scale_in_train") = true,
-    py::arg("seed") = 0,
-    "Scaled Dot-Product Attention (FWD)"
-  );
-
 
 
   // GemmPlan
@@ -2984,14 +2913,152 @@ X: float32 ndarray (C-contiguous on host)
 axes: permutation of range(ndim). Example: (0,2,3,1) for NCHW->NHWC
 Retu  rns: a new contiguous ndarray with permuted layout.)");
 
-// py_api.cpp (모듈 정의 부분 근처)
-m.def("sdpa_backward",
-  [](py::array q_in, py::array k_in, py::array v_in, py::array dY_in,
-     double scale, bool causal)
+// ===========================
+//       SDPA Forward
+// ===========================
+m.def("sdpa",
+  [](py::array q_in, py::array k_in, py::array v_in,
+     py::object mask_in, double scale, bool causal,
+     double dropout_p, bool scale_in_train, uint64_t seed)
   {
     using namespace ai;
 
-    // ---- NumPy -> py::array_t<float, C-contig, forcecast) ----
+    // 1) NumPy → host float32 C-연속 4D 보장
+    auto Qh = py::array_t<float, py::array::c_style | py::array::forcecast>(q_in);
+    auto Kh = py::array_t<float, py::array::c_style | py::array::forcecast>(k_in);
+    auto Vh = py::array_t<float, py::array::c_style | py::array::forcecast>(v_in);
+    if (Qh.ndim()!=4 || Kh.ndim()!=4 || Vh.ndim()!=4)
+      throw std::runtime_error("sdpa: q,k,v must be 4D (B,H,M/D or N/D)");
+
+    const int64_t B  = Qh.shape(0);
+    const int64_t Hh = Qh.shape(1);
+    const int64_t M  = Qh.shape(2);
+    const int64_t D  = Qh.shape(3);
+    const int64_t N  = Kh.shape(2);
+
+    if (Kh.shape(0)!=B || Kh.shape(1)!=Hh || Kh.shape(3)!=D)
+      throw std::runtime_error("sdpa: k must be [B,H,N,D] and match q on B,H,D");
+    if (Vh.shape(0)!=B || Vh.shape(1)!=Hh || Vh.shape(2)!=N || Vh.shape(3)!=D)
+      throw std::runtime_error("sdpa: v must be [B,H,N,D] and match k on B,H,N,D");
+
+    // 2) Device alloc & H2D (Q,K,V,Y)
+    float *dQ=nullptr, *dK=nullptr, *dV=nullptr, *dY=nullptr, *dMask=nullptr;
+    size_t bytesQ = (size_t)B*Hh*M*D*sizeof(float);
+    size_t bytesK = (size_t)B*Hh*N*D*sizeof(float);
+    size_t bytesV = (size_t)B*Hh*N*D*sizeof(float);
+    size_t bytesY = (size_t)B*Hh*M*D*sizeof(float);
+
+    checkCuda(cudaMalloc(&dQ, bytesQ), "cudaMalloc dQ");
+    checkCuda(cudaMalloc(&dK, bytesK), "cudaMalloc dK");
+    checkCuda(cudaMalloc(&dV, bytesV), "cudaMalloc dV");
+    checkCuda(cudaMalloc(&dY, bytesY), "cudaMalloc dY");
+
+    auto cleanup = [&](){
+      if (dMask) cudaFree(dMask);
+      if (dQ) cudaFree(dQ);
+      if (dK) cudaFree(dK);
+      if (dV) cudaFree(dV);
+      if (dY) cudaFree(dY);
+    };
+
+    checkCuda(cudaMemcpy(dQ, Qh.data(), bytesQ, cudaMemcpyHostToDevice), "H2D Q");
+    checkCuda(cudaMemcpy(dK, Kh.data(), bytesK, cudaMemcpyHostToDevice), "H2D K");
+    checkCuda(cudaMemcpy(dV, Vh.data(), bytesV, cudaMemcpyHostToDevice), "H2D V");
+
+    // 3) Wrap tensors (RowMajor BHXD)
+    Tensor tQ{dQ, make_bhxd_desc(B,Hh,M,D), Device::CUDA, 0};
+    Tensor tK{dK, make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0};
+    Tensor tV{dV, make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0};
+    Tensor tY{dY, make_bhxd_desc(B,Hh,M,D), Device::CUDA, 0};
+
+    // 4) mask: None | [B,1,M,N] (I8/I32: 1=mask, 0=keep) or F32 (additive)
+    const Tensor* pMask = nullptr;     // 넘길 포인터
+    Tensor        tMask;               // 실제 객체 저장소
+
+    if (!mask_in.is_none()) {
+      py::array mask_any = py::array(mask_in);
+      bool ok_shape =
+        mask_any.ndim()==4 &&
+        (int64_t)mask_any.shape(0)==B &&
+        (int64_t)mask_any.shape(1)==1 &&
+        (int64_t)mask_any.shape(2)==M &&
+        (int64_t)mask_any.shape(3)==N;
+
+      if (!ok_shape) {
+        cleanup();
+        throw std::runtime_error("sdpa: mask must be [B,1,M,N]");
+      }
+
+      if (py::dtype::of<int8_t>().is(mask_any.dtype())) {
+        auto Mh = py::array_t<int8_t, py::array::c_style | py::array::forcecast>(mask_in);
+        size_t bytesM = (size_t)B * 1 * M * N * sizeof(int8_t);
+        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i8");
+        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i8");
+        tMask = Tensor{ dMask, make_mask_desc(B,M,N, DType::I8), Device::CUDA, 0 };
+        pMask = &tMask;
+      } else if (py::dtype::of<int32_t>().is(mask_any.dtype())) {
+        auto Mh = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(mask_in);
+        size_t bytesM = (size_t)B * 1 * M * N * sizeof(int32_t);
+        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i32");
+        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i32");
+        tMask = Tensor{ dMask, make_mask_desc(B,M,N, DType::I32), Device::CUDA, 0 };
+        pMask = &tMask;
+      } else if (py::dtype::of<float>().is(mask_any.dtype())) {
+        auto Mh = py::array_t<float, py::array::c_style | py::array::forcecast>(mask_in);
+        size_t bytesM = (size_t)B * 1 * M * N * sizeof(float);
+        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask f32");
+        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask f32");
+        tMask = Tensor{ dMask, make_mask_desc(B,M,N, DType::F32), Device::CUDA, 0 };
+        pMask = &tMask;
+      } else {
+        cleanup();
+        throw std::runtime_error("sdpa: mask dtype must be int8/int32/float32");
+      }
+    }
+
+    // 5) attrs 채우기
+    SDPAAttrs a{};
+    a.scale          = static_cast<float>(scale);      // 0 → 내부에서 1/sqrt(D)
+    a.causal         = causal;
+    a.dropout_p      = static_cast<float>(dropout_p);
+    a.scale_in_train = scale_in_train;
+    a.seed           = seed;
+
+    // 6) 디스패치 호출
+    {
+      int rc = ai::ops::sdpa_run(tQ, tK, tV, pMask, tY, a, /*stream*/nullptr);
+      checkCuda(cudaDeviceSynchronize(), "sync after sdpa_run");
+      if (rc != 0) {
+        cleanup();
+        throw std::runtime_error(std::string("sdpa_run failed with code ") + std::to_string(rc));
+      }
+    }
+
+    // 7) D2H & free
+    py::array_t<float> Y({B,Hh,M,D});
+    checkCuda(cudaMemcpy(Y.mutable_data(), dY, bytesY, cudaMemcpyDeviceToHost), "D2H Y");
+    cleanup();
+    return Y;
+  },
+  py::arg("q"), py::arg("k"), py::arg("v"),
+  py::arg("mask") = py::none(),
+  py::arg("scale") = 0.0,        // 0이면 내부에서 1/sqrt(D)
+  py::arg("causal") = false,
+  py::arg("dropout_p") = 0.0,
+  py::arg("scale_in_train") = true,
+  py::arg("seed") = 0,
+  "Scaled Dot-Product Attention (FWD: supports mask int8/int32/float32 [B,1,M,N])"
+);
+
+// ===========================
+//       SDPA Backward
+// ===========================
+m.def("sdpa_backward",
+  [](py::array q_in, py::array k_in, py::array v_in, py::array dY_in,
+    py::object mask_in, double scale, bool causal)
+  {
+    using namespace ai;
+
     auto Qh = py::array_t<float, py::array::c_style | py::array::forcecast>(q_in);
     auto Kh = py::array_t<float, py::array::c_style | py::array::forcecast>(k_in);
     auto Vh = py::array_t<float, py::array::c_style | py::array::forcecast>(v_in);
@@ -3013,9 +3080,9 @@ m.def("sdpa_backward",
     if (dYh.shape(0)!=B || dYh.shape(1)!=Hh || dYh.shape(2)!=M || dYh.shape(3)!=D)
       throw std::runtime_error("sdpa_backward: dY shape mismatch");
 
-    // ---- device alloc ----
+    // device alloc
     float *Qdev=nullptr, *Kdev=nullptr, *Vdev=nullptr, *dYdev=nullptr;
-    float *dQdev=nullptr, *dKdev=nullptr, *dVdev=nullptr;
+    float *dQdev=nullptr, *dKdev=nullptr, *dVdev=nullptr, *dMask=nullptr;
 
     const size_t bytesQ = (size_t)B*Hh*M*D * sizeof(float);
     const size_t bytesK = (size_t)B*Hh*N*D * sizeof(float);
@@ -3025,6 +3092,17 @@ m.def("sdpa_backward",
       if (err != cudaSuccess) {
         throw std::runtime_error(std::string("[CUDA] ") + where + ": " + cudaGetErrorString(err));
       }
+    };
+
+    auto cleanup = [&](){
+      if (dMask) cudaFree(dMask);
+      if (Qdev) cudaFree(Qdev);
+      if (Kdev) cudaFree(Kdev);
+      if (Vdev) cudaFree(Vdev);
+      if (dYdev) cudaFree(dYdev);
+      if (dQdev) cudaFree(dQdev);
+      if (dKdev) cudaFree(dKdev);
+      if (dVdev) cudaFree(dVdev);
     };
 
     checkCudaThrow(cudaMalloc(&Qdev,  bytesQ), "cudaMalloc Q");
@@ -3041,25 +3119,14 @@ m.def("sdpa_backward",
     checkCudaThrow(cudaMalloc(&dKdev, bytesK), "cudaMalloc dK");
     checkCudaThrow(cudaMalloc(&dVdev, bytesV), "cudaMalloc dV");
 
-    // ---- TensorDesc helper (RowMajor contiguous) ----
-    auto mk = [](int64_t B_, int64_t H_, int64_t X_, int64_t D_) {
-      TensorDesc d{};
-      d.dtype  = DType::F32;
-      d.layout = Layout::RowMajor;
-      d.shape  = { B_, H_, X_, D_ };
-      d.stride = { H_*X_*D_, X_*D_, D_, 1 };  // C-연속
-      return d;
-    };
+    Tensor tQ { Qdev,  make_bhxd_desc(B,Hh,M,D), Device::CUDA, 0 };
+    Tensor tK { Kdev,  make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tV { Vdev,  make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tdY{ dYdev, make_bhxd_desc(B,Hh,M,D), Device::CUDA, 0 };
 
-    // ---- wrap device buffers into ai::Tensor ----
-    Tensor tQ { Qdev,  mk(B,Hh,M,D), Device::CUDA, 0 };
-    Tensor tK { Kdev,  mk(B,Hh,N,D), Device::CUDA, 0 };
-    Tensor tV { Vdev,  mk(B,Hh,N,D), Device::CUDA, 0 };
-    Tensor tdY{ dYdev, mk(B,Hh,M,D), Device::CUDA, 0 };
-
-    Tensor tdQ{ dQdev, mk(B,Hh,M,D), Device::CUDA, 0 };
-    Tensor tdK{ dKdev, mk(B,Hh,N,D), Device::CUDA, 0 };
-    Tensor tdV{ dVdev, mk(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tdQ{ dQdev, make_bhxd_desc(B,Hh,M,D), Device::CUDA, 0 };
+    Tensor tdK{ dKdev, make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0 };
+    Tensor tdV{ dVdev, make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0 };
 
     SDPAAttrs attrs{};
     attrs.scale = (float)scale;
@@ -3068,17 +3135,71 @@ m.def("sdpa_backward",
     attrs.scale_in_train = true;
     attrs.seed = 0;
 
-    // ---- 직접 런처 호출해 Status를 받자 ----
-    Status st = SDPACudaBackwardLaunch(tQ, tK, tV, tdY,
-                                       /*dQ*/ &tdQ, /*dK*/ &tdK, /*dV*/ &tdV,
-                                       attrs,
-                                       /*stream*/ nullptr);
+    // mask: None | [B,1,M,N] (int8/int32/float32)
+    const ai::Tensor* pMask = nullptr;
+    ai::Tensor tMask;
 
-    // 커널 에러 프로파게이션
+    if (!mask_in.is_none()) {
+      py::array mask_any = py::array(mask_in);
+      bool ok_shape =
+        mask_any.ndim()==4 &&
+        (int64_t)mask_any.shape(0)==B &&
+        (int64_t)mask_any.shape(1)==1 &&
+        (int64_t)mask_any.shape(2)==M &&
+        (int64_t)mask_any.shape(3)==N;
+
+      if (!ok_shape) {
+        cleanup();
+        throw std::runtime_error("sdpa_backward: mask must be [B,1,M,N]");
+      }
+
+      auto make_mask_desc = [](int64_t B_, int64_t M_, int64_t N_, ai::DType dt){
+        ai::TensorDesc d{};
+        d.dtype  = dt;
+        d.layout = ai::Layout::RowMajor;
+        d.shape  = { B_, 1, M_, N_ };
+        d.stride = { 1*M_*N_, M_*N_, N_, 1 };
+        return d;
+      };
+
+      if (py::dtype::of<int8_t>().is(mask_any.dtype())) {
+        auto Mh = py::array_t<int8_t, py::array::c_style | py::array::forcecast>(mask_in);
+        size_t bytesM = (size_t)B * 1 * M * N * sizeof(int8_t);
+        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i8");
+        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i8");
+        tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::I8), ai::Device::CUDA, 0 };
+        pMask = &tMask;
+      } else if (py::dtype::of<int32_t>().is(mask_any.dtype())) {
+        auto Mh = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(mask_in);
+        size_t bytesM = (size_t)B * 1 * M * N * sizeof(int32_t);
+        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i32");
+        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i32");
+        tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::I32), ai::Device::CUDA, 0 };
+        pMask = &tMask;
+      } else if (py::dtype::of<float>().is(mask_any.dtype())) {
+        auto Mh = py::array_t<float, py::array::c_style | py::array::forcecast>(mask_in);
+        size_t bytesM = (size_t)B * 1 * M * N * sizeof(float);
+        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask f32");
+        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask f32");
+        tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::F32), ai::Device::CUDA, 0 };
+        pMask = &tMask;
+      } else {
+        cleanup();
+        throw std::runtime_error("sdpa_backward: mask dtype must be int8/int32/float32");
+      }
+    }
+
+    // 런처 호출
+    Status st = SDPACudaBackwardLaunch(
+                  tQ, tK, tV, tdY,
+                  pMask,            // mask 전달
+                  &tdQ, &tdK, &tdV,
+                  attrs,
+                  /*stream*/ nullptr);
+
     cudaError_t last = cudaDeviceSynchronize();
 
     if (st != Status::Ok || last != cudaSuccess) {
-      // 리소스 정리 후, 상세 메시지로 throw
       std::string msg = "sdpa_backward failed: ";
       switch (st) {
         case Status::Ok:            msg += "Status::Ok"; break;
@@ -3088,15 +3209,12 @@ m.def("sdpa_backward",
         case Status::Unimplemented: msg += "Status::Unimplemented"; break;
         default:                    msg += "Status::Unknown"; break;
       }
-      if (last != cudaSuccess) {
-        msg += std::string(", cuda: ") + cudaGetErrorString(last);
-      }
-      cudaFree(Qdev); cudaFree(Kdev); cudaFree(Vdev); cudaFree(dYdev);
-      cudaFree(dQdev); cudaFree(dKdev); cudaFree(dVdev);
+      if (last != cudaSuccess) msg += std::string(", cuda: ") + cudaGetErrorString(last);
+      cleanup();
       throw std::runtime_error(msg);
     }
 
-    // ---- D2H ----
+    // D2H
     auto dQh = py::array_t<float>({B, Hh, M, D});
     auto dKh = py::array_t<float>({B, Hh, N, D});
     auto dVh = py::array_t<float>({B, Hh, N, D});
@@ -3105,14 +3223,14 @@ m.def("sdpa_backward",
     checkCudaThrow(cudaMemcpy(dKh.mutable_data(), dKdev, bytesK, cudaMemcpyDeviceToHost), "D2H dK");
     checkCudaThrow(cudaMemcpy(dVh.mutable_data(), dVdev, bytesV, cudaMemcpyDeviceToHost), "D2H dV");
 
-    // ---- free ----
-    cudaFree(Qdev); cudaFree(Kdev); cudaFree(Vdev); cudaFree(dYdev);
-    cudaFree(dQdev); cudaFree(dKdev); cudaFree(dVdev);
-
+    cleanup();
     return py::make_tuple(std::move(dQh), std::move(dKh), std::move(dVh));
   },
   py::arg("q"), py::arg("k"), py::arg("v"), py::arg("dY"),
+  py::arg("mask") = py::none(),
   py::arg("scale")=0.0, py::arg("causal")=false,
-  "SDPA backward (no mask/dropout): returns (dQ,dK,dV)");
+  "SDPA backward (supports mask like forward: [B,1,M,N])"
+);
+
 
 }
