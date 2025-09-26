@@ -115,6 +115,16 @@ __global__ void zero_gs_mask_f32_slice(float* gS, const float* M, int n){
   if (i < n){ if (M[i] != 0.0f) gS[i] = 0.f; } // 비영이면 masked
 }
 
+// ---- error helper
+static inline ai::Status RTERR(const char* tag, cudaError_t err = cudaSuccess) {
+  if (err != cudaSuccess) {
+    fprintf(stderr, "[SDPA-BWD][RuntimeError] at %s | cuda: %s\n", tag, cudaGetErrorString(err));
+  } else {
+    fprintf(stderr, "[SDPA-BWD][RuntimeError] at %s\n", tag);
+  }
+  return ai::Status::RuntimeError;
+}
+
 // ----------------- Forward -----------------
 Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
                       const Tensor* mask, Tensor& Y,
@@ -232,17 +242,29 @@ Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
                    {DType::F32, Layout::RowMajor, {M,N}, {N,1}}, Device::CUDA, Q.device_index };
         Tensor P2{ (char*)dP + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
                    {DType::F32, Layout::RowMajor, {M,N}, {N,1}}, Device::CUDA, Q.device_index };
-        if (ops::softmax_run(S2, /*mask*/nullptr, P2, sa, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+        if (ops::softmax_run(S2, /*mask*/nullptr, P2, sa, stream)!=0){
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
+        }
 
         if (attrs.dropout_p > 0.f){
-          DropoutAttrs da{}; da.p=attrs.dropout_p; da.scale_in_train=attrs.scale_in_train; da.seed=attrs.seed;
-          // forward에서는 마스크 미보관: out만 덮어쓰기
-          if (ops::dropout_run(P2, P2, /*mask*/nullptr, da, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+          // NEW: counter_base = (b*H + h) * (M*N)
+          DropoutAttrs da{};
+          da.p = attrs.dropout_p;
+          da.scale_in_train = attrs.scale_in_train;
+          da.seed = attrs.seed;
+          da.counter_base = (uint64_t)((size_t)(b * H + h) * (size_t)M * (size_t)N);
+
+          // forward는 마스크 저장 안함(재현용 stateless RNG 사용)
+          if (ops::dropout_run(P2, P2, /*mask_out*/nullptr, da, stream)!=0){
+            cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
+          }
         }
 
         Tensor V2 = slice2d(V, b,h,N,D);
         Tensor Y2 = slice2d(Y, b,h,M,D);
-        if (ops::gemm_run(P2, V2, nullptr, Y2, g, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+        if (ops::gemm_run(P2, V2, nullptr, Y2, g, stream)!=0){
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError;
+        }
       }
     }
   }
@@ -251,17 +273,9 @@ Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
   return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
 }
 
-// ---- error helper
-static inline ai::Status RTERR(const char* tag, cudaError_t err = cudaSuccess) {
-  if (err != cudaSuccess) {
-    fprintf(stderr, "[SDPA-BWD][RuntimeError] at %s | cuda: %s\n", tag, cudaGetErrorString(err));
-  } else {
-    fprintf(stderr, "[SDPA-BWD][RuntimeError] at %s\n", tag);
-  }
-  return ai::Status::RuntimeError;
-}
 
-// ----------------- Backward (with dropout-bwd) -----------------
+
+// ----------------- Backward (with dropout-bwd & dV fix) -----------------
 ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, const ai::Tensor& V,
                                   const ai::Tensor& dY,
                                   const ai::Tensor* mask, // [B,1,M,N] or null
@@ -407,55 +421,8 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
     }
   }
 
-  // 4) dV = P^T @ dY
-  if (dV){
-    float* dYt_buf = nullptr;
-    if (cudaMalloc(&dYt_buf, sizeof(float) * (size_t)D * (size_t)M) != cudaSuccess){
-      cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
-      return RTERR("cudaMalloc dYt_buf (dV path)");
-    }
-    for (int b=0; b<B; ++b){
-      for (int h=0; h<H; ++h){
-        ai::Tensor tP{  (char*)dP + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
-                        {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
-        ai::Tensor tdY{ (char*)dY.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
-                        {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, Q.device_index };
-        ai::Tensor tdV{ (char*)dV->data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
-                        {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, dV->device_index };
-
-        // dY -> dY^T
-        dim3 blk(32,8);
-        dim3 grd((D + blk.x - 1)/blk.x, (M + blk.y - 1)/blk.y);
-        transpose_rm_f32<<<grd, blk, 0, s>>>((const float*)tdY.data, dYt_buf, /*R*/M, /*C*/D);
-        if (cudaPeekAtLastError()!=cudaSuccess){
-          cudaFree(dYt_buf); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
-          return RTERR("transpose dY->dYt (dV path)", cudaGetLastError());
-        }
-        ai::Tensor tYt{ dYt_buf, {ai::DType::F32, ai::Layout::RowMajor, {D,M}, {M,1}}, ai::Device::CUDA, Q.device_index };
-
-        // T1 = dY^T @ P
-        float* dT1=nullptr;
-        if (cudaMalloc(&dT1, sizeof(float)*(size_t)D*(size_t)N)!=cudaSuccess){
-          cudaFree(dYt_buf); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
-          return RTERR("cudaMalloc T1 (dV path)");
-        }
-        ai::Tensor tT1{ dT1, {ai::DType::F32, ai::Layout::RowMajor, {D,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
-        if (ai::ops::gemm_run(tYt, tP, nullptr, tT1, g, stream)!=0){
-          cudaFree(dT1); cudaFree(dYt_buf); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
-          return RTERR("gemm T1 = dY^T @ P");
-        }
-        // tdV = T1^T
-        dim3 blk2(32,8), grd2((N + blk2.x -1)/blk2.x, (D + blk2.y -1)/blk2.y);
-        transpose_rm_f32<<<grd2,blk2,0,s>>>(dT1, (float*)tdV.data, /*R*/D, /*C*/N);
-        cudaFree(dT1);
-        if (cudaPeekAtLastError()!=cudaSuccess){
-          cudaFree(dYt_buf); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
-          return RTERR("transpose tdV", cudaGetLastError());
-        }
-      }
-    }
-    cudaFree(dYt_buf);
-  }
+  // --- (삭제됨) 4) dV = P^T @ dY  ----
+  // dV 경로는 dropout 재현 이후 S_drop을 사용해 아래 4')에서 계산합니다.
 
   // 5) gP_pre = dY @ V^T  (store to dgP)
   for (int b=0; b<B; ++b){
@@ -484,19 +451,19 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
     }
   }
 
-  // 5.5) (NEW) Dropout backward on gP if used in FWD
+  // 5.5) Dropout forward 재현(마스크 생성) + (나중에) dropout backward용 준비
+  int32_t* dMask = nullptr;
+  float*   dDropY = nullptr; // S_drop 저장
   if (a.dropout_p > 0.f){
-    // regenerate dropout mask from P and attrs
-    DropoutAttrs da{}; da.p = a.dropout_p; da.scale_in_train = a.scale_in_train; da.seed = a.seed;
+    DropoutAttrs da{};
+    da.p = a.dropout_p;
+    da.scale_in_train = a.scale_in_train;
+    da.seed = a.seed;
 
-    // one big mask buffer [B,H,M,N] as i32
-    int32_t* dMask = nullptr;
     if (cudaMalloc(&dMask, sizeof(int32_t) * nScores) != cudaSuccess){
       cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
       return RTERR("cudaMalloc dropout mask (bwd)");
     }
-    // temporary Y buffer for dropout forward (discarded)
-    float* dDropY = nullptr;
     if (cudaMalloc(&dDropY, sizeof(float) * nScores) != cudaSuccess){
       cudaFree(dMask); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
       return RTERR("cudaMalloc dropout Ytmp (bwd)");
@@ -504,22 +471,105 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
 
     for (int b=0; b<B; ++b){
       for (int h=0; h<H; ++h){
-        // Pslice needed to regenerate the exact mask
+        da.counter_base = (uint64_t)((size_t)(b * H + h) * (size_t)M * (size_t)N);
+
         ai::Tensor tP { (char*)dP     + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
                         {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
         ai::Tensor tYd{ (char*)dDropY + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
                         {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
-        ai::Tensor tMask{ (char*)dMask + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(int32_t),
-                          {ai::DType::I32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tM { (char*)dMask  + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(int32_t),
+                        {ai::DType::I32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
 
-        if (ai::ops::dropout_run(tP, tYd, &tMask, da, stream)!=0){
+        // S_drop = Dropout(P) with same seed/counter as FWD
+        if (ai::ops::dropout_run(tP, tYd, &tM, da, stream)!=0){
           cudaFree(dDropY); cudaFree(dMask); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
           return RTERR("dropout_run (regen mask in bwd)");
         }
       }
     }
+  }
 
-    // apply dropout backward: dgP = DropoutBackward(dgP, mask)
+  // 4') dV = S_drop^T @ dY  (드롭아웃 반영된 주경로)  — S_drop이 있을 때만
+  if (dV){
+    // dV는 dropout이 있는 경우 S_drop, 없는 경우 P를 써야 정확
+    float* dYt_buf = nullptr;
+    if (cudaMalloc(&dYt_buf, sizeof(float) * (size_t)D * (size_t)M) != cudaSuccess){
+      if (dDropY) cudaFree(dDropY);
+      if (dMask)  cudaFree(dMask);
+      cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+      return RTERR("cudaMalloc dYt_buf (dV path)");
+    }
+
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        ai::Tensor tdY{ (char*)dY.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {M,D}, {D,1}}, ai::Device::CUDA, Q.device_index };
+        ai::Tensor tdV{ (char*)dV->data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
+                        {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, dV->device_index };
+
+        // dY -> dY^T
+        dim3 blk(32,8);
+        dim3 grd((D + blk.x - 1)/blk.x, (M + blk.y - 1)/blk.y);
+        transpose_rm_f32<<<grd, blk, 0, s>>>((const float*)tdY.data, dYt_buf, /*R*/M, /*C*/D);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dYt_buf);
+          if (dDropY) cudaFree(dDropY);
+          if (dMask)  cudaFree(dMask);
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("transpose dY->dYt (dV path)", cudaGetLastError());
+        }
+        ai::Tensor tYt{ dYt_buf, {ai::DType::F32, ai::Layout::RowMajor, {D,M}, {M,1}}, ai::Device::CUDA, Q.device_index };
+
+        // 오른쪽 피연산자: dropout이 있으면 S_drop, 없으면 P
+        ai::Tensor right{
+          (a.dropout_p > 0.f)
+            ? (void*)((char*)dDropY + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float))
+            : (void*)((char*)dP     + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float)),
+          {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}},
+          ai::Device::CUDA, Q.device_index
+        };
+
+        // T1 = dY^T @ right
+        float* dT1=nullptr;
+        if (cudaMalloc(&dT1, sizeof(float)*(size_t)D*(size_t)N)!=cudaSuccess){
+          cudaFree(dYt_buf);
+          if (dDropY) cudaFree(dDropY);
+          if (dMask)  cudaFree(dMask);
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("cudaMalloc T1 (dV path)");
+        }
+        ai::Tensor tT1{ dT1, {ai::DType::F32, ai::Layout::RowMajor, {D,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
+        if (ai::ops::gemm_run(tYt, right, nullptr, tT1, g, stream)!=0){
+          cudaFree(dT1); cudaFree(dYt_buf);
+          if (dDropY) cudaFree(dDropY);
+          if (dMask)  cudaFree(dMask);
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("gemm T1 = dY^T @ right (dV)");
+        }
+
+        // dV = T1^T
+        dim3 blk2(32,8), grd2((N + blk2.x -1)/blk2.x, (D + blk2.y -1)/blk2.y);
+        transpose_rm_f32<<<grd2,blk2,0,s>>>(dT1, (float*)tdV.data, /*R*/D, /*C*/N);
+        cudaFree(dT1);
+        if (cudaPeekAtLastError()!=cudaSuccess){
+          cudaFree(dYt_buf);
+          if (dDropY) cudaFree(dDropY);
+          if (dMask)  cudaFree(dMask);
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          return RTERR("transpose tdV", cudaGetLastError());
+        }
+      }
+    }
+    cudaFree(dYt_buf);
+  }
+
+  // 5.6) (이제) dgP <- DropoutBackward(dgP, mask)  (in-place 가능)
+  if (a.dropout_p > 0.f){
+    DropoutAttrs da{};
+    da.p = a.dropout_p;
+    da.scale_in_train = a.scale_in_train;
+    da.seed = a.seed;
+
     for (int b=0; b<B; ++b){
       for (int h=0; h<H; ++h){
         ai::Tensor t_dY{ (char*)dgP   + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
@@ -528,10 +578,12 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
                          {ai::DType::I32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
         ai::Tensor t_dX{ (char*)dgP   + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
                          {ai::DType::F32, ai::Layout::RowMajor, {M,N}, {N,1}}, ai::Device::CUDA, Q.device_index };
-        // in-place OK
+
         Status dst = DropoutCudaBackwardLaunch(t_dY, t_m, t_dX, da, stream);
         if (dst != Status::Ok){
-          cudaFree(dDropY); cudaFree(dMask); cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+          if (dDropY) cudaFree(dDropY);
+          if (dMask)  cudaFree(dMask);
+          cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
           return RTERR("dropout backward on gP");
         }
       }
@@ -693,5 +745,6 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
   cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
   return ai::Status::Ok;
 }
+
 
 } // namespace ai

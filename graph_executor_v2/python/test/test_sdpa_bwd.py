@@ -7,14 +7,6 @@ PKG  = os.path.join(ROOT, "python")
 if PKG not in sys.path:
     sys.path.insert(0, PKG)
 
-cuda_bins = [
-    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin",
-    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\bin",
-]
-if hasattr(os, "add_dll_directory"):
-    for d in cuda_bins:
-        if os.path.isdir(d):
-            os.add_dll_directory(d)
 
 from graph_executor_v2 import _core as ge
 
