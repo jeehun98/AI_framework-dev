@@ -148,8 +148,8 @@ def run_case(M=64, N=48, K=32,
     hZ  = hPre
     hGZ = hGY * dact(hZ, act_kind, leaky)
 
-    hGA = hGZ @ hB.T
-    hGB = hA.T @ hGZ
+    hGA = (hGZ @ hB.T) * alpha
+    hGB = (hA.T @ hGZ) * alpha
     hGC = beta*hGZ if use_C else None
 
     if bias_kind == ge2.BiasKind.Scalar:
