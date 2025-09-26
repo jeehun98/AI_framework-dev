@@ -6,7 +6,7 @@
 #include "backends/cuda/ops/softmax/api.hpp"
 #include "ai/op_schema.hpp"
 #include "ai/dispatch.hpp"
-
+#include <cstdint>
 
 namespace ai { namespace ops {
   // GEMM
@@ -75,6 +75,46 @@ __global__ void scale_kernel(float* X, int64_t n, float s){
   if (i < n) X[i] *= s;
 }
 
+// mask: I8/I32/F32 지원. 
+__global__ void add_mask_i8_kernel(float* S, const int8_t* M, int B,int H,int Mlen,int N, float huge_neg){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*Mlen*N;
+  if (idx >= total) return;
+  if (M[idx]) S[idx] += huge_neg;
+}
+__global__ void add_mask_i32_kernel(float* S, const int32_t* M, int B,int H,int Mlen,int N, float huge_neg){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*Mlen*N;
+  if (idx >= total) return;
+  if (M[idx]) S[idx] += huge_neg;
+}
+__global__ void add_mask_f32_kernel(float* S, const float* M, int B,int H,int Mlen,int N){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*Mlen*N;
+  if (idx >= total) return;
+  S[idx] += M[idx];
+}
+
+// backward에서 gS를 마스크 위치에 0으로
+__global__ void zero_gs_mask_i8_kernel(float* gS, const int8_t* M, int B,int H,int Mlen,int N){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*Mlen*N;
+  if (idx >= total) return;
+  if (M[idx]) gS[idx] = 0.f;
+}
+__global__ void zero_gs_mask_i32_kernel(float* gS, const int32_t* M, int B,int H,int Mlen,int N){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*Mlen*N;
+  if (idx >= total) return;
+  if (M[idx]) gS[idx] = 0.f;
+}
+__global__ void zero_gs_mask_f32_kernel(float* gS, const float* M, int B,int H,int Mlen,int N){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = B*H*Mlen*N;
+  if (idx >= total) return;
+  if (M[idx] != 0.0f) gS[idx] = 0.f;
+}
+
 // =============== Forward ===============
 Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
                       const Tensor* mask, Tensor& Y,
@@ -93,9 +133,6 @@ Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
   if (K.desc.shape[0]!=B || K.desc.shape[1]!=H || K.desc.shape[3]!=D) return Status::ShapeMismatch;
   if (V.desc.shape[0]!=B || V.desc.shape[1]!=H || V.desc.shape[2]!=N || V.desc.shape[3]!=D) return Status::ShapeMismatch;
   if (Y.desc.shape[0]!=B || Y.desc.shape[1]!=H || Y.desc.shape[2]!=M  || Y.desc.shape[3]!=D) return Status::ShapeMismatch;
-
-  // 현재 외부 mask 미지원(필요 시 softmax 전 주입)
-  if (mask) return Status::Invalid;
 
   // workspace
   size_t nScores = (size_t)B*H*M*N;
@@ -117,13 +154,13 @@ Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
   Tensor S4{ dS, {DType::F32, Layout::RowMajor, {B,H,M,N}, {H*M*N, M*N, N, 1}}, Device::CUDA, Q.device_index };
   Tensor P4{ dP, {DType::F32, Layout::RowMajor, {B,H,M,N}, {H*M*N, M*N, N, 1}}, Device::CUDA, Q.device_index };
 
+  // ---- Step 1: S = Q @ K^T ----
   dim3 blk(32, 8), grdKT((N + blk.x - 1)/blk.x, (D + blk.y - 1)/blk.y);
 
   for (int b=0;b<B;++b){
     for (int h=0; h<H; ++h){
       Tensor Q2 = slice2d(Q, b,h,M,D);
       Tensor K2 = slice2d(K, b,h,N,D);
-      Tensor V2 = slice2d(V, b,h,N,D);
 
       // K(N,D) -> Kt(D,N)
       const float* Kptr = static_cast<const float*>(K2.data);
@@ -137,20 +174,79 @@ Status SDPACudaLaunch(const Tensor& Q, const Tensor& K, const Tensor& V,
       Tensor S2 = slice2d(S4, b,h,M,N);
       if (ops::gemm_run(Q2, Kt, nullptr, S2, g, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
 
-      // P = softmax(scale * S)
-      SoftmaxAttrs sa{}; sa.scale=scale; sa.log=false;
-      Tensor P2 = slice2d(P4, b,h,M,N);
-      if (ops::softmax_run(S2, /*mask*/nullptr, P2, sa, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+      // scale: S *= scale
+      long long n = (long long)M*(long long)N; int BS=256, GRID=(int)((n+BS-1)/BS);
+      scale_kernel<<<GRID,BS,0,s>>>((float*)S2.data, n, scale);
+      if (cudaPeekAtLastError()!=cudaSuccess){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+    }
+  }
 
-      // (option) dropout on P
-      if (attrs.dropout_p > 0.f){
-        DropoutAttrs da{}; da.p=attrs.dropout_p; da.scale_in_train=attrs.scale_in_train; da.seed=attrs.seed;
-        if (ops::dropout_run(P2, P2, /*mask*/nullptr, da, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+  // ---- Step 2: causal mask ----
+  if (attrs.causal){
+    int BS = 256;
+    size_t total = (size_t)B * H * M * N;
+    int GRID = (int)((total + BS - 1) / BS);
+    causal_mask_add_kernel<<<GRID, BS, 0, s>>>(dS, B, H, M, N, -1e9f);
+    if (cudaPeekAtLastError()!=cudaSuccess){
+      cudaFree(dKt); cudaFree(dS); cudaFree(dP);
+      return Status::RuntimeError;
+    }
+  }
+
+  // ---- Step 2.5: external mask ----
+  if (mask) {
+    if (mask->desc.shape.size()!=4 ||
+        (int)mask->desc.shape[0]!=B || (int)mask->desc.shape[1]!=1 ||
+        (int)mask->desc.shape[2]!=M || (int)mask->desc.shape[3]!=N) {
+      cudaFree(dKt); cudaFree(dS); cudaFree(dP);
+      return Status::ShapeMismatch;
+    }
+
+    int BS = 256;
+    size_t total = (size_t)B * H * M * N;
+    int GRID = (int)((total + BS - 1) / BS);
+
+    switch (mask->desc.dtype) {
+      case DType::I8:
+        add_mask_i8_kernel<<<GRID, BS, 0, s>>>(dS, (const int8_t*)mask->data, B, H, M, N, -1e9f);
+        break;
+      case DType::I32:
+        add_mask_i32_kernel<<<GRID, BS, 0, s>>>(dS, (const int32_t*)mask->data, B, H, M, N, -1e9f);
+        break;
+      case DType::F32:
+        add_mask_f32_kernel<<<GRID, BS, 0, s>>>(dS, (const float*)mask->data, B, H, M, N);
+        break;
+      default:
+        cudaFree(dKt); cudaFree(dS); cudaFree(dP);
+        return Status::Invalid;
+    }
+    if (cudaPeekAtLastError()!=cudaSuccess){
+      cudaFree(dKt); cudaFree(dS); cudaFree(dP);
+      return Status::RuntimeError;
+    }
+  }
+
+  // ---- Step 3/4: P = softmax(S) [+ dropout] ----
+  {
+    SoftmaxAttrs sa{}; sa.scale=1.f; sa.log=false;
+    for (int b=0; b<B; ++b){
+      for (int h=0; h<H; ++h){
+        Tensor S2{ (char*)dS + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                   {DType::F32, Layout::RowMajor, {M,N}, {N,1}}, Device::CUDA, Q.device_index };
+        Tensor P2{ (char*)dP + ((size_t)((((size_t)b*H+h)*M)*N))*sizeof(float),
+                   {DType::F32, Layout::RowMajor, {M,N}, {N,1}}, Device::CUDA, Q.device_index };
+        if (ops::softmax_run(S2, /*mask*/nullptr, P2, sa, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+
+        if (attrs.dropout_p > 0.f){
+          DropoutAttrs da{}; da.p=attrs.dropout_p; da.scale_in_train=attrs.scale_in_train; da.seed=attrs.seed;
+          if (ops::dropout_run(P2, P2, /*mask*/nullptr, da, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
+        }
+
+        // ---- Step 5: Y = P @ V ----
+        Tensor V2 = slice2d(V, b,h,N,D);
+        Tensor Y2 = slice2d(Y, b,h,M,D);
+        if (ops::gemm_run(P2, V2, nullptr, Y2, g, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
       }
-
-      // Y = P @ V
-      Tensor Y2 = slice2d(Y, b,h,M,D);
-      if (ops::gemm_run(P2, V2, nullptr, Y2, g, stream)!=0){ cudaFree(dKt); cudaFree(dS); cudaFree(dP); return Status::RuntimeError; }
     }
   }
 
@@ -170,6 +266,7 @@ static inline ai::Status RTERR(const char* tag, cudaError_t err = cudaSuccess) {
 
 ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, const ai::Tensor& V,
                                   const ai::Tensor& dY,
+                                  const ai::Tensor* mask, 
                                   ai::Tensor* dQ, ai::Tensor* dK, ai::Tensor* dV,
                                   const ai::SDPAAttrs& a, ai::StreamHandle stream)
 {
@@ -293,8 +390,6 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
 
   // 4) dV = P^T @ dY
   if (dV){
-    // 전치용 임시 버퍼: (D×M)와 (D×N) 중 큰 쪽을 확보해도 되고,
-    // 간단히 매 반복마다 (D×M)만큼 잡아도 됩니다.
     float* dYt_buf = nullptr;
     if (cudaMalloc(&dYt_buf, sizeof(float) * (size_t)D * (size_t)M) != cudaSuccess){
       cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
@@ -310,7 +405,7 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
         ai::Tensor tdV{ (char*)dV->data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
                         {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, dV->device_index };
 
-        // (M×D) -> (D×M) 실제 전치
+        // (M×D) -> (D×M)
         {
           dim3 blk(32,8);
           dim3 grd((D + blk.x - 1)/blk.x, (M + blk.y - 1)/blk.y);
@@ -347,8 +442,7 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
     cudaFree(dYt_buf);
   }
 
-
-  // 5) gP = dY @ V^T  (M×D) @ (N×D)^T = (M×N)
+  // 5) gP = dY @ V^T
   for (int b=0; b<B; ++b){
     for (int h=0; h<H; ++h){
       ai::Tensor tdY{ (char*)dY.data + ((size_t)((((size_t)b*H+h)*M)*D))*sizeof(float),
@@ -408,6 +502,35 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
     }
   }
 
+    // 7.5) external mask ⇒ gS = 0 on masked positions
+  if (mask) {
+    if (mask->desc.shape.size()!=4 ||
+        (int)mask->desc.shape[0]!=B || (int)mask->desc.shape[1]!=1 ||
+        (int)mask->desc.shape[2]!=M || (int)mask->desc.shape[3]!=N) {
+      cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+      return RTERR("mask shape mismatch (bwd)");
+    }
+    int BS=256, GRID=(int)(((size_t)B*H*M*N + BS - 1)/BS);
+    switch (mask->desc.dtype) {
+      case DType::I8:
+        zero_gs_mask_i8_kernel<<<GRID,BS,0,s>>>(dgS, (const int8_t*)mask->data, B,H,M,N);
+        break;
+      case DType::I32:
+        zero_gs_mask_i32_kernel<<<GRID,BS,0,s>>>(dgS, (const int32_t*)mask->data, B,H,M,N);
+        break;
+      case DType::F32:
+        zero_gs_mask_f32_kernel<<<GRID,BS,0,s>>>(dgS, (const float*)mask->data, B,H,M,N);
+        break;
+      default:
+        cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+        return RTERR("mask dtype invalid (bwd)");
+    }
+    if (cudaPeekAtLastError()!=cudaSuccess){
+      cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
+      return RTERR("zero_gs_mask_*_kernel", cudaGetLastError());
+    }
+  }
+
   // 8) dQ = scale * (gS @ K)
   if (dQ){
     for (int b=0; b<B; ++b){
@@ -432,8 +555,8 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
     }
   }
 
+  // 9) dK = scale * (Q^T @ gS)^T
   if (dK){
-    // (D×M) 전치를 담을 버퍼
     float* Qt_buf = nullptr;
     if (cudaMalloc(&Qt_buf, sizeof(float) * (size_t)D * (size_t)M) != cudaSuccess){
       cudaFree(dKt); cudaFree(dS); cudaFree(dP); cudaFree(dgP); cudaFree(dgS);
@@ -449,7 +572,7 @@ ai::Status SDPACudaBackwardLaunch(const ai::Tensor& Q, const ai::Tensor& K, cons
         ai::Tensor tdK{ (char*)dK->data + ((size_t)((((size_t)b*H+h)*N)*D))*sizeof(float),
                         {ai::DType::F32, ai::Layout::RowMajor, {N,D}, {D,1}}, ai::Device::CUDA, dK->device_index };
 
-        // Q(M×D) -> Q^T(D×M) 실제 전치
+        // Q(M×D) -> Q^T(D×M)
         {
           dim3 blk(32,8);
           dim3 grd((D + blk.x - 1)/blk.x, (M + blk.y - 1)/blk.y);

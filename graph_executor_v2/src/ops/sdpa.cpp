@@ -28,7 +28,8 @@ int sdpa_backward_run(const Tensor& Q, const Tensor& K, const Tensor& V,
                       const Tensor& dY,
                       Tensor* dQ, Tensor* dK, Tensor* dV,
                       const ai::SDPAAttrs& attrs,
-                      StreamHandle stream)
+                      StreamHandle stream,
+                      const Tensor* mask = nullptr)
 {
   if (!is_bhxd_f32_4d_cuda(Q) || !is_bhxd_f32_4d_cuda(K) || !is_bhxd_f32_4d_cuda(V) ||
       !is_bhxd_f32_4d_cuda(dY)) return -2;
@@ -36,7 +37,8 @@ int sdpa_backward_run(const Tensor& Q, const Tensor& K, const Tensor& V,
   // 필요한 그래디언트 포인터가 하나도 없으면 에러 (정책에 따라 조정 가능)
   if (!dQ && !dK && !dV) return -2;
 
-  auto st = ai::SDPACudaBackwardLaunch(Q, K, V, dY, dQ, dK, dV, attrs, stream);
+  
+  auto st = ai::SDPACudaBackwardLaunch(Q, K, V, dY, mask, dQ, dK, dV, attrs, stream);
   return (st == ai::Status::Ok) ? 0 : -7;
 }
 

@@ -6,7 +6,7 @@
 namespace ai {
 
 enum class Device { CPU, CUDA };
-enum class DType  { F32, F16, BF16, I32 };
+enum class DType  { F32, F16, BF16, I32, I8 };
 enum class Layout { RowMajor, ColMajor };
 
 struct TensorDesc {
