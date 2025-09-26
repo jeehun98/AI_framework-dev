@@ -54,12 +54,13 @@
 13174	20306	7805247664345260	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/slice/launcher.cu.obj	dca3ad1a03146d38
 19834	26054	7805117827665283	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/indexing/kernels.cu.obj	a8926f776fba1864
 13371	20217	7805247666306906	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/indexing/launcher.cu.obj	4e417fbb7330e71a
-13402	20865	7805247666622342	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	4c1c28a13ce26573
+26	4461	7805268360495943	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	4c1c28a13ce26573
 21476	28002	7805117844092843	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_backward.cu.obj	472ee0b8dd7a2873
 20930	95913	7805117838630692	CMakeFiles/ai_backend_cuda.dir/kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu.obj	a9859e199da6ce03
 28	122	7805264772966220	ai_backend_cuda.lib	937e1f2c7c96d236
-20865	24166	7805247741252073	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
-24166	28772	7805247774263595	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	a43204f587598969
-26	4461	7805268360495943	CMakeFiles/_core.dir/src/bindings/py_api.cpp.obj	4c1c28a13ce26573
 4462	7564	7805268404858596	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
 7564	11953	7805268435881276	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	a43204f587598969
+36	5695	7805539443215074	CMakeFiles/ai_backend_cuda.dir/backends/cuda/ops/sdpa/launcher.cu.obj	a63a3227e137fda8
+5699	5854	7805539499851881	ai_backend_cuda.lib	937e1f2c7c96d236
+5854	9137	7805539501389880	CMakeFiles/_core.dir/cmake_device_link.obj	63887ae47076aa0a
+9138	13454	7805539534235208	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/_core.cp312-win_amd64.pyd	a43204f587598969
