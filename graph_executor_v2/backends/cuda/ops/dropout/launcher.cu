@@ -20,7 +20,7 @@ static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cuda
 // kernel launchers (통일된 시그니처/이름)
 void dropout_forward_kernel_launcher(const float* X, float* Y, int32_t* mask,
                                      int M_rows, int N_cols, float p, bool scale_in_train,
-                                     uint64_t seed, cudaStream_t s);
+                                     uint64_t seed, uint64_t counter_base, cudaStream_t s);
 void dropout_backward_kernel_launcher(const float* dY, const int32_t* mask, float* dX,
                                       int M_rows, int N_cols, float p, bool scale_in_train,
                                       cudaStream_t s);
@@ -47,7 +47,7 @@ Status DropoutCudaLaunch(const Tensor& X, Tensor& Y, Tensor* mask,
     static_cast<float*>(Y.data),
     mask_ptr,
     M_rows, N_cols,
-    attrs.p, attrs.scale_in_train, attrs.seed,
+    attrs.p, attrs.scale_in_train, attrs.seed, attrs.counter_base,
     to_cuda(stream)
   );
   if (cudaPeekAtLastError()!=cudaSuccess) return Status::RuntimeError;

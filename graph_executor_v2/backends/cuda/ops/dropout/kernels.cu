@@ -1,3 +1,4 @@
+// kernels.cu
 #include <cuda_runtime.h>
 #include <cstdint>
 
@@ -11,7 +12,6 @@ __device__ inline uint64_t splitmix64(uint64_t x){
 }
 
 __device__ inline float u01_from_u64(uint64_t s){
-  // 24bit mantissa로 float 변환
   const uint32_t r = static_cast<uint32_t>(s >> 40); // 상위 24비트
   return (r + 0.5f) / 16777216.0f; // [0,1)
 }
@@ -19,9 +19,11 @@ __device__ inline float u01_from_u64(uint64_t s){
 template<int BS>
 __global__ void dropout_fwd_kernel(const float* __restrict__ X,
                                    float* __restrict__ Y,
-                                   int32_t* __restrict__ M, // may be null
+                                   int32_t* __restrict__ M,  // may be null
                                    int Mrows, int Ncols,
-                                   float p, float scale, uint64_t seed)
+                                   float p, float scale,
+                                   uint64_t seed,
+                                   uint64_t counter_base)     // NEW
 {
   const int row = blockIdx.x;
   if (row >= Mrows) return;
@@ -30,11 +32,13 @@ __global__ void dropout_fwd_kernel(const float* __restrict__ X,
 
   for (int j = threadIdx.x; j < Ncols; j += stride) {
     const int idx = base + j;
-    // stateless RNG: (seed ^ idx) -> splitmix64 -> uniform
-    float u = u01_from_u64(splitmix64(seed ^ static_cast<uint64_t>(idx)));
-    int32_t m = (u >= p) ? 1 : 0;
+    // stateless RNG: seed ^ (counter_base + idx)
+    const uint64_t gidx = counter_base + static_cast<uint64_t>(idx);
+    const float u = u01_from_u64(splitmix64(seed ^ gidx));
+
+    const int32_t m = (u >= p) ? 1 : 0;
     float y = static_cast<float>(m) * X[idx];
-    if (scale) y *= scale;
+    if (scale) y *= scale;   // scale_in_train ? 1/(1-p) : 1
     Y[idx] = y;
     if (M) M[idx] = m;
   }
@@ -62,30 +66,30 @@ __global__ void dropout_bwd_kernel(const float* __restrict__ dY,
 
 namespace ai {
 
-// kernels.cu 내부 (namespace ai 안)
-
+// Forward launcher: counter_base 파라미터 추가 (필수)
 void dropout_forward_kernel_launcher(const float* X,
                                      float* Y,
-                                     int32_t* mask,      // ← 이름 변경
-                                     int M_rows,         // ← 이름 변경
-                                     int N_cols,         // ← 이름 변경
+                                     int32_t* mask,
+                                     int M_rows,
+                                     int N_cols,
                                      float p,
                                      bool scale_in_train,
                                      uint64_t seed,
+                                     uint64_t counter_base,   // NEW
                                      cudaStream_t s)
 {
   constexpr int BS = 256;
   const float scale = scale_in_train ? ((p < 1.f) ? (1.f / (1.f - p)) : 0.f) : 1.f;
   dim3 grid(M_rows), block(BS);
   dropout_fwd_kernel<BS><<<grid, block, 0, s>>>(
-      X, Y, mask, M_rows, N_cols, p, scale, seed);
+      X, Y, mask, M_rows, N_cols, p, scale, seed, counter_base);
 }
 
 void dropout_backward_kernel_launcher(const float* dY,
-                                      const int32_t* mask, // ← 이름 변경
+                                      const int32_t* mask,
                                       float* dX,
-                                      int M_rows,          // ← 이름 변경
-                                      int N_cols,          // ← 이름 변경
+                                      int M_rows,
+                                      int N_cols,
                                       float p,
                                       bool scale_in_train,
                                       cudaStream_t s)

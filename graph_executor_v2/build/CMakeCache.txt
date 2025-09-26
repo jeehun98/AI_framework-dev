@@ -27,8 +27,8 @@ CMAKE_BUILD_TYPE:STRING=Release
 //No help, variable specified on the command line.
 CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=86
 
-//CUDA compiler
-CMAKE_CUDA_COMPILER:STRING=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/nvcc.exe
+//No help, variable specified on the command line.
+CMAKE_CUDA_COMPILER:UNINITIALIZED=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/nvcc.exe
 
 //Flags used by the CUDA compiler during all build types.
 CMAKE_CUDA_FLAGS:STRING=-D_WINDOWS -Xcompiler=" /EHsc"
@@ -206,7 +206,7 @@ CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=
 CMAKE_VERBOSE_MAKEFILE:BOOL=FALSE
 
 //Path to a file.
-CUDAToolkit_CUPTI_INCLUDE_DIR:PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include/../extras/CUPTI/include
+CUDAToolkit_CUPTI_INCLUDE_DIR:PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/extras/CUPTI/include
 
 //No help, variable specified on the command line.
 CUDAToolkit_ROOT:UNINITIALIZED=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6
@@ -775,6 +775,8 @@ _Python3_INCLUDE_DIR:INTERNAL=C:/Users/owner/AppData/Local/Programs/Python/Pytho
 //Python3 Properties
 _Python3_INTERPRETER_PROPERTIES:INTERNAL=Python;3;12;4;64;<none>;cp312-win_amd64;;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages;C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages
 _Python3_INTERPRETER_SIGNATURE:INTERNAL=b6bda9de962f9b8c80d2529411c46a84
+//Interpreter reason failure
+_Python3_Interpreter_REASON_FAILURE:INTERNAL=
 //Path to a library.
 _Python3_LIBRARY_DEBUG:INTERNAL=_Python3_LIBRARY_DEBUG-NOTFOUND
 //Path to a library.
