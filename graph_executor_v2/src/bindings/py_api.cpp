@@ -3055,7 +3055,8 @@ m.def("sdpa",
 // ===========================
 m.def("sdpa_backward",
   [](py::array q_in, py::array k_in, py::array v_in, py::array dY_in,
-    py::object mask_in, double scale, bool causal)
+    py::object mask_in, double scale, bool causal,
+    double dropout_p, bool scale_in_train, uint64_t seed)
   {
     using namespace ai;
 
@@ -3129,11 +3130,11 @@ m.def("sdpa_backward",
     Tensor tdV{ dVdev, make_bhxd_desc(B,Hh,N,D), Device::CUDA, 0 };
 
     SDPAAttrs attrs{};
-    attrs.scale = (float)scale;
-    attrs.causal = causal;
-    attrs.dropout_p = 0.f;
-    attrs.scale_in_train = true;
-    attrs.seed = 0;
+    attrs.scale          = static_cast<float>(scale);
+    attrs.causal         = causal;
+    attrs.dropout_p      = static_cast<float>(dropout_p);   // ← 전달
+    attrs.scale_in_train = scale_in_train;                  // ← 전달
+    attrs.seed           = seed;                            // ← 전달
 
     // mask: None | [B,1,M,N] (int8/int32/float32)
     const ai::Tensor* pMask = nullptr;
@@ -3165,22 +3166,21 @@ m.def("sdpa_backward",
       if (py::dtype::of<int8_t>().is(mask_any.dtype())) {
         auto Mh = py::array_t<int8_t, py::array::c_style | py::array::forcecast>(mask_in);
         size_t bytesM = (size_t)B * 1 * M * N * sizeof(int8_t);
-        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i8");
-        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i8");
+        checkCudaThrow(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i8");
+        checkCudaThrow(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i8");
         tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::I8), ai::Device::CUDA, 0 };
         pMask = &tMask;
       } else if (py::dtype::of<int32_t>().is(mask_any.dtype())) {
         auto Mh = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(mask_in);
         size_t bytesM = (size_t)B * 1 * M * N * sizeof(int32_t);
-        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i32");
-        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i32");
-        tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::I32), ai::Device::CUDA, 0 };
+        checkCudaThrow(cudaMalloc(&dMask, bytesM), "cudaMalloc mask i32");
+        checkCudaThrow(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask i32");tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::I32), ai::Device::CUDA, 0 };
         pMask = &tMask;
       } else if (py::dtype::of<float>().is(mask_any.dtype())) {
         auto Mh = py::array_t<float, py::array::c_style | py::array::forcecast>(mask_in);
         size_t bytesM = (size_t)B * 1 * M * N * sizeof(float);
-        checkCuda(cudaMalloc(&dMask, bytesM), "cudaMalloc mask f32");
-        checkCuda(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask f32");
+        checkCudaThrow(cudaMalloc(&dMask, bytesM), "cudaMalloc mask f32");
+        checkCudaThrow(cudaMemcpy(dMask, Mh.data(), bytesM, cudaMemcpyHostToDevice), "H2D mask f32");
         tMask = ai::Tensor{ dMask, make_mask_desc(B,M,N, ai::DType::F32), ai::Device::CUDA, 0 };
         pMask = &tMask;
       } else {
@@ -3228,8 +3228,12 @@ m.def("sdpa_backward",
   },
   py::arg("q"), py::arg("k"), py::arg("v"), py::arg("dY"),
   py::arg("mask") = py::none(),
-  py::arg("scale")=0.0, py::arg("causal")=false,
-  "SDPA backward (supports mask like forward: [B,1,M,N])"
+  py::arg("scale") = 0.0,
+  py::arg("causal") = false,
+  py::arg("dropout_p") = 0.0,          // ← 추가
+  py::arg("scale_in_train") = true,    // ← 추가
+  py::arg("seed") = 0,                 // ← 추가
+  "SDPA backward (supports mask like forward: [B,1,M,N], causal, and dropout-bwd)"
 );
 
 
