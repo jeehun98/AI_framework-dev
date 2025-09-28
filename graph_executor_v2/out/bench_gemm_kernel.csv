@@ -1,4 +1,4 @@
 M,K,N,mode,act,bias,avg_s,TFLOPS
-1024,1024,1024,kernel,relu,pern,0.001031,2.084
-2048,2048,1024,kernel,relu,pern,0.003237,2.654
-4096,4096,1024,kernel,relu,pern,0.013031,2.637
+1024,1024,1024,kernel,relu,pern,0.000994,2.161
+2048,2048,1024,kernel,relu,pern,0.003182,2.699
+4096,4096,1024,kernel,relu,pern,0.013271,2.589
