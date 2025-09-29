@@ -1,13 +1,18 @@
-// backends/cuda/ops/gemm/api.hpp
 #pragma once
-#include "ai/tensor.hpp"
-#include "ai/op_schema.hpp"
+
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 
 namespace ai {
-  ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
-                            Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
-  ai::Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
-                              const Tensor& gY, const Tensor& Z,
-                              Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
-                              const GemmAttrs& attrs, StreamHandle stream);
-}
+
+// Forward (현재: f32, RowMajor, no-transpose, alpha=1, beta=0 전제)
+ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
+                          Tensor& Y, const GemmAttrs& attrs, StreamHandle stream);
+
+// Backward (현재: f32, RowMajor, no-transpose 전제)
+ai::Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
+                            const Tensor& gY, const Tensor& Z,
+                            Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
+                            const GemmAttrs& attrs, StreamHandle stream);
+
+} // namespace ai

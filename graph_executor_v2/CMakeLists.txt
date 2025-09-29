@@ -8,13 +8,11 @@ project(graph_executor_v2 LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-# IDE/IntelliSense 정확도 향상을 위해 컴파일 DB 출력
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # CUDA 아키텍처 지정 (예: 80;86;89;90)
 if(NOT CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 86)  # 기본값: Ampere(8.6)
+  set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
 
 option(BUILD_PYTHON "Build Python extension module (_core)" ON)
@@ -30,7 +28,6 @@ find_package(CUDAToolkit REQUIRED)   # CUDA::cudart, CUDA::cublas 등 제공
 # include 경로 변수
 # =========================
 set(PROJECT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
-set(REGEMM_INCLUDE_DIR  ${CMAKE_SOURCE_DIR}/kernels/regemm_epilogue/include)
 
 # =========================
 # ai_core (디스패치/실행기/ops)
@@ -59,13 +56,14 @@ add_library(ai_core STATIC
   src/ops/memory.cpp
   src/ops/upsample2d.cpp
   src/ops/view.cpp
+  # (주의) 여기에는 CUDA 백엔드 등록 파일을 넣지 않습니다.
 )
 
 target_include_directories(ai_core
   PUBLIC
-    ${PROJECT_INCLUDE_DIR}     # graph_executor_v2/include
+    ${PROJECT_INCLUDE_DIR}
   PRIVATE
-    ${CMAKE_SOURCE_DIR}        # graph_executor_v2/ (backends/... 등의 루트 기준 include 허용)
+    ${CMAKE_SOURCE_DIR}
 )
 
 if (MSVC)
@@ -75,10 +73,29 @@ else()
 endif()
 
 # =========================
-# ai_backend_cuda (CUDA 백엔드 + 내부 regemm 커널들)
+# GEMM 커널(Object 라이브러리; 한 번만 컴파일)
+# =========================
+add_library(gemm_kernels_obj OBJECT
+  backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu
+  backends/cuda/ops/gemm/kernels/regemm_backward.cu
+)
+
+set_target_properties(gemm_kernels_obj PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+)
+
+target_include_directories(gemm_kernels_obj
+  PRIVATE
+    backends/cuda/ops/gemm/include     # "regemm/*.h"
+    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_INCLUDE_DIR}
+)
+
+# =========================
+# ai_backend_cuda (CUDA 백엔드 + 모든 CUDA ops)
 # =========================
 add_library(ai_backend_cuda STATIC
-  backends/cuda/register_ops.cpp
+  src/ops/register_ops.cpp           # ← CUDA 백엔드의 op 등록 진입점
   backends/cuda/ops/gemm/launcher.cu
   backends/cuda/ops/gemm/backward.cu
 
@@ -112,40 +129,35 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/reduction/launcher.cu
 
   backends/cuda/ops/concat/launcher.cu
-
   backends/cuda/ops/slice/launcher.cu
-
   backends/cuda/ops/pad/launcher.cu
 
   backends/cuda/ops/memory/launcher.cu
   backends/cuda/ops/memory/kernels.cu
 
   backends/cuda/ops/upsample2d/launcher.cu
-
   backends/cuda/ops/view/launcher.cu
 
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
-  # 내부(regemm_epilogue) 커널
-  kernels/regemm_epilogue/src/regemm_gemm_bias_act.cu
-  kernels/regemm_epilogue/src/regemm_backward.cu
+  $<TARGET_OBJECTS:gemm_kernels_obj>      # ← GEMM 커널 구현 결합 (중복 추가 금지)
 )
 
-# 분리 컴파일(링크 타임 device code 결합 안정화)
+# 분리 컴파일
 set_target_properties(ai_backend_cuda PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
 )
 
 target_include_directories(ai_backend_cuda
   PUBLIC
+    backends/cuda/ops/gemm/include       # regemm/api.h 외부에서 필요 시
     ${PROJECT_INCLUDE_DIR}
-    ${REGEMM_INCLUDE_DIR}
+  
   PRIVATE
-    ${CMAKE_SOURCE_DIR}        # 루트 기준 include 허용
+    ${CMAKE_SOURCE_DIR}
 )
 
-# cuBLAS & cudart 링크
 target_link_libraries(ai_backend_cuda
   PUBLIC
     ai_core
@@ -153,27 +165,20 @@ target_link_libraries(ai_backend_cuda
     CUDA::cublas
 )
 
-# CUDA 컴파일러 옵션
 target_compile_options(ai_backend_cuda PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CMAKE_CUDA_ARCHITECTURES},code=[compute_${CMAKE_CUDA_ARCHITECTURES},sm_${CMAKE_CUDA_ARCHITECTURES}]>
   $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/EHsc>
 )
 
 if (MSVC AND CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
-  # NVCC <=MSVC 콤마 파싱/PDB 옵션 이슈 회피
   set(CMAKE_CUDA_COMPILE_PDB_NAME "")
   set(CMAKE_CUDA_COMPILE_PDB_OUTPUT_DIRECTORY "")
-
-  # CUDA 단계에 붙는 MSVC 옵션은 각각의 -Xcompiler로 전달
   target_compile_options(ai_backend_cuda PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/MD>
     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
     $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-Xcompiler=/O2>
     $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-Xcompiler=/Ob2>
-    # 필요 시만: $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/FS>
   )
-
-  # (선택) Debug/RelWithDebInfo 에서만 PDB 유지
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
       "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>")
 else()
@@ -181,7 +186,7 @@ else()
 endif()
 
 # =========================
-# Python 모듈 (_core) — pybind11
+# Python 모듈 (_core)
 # =========================
 if(BUILD_PYTHON)
   pybind11_add_module(_core MODULE
@@ -192,10 +197,9 @@ if(BUILD_PYTHON)
   target_include_directories(_core
     PRIVATE
       ${PROJECT_INCLUDE_DIR}
-      ${CMAKE_SOURCE_DIR}      # 루트 기준 include 허용
+      ${CMAKE_SOURCE_DIR}
   )
 
-  # 빌드 산출물 위치를 패키지 폴더로 지정하여 바로 import 가능
   set_target_properties(_core PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2"
   )
@@ -208,9 +212,51 @@ if(BUILD_PYTHON)
 endif()
 
 # =========================
+# Python 모듈 (_ops_gemm) — op 전용 바인딩
+# =========================
+# --- 독립 _ops_gemm 전용 타깃 ---
+pybind11_add_module(_ops_gemm MODULE
+  src/bindings/gemm_pybind.cpp
+
+  # GEMM 런처/커널
+  backends/cuda/ops/gemm/launcher.cu
+  backends/cuda/ops/gemm/backward.cu
+  backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu
+  backends/cuda/ops/gemm/kernels/regemm_backward.cu
+)
+
+# 독립 빌드 플래그
+target_compile_definitions(_ops_gemm PRIVATE BUILD_STANDALONE_OPS=1)
+
+# include 경로
+target_include_directories(_ops_gemm PRIVATE
+  ${CMAKE_SOURCE_DIR}  # backends/... 상대 include 허용
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/gemm/include  # regemm headers
+)
+
+# 링크는 CUDA 런타임/BLAS만
+target_link_libraries(_ops_gemm PRIVATE
+  CUDA::cudart
+  CUDA::cublas
+)
+
+set_target_properties(_ops_gemm PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  OUTPUT_NAME "_ops_gemm"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_gemm PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+# =========================
 # 상태 출력
 # =========================
 message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "PROJECT_INCLUDE_DIR: ${PROJECT_INCLUDE_DIR}")
-message(STATUS "REGEMM_INCLUDE_DIR: ${REGEMM_INCLUDE_DIR}")

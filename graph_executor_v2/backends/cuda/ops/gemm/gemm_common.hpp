@@ -1,7 +1,8 @@
 #pragma once
 #include <limits>
-#include "ai/tensor.hpp"
-#include "ai/op_schema.hpp"
+
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 #include "regemm/api.h"
 
 namespace ai::gemm_common {
