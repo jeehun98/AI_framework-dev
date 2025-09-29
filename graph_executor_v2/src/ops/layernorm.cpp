@@ -1,6 +1,6 @@
 // src/ops/layernorm.cpp
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 #include "backends/cuda/ops/layernorm/api.hpp"  // ai::LayerNormAttrs, *_Launch
 
 namespace ai { namespace ops {

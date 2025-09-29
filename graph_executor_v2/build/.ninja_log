@@ -1,8 +1,8 @@
 # ninja log v5
-16	1956	7808240909845105	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	ad7eea289a15bf0f
-28	4105	7808240931165624	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	da23675eda1b582d
-26	86292	7808241752980866	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	d9ddb89a26b82afa
-17	3228	7808242623577316	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/launcher.cu.obj	74422c191552aa1f
-20	3229	7808242623622412	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/backward.cu.obj	f3bbc25c3733a917
-3230	5914	7808242650532431	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	35ce29a14e103ac4
-5916	6987	7808242661061659	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.cp312-win_amd64.pyd	559428038991753f
+18	2313	7808289104998595	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	22bbcc4210c33eb3
+21	3983	7808289121650741	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/launcher.cu.obj	d111dce995034a97
+23	4001	7808289121817394	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/backward.cu.obj	80ec32eca25e25c
+29	4309	7808289124862863	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	4029d4e6bccd02d1
+26	84113	7808289922890594	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	9671d2adb510ec75
+84113	86815	7808289950050291	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	35ce29a14e103ac4
+86817	87908	7808289960793460	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.cp312-win_amd64.pyd	559428038991753f
