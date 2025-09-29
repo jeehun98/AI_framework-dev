@@ -1,147 +1,83 @@
 // backends/cuda/ops/gemm/launcher.cu
-//
-// 역할:
-//  - 상위 ai::Tensor/GemmAttrs를 regemm::GemmBiasActParamsEx로 매핑
-//  - (현재) f32, row-major, 비전치 경로 지원
-//  - Bias 1D 축 판정: Scalar(1) > PerN(len==N) > PerM(len==M)
-//    * M==N인 경우 PerN을 기본으로 우선
-//    * N==1 또는 M==1일 때도 Scalar가 먼저 잡히도록 순서가 중요!
-//
-// 반환: ai::Status (Ok/Invalid/…)
-//  - DeviceMismatch          : 디바이스가 CUDA가 아님
-//  - DtypeMismatch           : dtype(f32) 불일치
-//  - LayoutMismatch          : 레이아웃(row-major) 불일치
-//  - TransposeNotSupported   : transpose 경로 미지원
-//  - ShapeMismatch           : shape 차원/크기 불일치
-//  - StrideMismatch          : leading dim(ld*) 유효성 실패
-//  - Invalid                 : (예) int32 범위 초과 등 기타 잘못된 인자
-//
-// 주의:
-//  - stream은 상위에서 void*로 전달되며 여기서 cudaStream_t로 재해석.
-//  - regemm EX 파라미터는 Z-stash도 지원하지만, 현재 save_preact=0으로 비활성.
-//
-
 #include <cuda_runtime.h>
 #include <cstring>
 #include <stdexcept>
 #include <limits>
 
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
-#include "ai/op_schema.hpp"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#include "backends/cuda/ops/gemm/gemm_common.hpp"
+#include "backends/cuda/ops/gemm/api.hpp"
 
 #include "regemm/api.h"
 
+
 namespace {
 
-// --- 유틸: row-major 2D 텐서의 leading dimension 추론 ---
-// 우선 stride[0]이 있으면 그 값을 사용, 없으면 기본 contiguous로 shape[1].
-inline int64_t infer_ld_rowmajor_2d(const ai::Tensor& t) {
-  if (t.desc.shape.size() != 2) return 0;
-  if (t.desc.stride.size() >= 2) return t.desc.stride[0];
-  return t.desc.shape[1];
-}
+using namespace ai::gemm_common;
 
-// --- ai::ActKind → regemm::ActKind 매핑 ---
-inline regemm::ActKind to_regemm_act(ai::ActKind a) {
-  using A = ai::ActKind;
-  using R = regemm::ActKind;
-  switch (a) {
-    case A::None:      return R::None;
-    case A::ReLU:      return R::ReLU;
-    case A::LeakyReLU: return R::LeakyReLU;
-    case A::GELU:      return R::GELU;
-    case A::Sigmoid:   return R::Sigmoid;
-    case A::Tanh:      return R::Tanh;
-  }
-  return R::None;
-}
+// 기존: infer_ld_rowmajor_2d, to_regemm_act, infer_bias_kind, fits_int32
+// → 위 공용 유틸 사용으로 대체됨
 
-// --- Bias 축 판정 규칙 ---
-//  * 길이 1 ⇒ Scalar (항상 최우선; N==1/M==1 케이스 보호)
-//  * 길이==N ⇒ PerN (M==N 동률인 경우에도 PerN 우선)
-//  * 길이==M ⇒ PerM
-//  * 그 외/2D 이상 ⇒ None (보수적 무시)
 inline regemm::BiasKind infer_bias_kind(const ai::Tensor* Bias, int64_t M, int64_t N) {
-  if (!Bias || !Bias->data) return regemm::BiasKind::None;
-  const auto& d = Bias->desc;
-  if (d.shape.size() != 1) return regemm::BiasKind::None;
-
-  const int64_t len = d.shape[0];
-  if (len == 1) return regemm::BiasKind::Scalar; // ★ scalar 먼저!
-  if (len == N) return regemm::BiasKind::PerN;   // ★ M==N이면 PerN 우선
-  if (len == M) return regemm::BiasKind::PerM;
-  return regemm::BiasKind::None;
+  return infer_bias_kind_1d_lenMN(Bias, M, N);
 }
 
-// --- int64→int32 안전 변환 체크 ---
-// regemm 파라미터는 int32 필드이므로 범위를 초과하면 에러로 처리.
-inline bool fits_int32(int64_t x) {
-  return x >= std::numeric_limits<int>::min() && x <= std::numeric_limits<int>::max();
-}
-
-} // anonymous namespace
+} // anonymous
 
 namespace ai {
 
 ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
                           Tensor& Y, const GemmAttrs& attrs, StreamHandle stream) {
-  // 1) 기본 가드: 디바이스/타입/레이아웃/transpose 지원여부
-  if (!A.is_cuda() || !B.is_cuda() || !Y.is_cuda()) return ai::Status::DeviceMismatch;
-  if (A.desc.dtype != DType::F32 || B.desc.dtype != DType::F32 || Y.desc.dtype != DType::F32) return ai::Status::DtypeMismatch;
-  if (A.desc.layout != Layout::RowMajor || B.desc.layout != Layout::RowMajor || Y.desc.layout != Layout::RowMajor) return ai::Status::LayoutMismatch;
-  if (attrs.trans_a || attrs.trans_b) return ai::Status::TransposeNotSupported; // 현재 비전치만 지원
+  // 1) 기본 가드
+  if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) || !is_cuda_f32_rowmajor(Y))
+    return ai::Status::DeviceMismatch;
+  if (attrs.trans_a || attrs.trans_b) return ai::Status::TransposeNotSupported;
 
-  // 2) shape 검증
-  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 || Y.desc.shape.size()!=2) return ai::Status::ShapeMismatch;
+  // 2) shape
+  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 || Y.desc.shape.size()!=2)
+    return ai::Status::ShapeMismatch;
   const int64_t M = A.desc.shape[0];
   const int64_t K = A.desc.shape[1];
   const int64_t Kb= B.desc.shape[0];
   const int64_t N = B.desc.shape[1];
   if (K!=Kb || Y.desc.shape[0]!=M || Y.desc.shape[1]!=N) return ai::Status::ShapeMismatch;
 
-  // 3) leading dim 추론 및 유효성 체크
+  // 3) leading dims
   const int64_t lda = infer_ld_rowmajor_2d(A);
   const int64_t ldb = infer_ld_rowmajor_2d(B);
   const int64_t ldd = infer_ld_rowmajor_2d(Y);
   if (lda < K || ldb < N || ldd < N) return ai::Status::StrideMismatch;
 
-  // 4) regemm 파라미터의 int32 제한 확인
+  // 4) int32 범위
   if (!fits_int32(M) || !fits_int32(N) || !fits_int32(K) ||
       !fits_int32(lda) || !fits_int32(ldb) || !fits_int32(ldd)) {
     return ai::Status::Invalid;
   }
 
-  // 5) regemm 확장 파라미터 구성
+  // 5) regemm 파라미터
   regemm::GemmBiasActParamsEx p{};
   p.M = static_cast<int>(M);
   p.N = static_cast<int>(N);
   p.K = static_cast<int>(K);
 
-  // A, B, (C 미사용), D
   p.A   = A.data; p.lda = static_cast<int>(lda);
   p.B   = B.data; p.ldb = static_cast<int>(ldb);
-  p.C   = nullptr; p.ldc = 0;          // C는 현재 미사용 (beta=0)
+  p.C   = nullptr; p.ldc = 0;
   p.D   = Y.data; p.ldd = static_cast<int>(ldd);
 
-  // 스케일 (상위에서 alpha/beta 노출 X → alpha=1, beta=0)
   p.alpha = 1.0f;
   p.beta  = 0.0f;
 
-  // Bias 포인터 + 축 판정
   p.bias      = (Bias && Bias->data) ? Bias->data : nullptr;
-  p.bias_kind = infer_bias_kind(Bias, M, N); // ★ 규칙 반영 (Scalar > PerN > PerM)
+  p.bias_kind = infer_bias_kind(Bias, M, N);
 
-  // Activation
   p.act         = to_regemm_act(attrs.act);
   p.leaky_slope = attrs.leaky_slope;
 
-  // Z stash (EX 기능) — 현재 비활성. 오토그래드 연동 시 여기 활성화.
   p.Z           = nullptr;
-  p.ldZ         = 0;    // 0이면 내부에서 ldd로 간주
-  p.save_preact = 0;    // 1이면 pre-activation(Z) 저장
+  p.ldZ         = 0;
+  p.save_preact = 0;
 
-  // 6) 실행 — stream은 void* → cudaStream_t 재해석
   regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
   return ai::Status::Ok;
 }
