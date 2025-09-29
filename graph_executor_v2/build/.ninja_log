@@ -1,8 +1,13 @@
 # ninja log v5
 18	2313	7808289104998595	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	22bbcc4210c33eb3
+34	3190	7808292940161948	CMakeFiles/_ops_dropout.dir/backends/cuda/ops/dropout/kernels.cu.obj	eaa425c49229eed9
 21	3983	7808289121650741	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/launcher.cu.obj	d111dce995034a97
-23	4001	7808289121817394	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/backward.cu.obj	80ec32eca25e25c
 29	4309	7808289124862863	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	4029d4e6bccd02d1
+23	4001	7808289121817394	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/backward.cu.obj	80ec32eca25e25c
 26	84113	7808289922890594	CMakeFiles/_ops_gemm.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	9671d2adb510ec75
 84113	86815	7808289950050291	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	35ce29a14e103ac4
 86817	87908	7808289960793460	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.cp312-win_amd64.pyd	559428038991753f
+31	3454	7808292942823245	CMakeFiles/_ops_dropout.dir/backends/cuda/ops/dropout/launcher.cu.obj	aec28ec50b666204
+26	1602	7808294753021288	CMakeFiles/_ops_dropout.dir/src/bindings/dropout_pybind.cpp.obj	5b06b50d78866317
+1602	3855	7808294771573464	CMakeFiles/_ops_dropout.dir/cmake_device_link.obj	37d6afc86212c623
+3855	4928	7808294786054020	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_dropout.cp312-win_amd64.pyd	db66300a98cda431

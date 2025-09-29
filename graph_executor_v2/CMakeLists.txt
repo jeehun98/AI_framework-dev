@@ -271,6 +271,56 @@ else()
 endif()
 
 # =========================
+# Python 모듈 (_ops_dropout) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_dropout MODULE
+  src/bindings/dropout_pybind.cpp
+
+  # 런처/커널 (이미 분리되어 있다면 필요한 것만)
+  backends/cuda/ops/dropout/launcher.cu
+  backends/cuda/ops/dropout/kernels.cu
+)
+
+# 독립 빌드 플래그 (shim이 얇은 타입 정의를 제공)
+target_compile_definitions(_ops_dropout PRIVATE BUILD_STANDALONE_OPS=1)
+
+# include 경로
+target_include_directories(_ops_dropout PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+)
+
+# 링크는 CUDA 런타임만(필요 시 cublas 생략 가능)
+target_link_libraries(_ops_dropout PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_dropout PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  OUTPUT_NAME "_ops_dropout"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_dropout PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+if (MSVC)
+  target_compile_options(_ops_dropout PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /MD>
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+  )
+  target_compile_definitions(_ops_dropout PRIVATE NOMINMAX)
+else()
+  target_compile_options(_ops_dropout PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
+endif()
+
+
+# =========================
 # 상태 출력
 # =========================
 message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
