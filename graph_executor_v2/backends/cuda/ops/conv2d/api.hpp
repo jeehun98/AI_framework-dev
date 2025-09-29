@@ -1,6 +1,12 @@
 #pragma once
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
+
+// 통합 빌드(코어) vs 독립 빌드(shim) 동시 지원
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/tensor.hpp"
+  #include "ai/dispatch.hpp"
+#endif
 
 namespace ai {
 

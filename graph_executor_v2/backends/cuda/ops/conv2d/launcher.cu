@@ -1,8 +1,17 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include <algorithm>
+
 #include "backends/cuda/ops/conv2d/api.hpp"
-#include "ai/op_schema.hpp"
+// GEMM 백엔드 직접 사용 (상위 디스패치 의존 제거)
+#include "backends/cuda/ops/gemm/api.hpp"
+
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/op_schema.hpp"
+#endif
+
 #include <cassert>
 
 namespace ai {
@@ -206,13 +215,14 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
       s
     );
 
-    // GEMM: [HWo,K] @ [K,Cout] -> [HWo,Cout] into Y_tmp
+    // GEMM: [HWo,K] @ [K,Cout] -> [HWo,Cout] into Y_tmp  (백엔드 GEMM 직접 호출)
     Tensor tA{dCol,  {DType::F32, Layout::RowMajor, {HWo, K},    {K, 1}},     Device::CUDA, 0};
     Tensor tB{W_KC,  {DType::F32, Layout::RowMajor, {K,   Cout}, {Cout, 1}},  Device::CUDA, 0};
     Tensor tY{Y_tmp, {DType::F32, Layout::RowMajor, {HWo, Cout}, {Cout, 1}},  Device::CUDA, 0};
-
-    int rc = ops::gemm_run(tA, tB, /*bias*/nullptr, tY, g, stream);
-    if (rc!=0) { cudaFree(dCol); cudaFree(W_KC); cudaFree(Y_tmp); return Status::RuntimeError; }
+    {
+      ai::Status st = ai::GemmCudaLaunch(tA, tB, /*Bias*/nullptr, tY, g, stream);
+      if (st != ai::Status::Ok) { cudaFree(dCol); cudaFree(W_KC); cudaFree(Y_tmp); return st; }
+    }
 
     // transpose: [HWo, Cout] -> [Cout, HWo] directly into y_n (NCHW contiguous)
     transpose_kernel_launcher(Y_tmp, y_n, /*M=*/HWo, /*N=*/Cout, s);
@@ -342,8 +352,8 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
       Tensor tB{dCol,                     {DType::F32, Layout::RowMajor, {HWo,  K},   {K,   1}}, Device::CUDA, 0};
       Tensor tO{dTmp,                     {DType::F32, Layout::RowMajor, {Cout, K},   {K,   1}}, Device::CUDA, 0};
 
-      int rc = ops::gemm_run(tA, tB, /*bias*/nullptr, tO, g, stream);
-      if (rc!=0) { cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dWpack) cudaFree(dWpack); if (dY_HT) cudaFree(dY_HT); return Status::RuntimeError; }
+      ai::Status st = ai::GemmCudaLaunch(tA, tB, /*Bias*/nullptr, tO, g, stream);
+      if (st != ai::Status::Ok) { cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dWpack) cudaFree(dWpack); if (dY_HT) cudaFree(dY_HT); return st; }
 
       int total = Cout * K;
       dim3 block(256), grid((total + 255)/256);
@@ -359,8 +369,8 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
       Tensor tB{W_CK,  {DType::F32, Layout::RowMajor, {Cout, K},   {K,    1}}, Device::CUDA, 0};
       Tensor tO{dTmp,  {DType::F32, Layout::RowMajor, {HWo, K},    {K,    1}}, Device::CUDA, 0};
 
-      int rc = ops::gemm_run(tA, tB, /*bias*/nullptr, tO, g, stream);
-      if (rc!=0) { cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dWpack) cudaFree(dWpack); if (dY_HT) cudaFree(dY_HT); return Status::RuntimeError; }
+      ai::Status st = ai::GemmCudaLaunch(tA, tB, /*Bias*/nullptr, tO, g, stream);
+      if (st != ai::Status::Ok) { cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dWpack) cudaFree(dWpack); if (dY_HT) cudaFree(dY_HT); return st; }
 
       float* dx_n = static_cast<float*>(dX->data) + (size_t)n*Cin*H*Wd;
       col2im_kernel_launcher(
