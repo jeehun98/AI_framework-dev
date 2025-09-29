@@ -1110,6 +1110,87 @@ build C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_ex
   TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.lib
   TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pdb
 
+# =============================================================================
+# Object build statements for MODULE_LIBRARY target _ops_pool2d
+
+
+#############################################
+# Order-only phony target for _ops_pool2d
+
+build cmake_object_order_depends_target__ops_pool2d: phony || .
+
+build CMakeFiles\_ops_pool2d.dir\src\bindings\pool2d_pybind.cpp.obj: CXX_COMPILER___ops_pool2d_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\pool2d_pybind.cpp || cmake_object_order_depends_target__ops_pool2d
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_pool2d_EXPORTS
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /GL /MP
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  OBJECT_DIR = CMakeFiles\_ops_pool2d.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_pool2d.dir\src\bindings
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pool2d.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pdb
+
+build CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj: CUDA_COMPILER___ops_pool2d_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d\launcher.cu || cmake_object_order_depends_target__ops_pool2d
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_pool2d_EXPORTS
+  DEP_FILE = CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\_ops_pool2d.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pool2d.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pdb
+
+build CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\kernels.cu.obj: CUDA_COMPILER___ops_pool2d_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d\kernels.cu || cmake_object_order_depends_target__ops_pool2d
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_pool2d_EXPORTS
+  DEP_FILE = CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\kernels.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\_ops_pool2d.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pool2d.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pdb
+
+
+# =============================================================================
+# Device Link build statements for MODULE_LIBRARY target _ops_pool2d
+
+
+#############################################
+# Link the shared module CMakeFiles\_ops_pool2d.dir\cmake_device_link.obj
+
+build CMakeFiles\_ops_pool2d.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_pool2d_Release CMakeFiles\_ops_pool2d.dir\src\bindings\pool2d_pybind.cpp.obj CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\kernels.cu.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib
+  LANGUAGE_COMPILE_FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD
+  LINK_FLAGS = -Xcompiler=-LTCG
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
+  OBJECT_DIR = CMakeFiles\_ops_pool2d.dir
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pool2d.dir\
+  TARGET_FILE = CMakeFiles\_ops_pool2d.dir\cmake_device_link.obj
+  TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.lib
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pdb
+
+# =============================================================================
+# Link build statements for MODULE_LIBRARY target _ops_pool2d
+
+
+#############################################
+# Link the shared module C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd
+
+build C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd: CXX_MODULE_LIBRARY_LINKER___ops_pool2d_Release CMakeFiles\_ops_pool2d.dir\src\bindings\pool2d_pybind.cpp.obj CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\kernels.cu.obj CMakeFiles\_ops_pool2d.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib
+  CONFIG = Release
+  LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
+  LINK_FLAGS = /machine:x64 /INCREMENTAL:NO -LTCG
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  C:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
+  OBJECT_DIR = CMakeFiles\_ops_pool2d.dir
+  POST_BUILD = cd .
+  PRE_LINK = cd .
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pool2d.dir\
+  TARGET_FILE = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd
+  TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.lib
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pdb
+
 
 #############################################
 # Utility command for edit_cache
@@ -1157,6 +1238,10 @@ build _ops_pad: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2
 
 build _ops_pad.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
 
+build _ops_pool2d: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd
+
+build _ops_pool2d.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd
+
 build ai_backend_cuda: phony ai_backend_cuda.lib
 
 build ai_core: phony ai_core.lib
@@ -1169,7 +1254,7 @@ build ai_core: phony ai_core.lib
 #############################################
 # Folder: C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build
 
-build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
+build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd
 
 # =============================================================================
 # Built-in targets
