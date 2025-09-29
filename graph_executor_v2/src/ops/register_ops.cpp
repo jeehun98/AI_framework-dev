@@ -1,7 +1,7 @@
 // backends/cuda/register_ops.cpp
 #include <mutex>
-#include "ai/dispatch.hpp"
-#include "ai/op_schema.hpp"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 #include "backends/cuda/ops/gemm/api.hpp"  // ← 직접 원형 선언 대신 헤더로
 
 namespace ai {
