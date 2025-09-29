@@ -1,6 +1,7 @@
 // src/ops/gemm.cpp
-#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-
+#include "ai/tensor.hpp"
+#include "ai/op_schema.hpp"
+#include "ai/dispatch.hpp" 
 
 namespace ai { namespace ops {
 

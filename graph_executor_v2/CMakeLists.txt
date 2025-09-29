@@ -7,12 +7,19 @@ project(graph_executor_v2 LANGUAGES CXX CUDA)
 # =========================
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# CUDA 아키텍처 지정 (예: 80;86;89;90)
+# MSVC 런타임 일관(/MD)
+if (MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+endif()
+
+# CUDA 아키텍처 지정 (예: 86;89;90)
 if (NOT CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 86)  # 필요 시 -D로 오버라이드
+  set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
 
 option(BUILD_PYTHON "Build Python extension module (_core)" ON)
@@ -22,12 +29,31 @@ option(BUILD_PYTHON "Build Python extension module (_core)" ON)
 # =========================
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
-find_package(CUDAToolkit REQUIRED)  # CUDA::cudart, CUDA::cublas 등 제공
+find_package(CUDAToolkit REQUIRED)  # CUDA::cudart, CUDA::cublas 등
 
 # =========================
 # include 경로 변수
 # =========================
 set(PROJECT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+
+# =========================
+# 공통 경고/옵션 헬퍼
+# =========================
+function(apply_win_warnings tgt)
+  if (MSVC)
+    target_compile_options(${tgt} PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc>
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/permissive->
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/EHsc>
+    )
+    target_compile_definitions(${tgt} PRIVATE NOMINMAX)
+  else()
+    target_compile_options(${tgt} PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
+  endif()
+endfunction()
 
 # =========================
 # ai_core (디스패치/실행기/ops)
@@ -56,7 +82,6 @@ add_library(ai_core STATIC
   src/ops/memory.cpp
   src/ops/upsample2d.cpp
   src/ops/view.cpp
-  # (주의) 여기에는 CUDA 백엔드 등록/런처를 넣지 않습니다.
 )
 
 target_include_directories(ai_core
@@ -65,49 +90,54 @@ target_include_directories(ai_core
   PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
-
-if (MSVC)
-  target_compile_options(ai_core PRIVATE
-    /W4           # 경고 레벨
-    /Zc:__cplusplus
-    /bigobj
-    /permissive-
-    /EHsc
-    /MD
-  )
-  target_compile_definitions(ai_core PRIVATE NOMINMAX)
-else()
-  target_compile_options(ai_core PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
-endif()
+apply_win_warnings(ai_core)
 
 # =========================
-# GEMM 커널(Object 라이브러리; 백엔드에서만 결합)
+# GEMM 공용 오브젝트 라이브러리 (소스 공통)
 # =========================
-add_library(gemm_kernels_obj OBJECT
+set(GE2_REGEMM_SOURCES
+  backends/cuda/ops/gemm/launcher.cu
+  backends/cuda/ops/gemm/backward.cu
   backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu
   backends/cuda/ops/gemm/kernels/regemm_backward.cu
 )
 
-set_target_properties(gemm_kernels_obj PROPERTIES
+# (1) 통합 백엔드용: BUILD_STANDALONE_OPS 미정의
+add_library(ge2_regemm_core OBJECT ${GE2_REGEMM_SOURCES})
+set_target_properties(ge2_regemm_core PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
 )
-
-target_include_directories(gemm_kernels_obj
+target_include_directories(ge2_regemm_core
   PRIVATE
-    backends/cuda/ops/gemm/include     # "regemm/*.h"
     ${CMAKE_SOURCE_DIR}
     ${PROJECT_INCLUDE_DIR}
+    backends/cuda/ops/gemm/include     # "regemm/*.h"
 )
+# 통합 경로는 shim이 아니라 진짜 ai 헤더를 사용하므로 전처리 정의 없음
+apply_win_warnings(ge2_regemm_core)
+
+# (2) 독립 모듈용: BUILD_STANDALONE_OPS=1 정의
+add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES})
+set_target_properties(ge2_regemm_standalone PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+)
+target_include_directories(ge2_regemm_standalone
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    backends/cuda/ops/_common/shim     # ai_shim.hpp
+    backends/cuda/ops/gemm/include
+)
+target_compile_definitions(ge2_regemm_standalone PRIVATE BUILD_STANDALONE_OPS=1)
+apply_win_warnings(ge2_regemm_standalone)
 
 # =========================
 # ai_backend_cuda (CUDA 백엔드 + 모든 CUDA ops)
+#  - 통합 백엔드 경로에서는 ge2_regemm_core 객체 재사용
 # =========================
 add_library(ai_backend_cuda STATIC
-  src/ops/register_ops.cpp           # ← CUDA 백엔드의 op 등록 진입점
+  src/ops/register_ops.cpp           # CUDA 백엔드 op 등록
 
-  backends/cuda/ops/gemm/launcher.cu
-  backends/cuda/ops/gemm/backward.cu
-
+  # ---- 각 CUDA ops ----
   backends/cuda/ops/rmsnorm/kernels.cu
   backends/cuda/ops/rmsnorm/launcher.cu
 
@@ -150,39 +180,28 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
-  $<TARGET_OBJECTS:gemm_kernels_obj>      # ← GEMM 커널 구현 결합 (중복 추가 금지)
+  # GEMM 객체(통합용) 결합 — 중복 소스 나열 금지
+  $<TARGET_OBJECTS:ge2_regemm_core>
 )
 
 set_target_properties(ai_backend_cuda PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
 )
-
 target_include_directories(ai_backend_cuda
   PUBLIC
-    backends/cuda/ops/gemm/include       # regemm/api.h 외부에서 필요 시
-    backends/cuda/ops/_common/shim       # ai_shim.hpp (안전망)
+    backends/cuda/ops/gemm/include       # regemm/api.h 외부서 필요 시
     ${PROJECT_INCLUDE_DIR}
   PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
-
 target_link_libraries(ai_backend_cuda
   PUBLIC
     ai_core
     CUDA::cudart
     CUDA::cublas
 )
-
-if (MSVC)
-  target_compile_options(ai_backend_cuda PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /MD>
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
-  )
-  target_compile_definitions(ai_backend_cuda PRIVATE NOMINMAX)
-else()
-  target_compile_options(ai_backend_cuda PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
-endif()
+apply_win_warnings(ai_backend_cuda)
 
 # =========================
 # Python 모듈 (_core)
@@ -192,14 +211,9 @@ if (BUILD_PYTHON)
     src/bindings/py_api.cpp
   )
   target_link_libraries(_core PRIVATE ai_core ai_backend_cuda)
-
-  target_include_directories(_core
-    PRIVATE
-      ${PROJECT_INCLUDE_DIR}
-      ${CMAKE_SOURCE_DIR}
-  )
-
+  target_include_directories(_core PRIVATE ${PROJECT_INCLUDE_DIR} ${CMAKE_SOURCE_DIR})
   set_target_properties(_core PROPERTIES
+    PREFIX "" SUFFIX ".pyd"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2"
   )
   if (WIN32)
@@ -208,117 +222,107 @@ if (BUILD_PYTHON)
       ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2"
     )
   endif()
-
-  if (MSVC)
-    target_compile_options(_core PRIVATE /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /MD)
-    target_compile_definitions(_core PRIVATE NOMINMAX)
-  else()
-    target_compile_options(_core PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
-  endif()
+  apply_win_warnings(_core)
 endif()
 
 # =========================
-# Python 모듈 (_ops_gemm) — op 전용 독립 바인딩
+# Python 모듈 (_ops_gemm) — 독립 바인딩
+#  - ge2_regemm_standalone 객체 재사용
 # =========================
 pybind11_add_module(_ops_gemm MODULE
   src/bindings/gemm_pybind.cpp
-
-  # GEMM 런처/커널
-  backends/cuda/ops/gemm/launcher.cu
-  backends/cuda/ops/gemm/backward.cu
-  backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu
-  backends/cuda/ops/gemm/kernels/regemm_backward.cu
 )
-
-# 독립 빌드 플래그 (shim이 얇은 타입을 제공)
-target_compile_definitions(_ops_gemm PRIVATE BUILD_STANDALONE_OPS=1)
-
-# include 경로
-target_include_directories(_ops_gemm PRIVATE
-  ${CMAKE_SOURCE_DIR}                 # backends/... 상대 include 허용
-  backends/cuda/ops/_common/shim      # ai_shim.hpp
-  backends/cuda/ops/gemm/include      # regemm headers
-)
-
-# 링크는 CUDA 런타임/BLAS만
 target_link_libraries(_ops_gemm PRIVATE
+  $<TARGET_OBJECTS:ge2_regemm_standalone>
   CUDA::cudart
   CUDA::cublas
 )
+target_include_directories(_ops_gemm PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim      # ai_shim.hpp
+  backends/cuda/ops/gemm/include      # regemm headers
+)
+# 모듈 자체에도 shim 경로 사용 신호(선택적): 필요 없지만 맞춰둠
+target_compile_definitions(_ops_gemm PRIVATE BUILD_STANDALONE_OPS=1)
 
 set_target_properties(_ops_gemm PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
-  OUTPUT_NAME "_ops_gemm"
+  PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_gemm PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
-if (MSVC)
-  target_compile_options(_ops_gemm PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /MD>
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
-  )
-  target_compile_definitions(_ops_gemm PRIVATE NOMINMAX)
-else()
-  target_compile_options(_ops_gemm PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
-endif()
+apply_win_warnings(_ops_gemm)
 
 # =========================
-# Python 모듈 (_ops_dropout) — op 전용 독립 바인딩
+# Python 모듈 (_ops_dropout) — 독립 바인딩
 # =========================
 pybind11_add_module(_ops_dropout MODULE
   src/bindings/dropout_pybind.cpp
-
-  # 런처/커널 (이미 분리되어 있다면 필요한 것만)
   backends/cuda/ops/dropout/launcher.cu
   backends/cuda/ops/dropout/kernels.cu
 )
-
-# 독립 빌드 플래그 (shim이 얇은 타입 정의를 제공)
 target_compile_definitions(_ops_dropout PRIVATE BUILD_STANDALONE_OPS=1)
-
-# include 경로
 target_include_directories(_ops_dropout PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
 )
-
-# 링크는 CUDA 런타임만(필요 시 cublas 생략 가능)
-target_link_libraries(_ops_dropout PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_dropout PRIVATE CUDA::cudart)
 set_target_properties(_ops_dropout PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
-  OUTPUT_NAME "_ops_dropout"
+  PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_dropout PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
+apply_win_warnings(_ops_dropout)
 
-if (MSVC)
-  target_compile_options(_ops_dropout PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /MD>
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
+# =========================
+# Python 모듈 (_ops_conv2d) — 독립 바인딩
+#  - conv2d가 im2col+gemm을 쓴다면 ge2_regemm_standalone 재사용
+# =========================
+pybind11_add_module(_ops_conv2d MODULE
+  src/bindings/conv2d_pybind.cpp
+  backends/cuda/ops/conv2d/launcher.cu
+  backends/cuda/ops/conv2d/kernels.cu
+)
+target_compile_definitions(_ops_conv2d PRIVATE BUILD_STANDALONE_OPS=1)
+target_include_directories(_ops_conv2d PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/conv2d
+  backends/cuda/ops/gemm/include
+  backends/cuda/ops/gemm
+)
+target_link_libraries(_ops_conv2d PRIVATE
+  $<TARGET_OBJECTS:ge2_regemm_standalone>  # ← GEMM 재사용
+  CUDA::cudart
+  CUDA::cublas                              # im2col+gemm이라면 필요
+  # CUDA::cudnn                              # cudnn 경로 사용 시
+)
+set_target_properties(_ops_conv2d PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_conv2d PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
-  target_compile_definitions(_ops_dropout PRIVATE NOMINMAX)
-else()
-  target_compile_options(_ops_dropout PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
 endif()
-
+apply_win_warnings(_ops_conv2d)
 
 # =========================
 # 상태 출력
