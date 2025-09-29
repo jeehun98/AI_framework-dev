@@ -325,6 +325,41 @@ endif()
 apply_win_warnings(_ops_conv2d)
 
 # =========================
+# Python 모듈 (_ops_pad) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_pad MODULE
+  src/bindings/pad_pybind.cpp
+  backends/cuda/ops/pad/launcher.cu   # pad은 보통 launcher만 존재 (프로젝트 구조 기준)
+)
+
+target_compile_definitions(_ops_pad PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_pad PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/pad
+)
+
+target_link_libraries(_ops_pad PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_pad PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_pad PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+apply_win_warnings(_ops_pad)
+
+# =========================
 # 상태 출력
 # =========================
 message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")

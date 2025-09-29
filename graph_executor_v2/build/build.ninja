@@ -1040,6 +1040,76 @@ build C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_ex
   TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.lib
   TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pdb
 
+# =============================================================================
+# Object build statements for MODULE_LIBRARY target _ops_pad
+
+
+#############################################
+# Order-only phony target for _ops_pad
+
+build cmake_object_order_depends_target__ops_pad: phony || .
+
+build CMakeFiles\_ops_pad.dir\src\bindings\pad_pybind.cpp.obj: CXX_COMPILER___ops_pad_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\pad_pybind.cpp || cmake_object_order_depends_target__ops_pad
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_pad_EXPORTS
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /GL /MP
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  OBJECT_DIR = CMakeFiles\_ops_pad.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_pad.dir\src\bindings
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pad.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pdb
+
+build CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad\launcher.cu.obj: CUDA_COMPILER___ops_pad_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad\launcher.cu || cmake_object_order_depends_target__ops_pad
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_pad_EXPORTS
+  DEP_FILE = CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad\launcher.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\_ops_pad.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pad.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pdb
+
+
+# =============================================================================
+# Device Link build statements for MODULE_LIBRARY target _ops_pad
+
+
+#############################################
+# Link the shared module CMakeFiles\_ops_pad.dir\cmake_device_link.obj
+
+build CMakeFiles\_ops_pad.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_pad_Release CMakeFiles\_ops_pad.dir\src\bindings\pad_pybind.cpp.obj CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad\launcher.cu.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib
+  LANGUAGE_COMPILE_FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD
+  LINK_FLAGS = -Xcompiler=-LTCG
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
+  OBJECT_DIR = CMakeFiles\_ops_pad.dir
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pad.dir\
+  TARGET_FILE = CMakeFiles\_ops_pad.dir\cmake_device_link.obj
+  TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.lib
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pdb
+
+# =============================================================================
+# Link build statements for MODULE_LIBRARY target _ops_pad
+
+
+#############################################
+# Link the shared module C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
+
+build C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd: CXX_MODULE_LIBRARY_LINKER___ops_pad_Release CMakeFiles\_ops_pad.dir\src\bindings\pad_pybind.cpp.obj CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad\launcher.cu.obj CMakeFiles\_ops_pad.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib
+  CONFIG = Release
+  LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
+  LINK_FLAGS = /machine:x64 /INCREMENTAL:NO -LTCG
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  C:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
+  OBJECT_DIR = CMakeFiles\_ops_pad.dir
+  POST_BUILD = cd .
+  PRE_LINK = cd .
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_pad.dir\
+  TARGET_FILE = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
+  TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.lib
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pdb
+
 
 #############################################
 # Utility command for edit_cache
@@ -1083,6 +1153,10 @@ build _ops_gemm: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v
 
 build _ops_gemm.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd
 
+build _ops_pad: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
+
+build _ops_pad.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
+
 build ai_backend_cuda: phony ai_backend_cuda.lib
 
 build ai_core: phony ai_core.lib
@@ -1095,7 +1169,7 @@ build ai_core: phony ai_core.lib
 #############################################
 # Folder: C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build
 
-build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd
+build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd
 
 # =============================================================================
 # Built-in targets
