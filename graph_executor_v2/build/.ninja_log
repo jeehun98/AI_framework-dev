@@ -1,10 +1,10 @@
-# ninja log v5
-45	1992	7809137365382927	CMakeFiles/_ops_common.dir/src/bindings/ops_common_pybind.cpp.obj	c97074ec65e6e2fc
-48	2996	7809137375552786	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	66c1645b38d17ba5
-1995	4050	7809137385379227	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_common.pyd	d6889d2a3e55296e
-32	5189	7809137397363118	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/launcher.cu.obj	9fe3b2b520d7263b
-37	5206	7809137397519553	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/backward.cu.obj	9546d9b17c9de86d
-42	5589	7809137401354623	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	2e1033fb72827a7d
-39	88758	7809138233031369	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	3804b5d8ff72c642
-88759	91332	7809138258812671	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	e06d19c3f07837e6
-91339	92379	7809138269173054	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.pyd	b674f03d512ce760
+# ninja log v7
+29	3163	7809210052689730	CMakeFiles/_ops_common.dir/src/bindings/ops_common_pybind.cpp.obj	d789487b77dc2aa1
+77	4263	7809210053162533	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	c61fd1e6565e8d7c
+3167	5372	7809210084068934	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_common.pyd	8decf6f6c9a8afc4
+40	6296	7809210052797289	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/launcher.cu.obj	2455942fcd247138
+50	6308	7809210052897683	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/backward.cu.obj	7581677a6058aa00
+68	6811	7809210053077460	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	fb7d8d211d9ccd9d
+59	76080	7809210052987965	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	30a8cc4375f6405e
+76082	79127	7809210813218647	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	e8429273c0ded6
+79127	80427	7809210843659503	C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.pyd	549c7a7ed704a80b
