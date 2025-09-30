@@ -103,17 +103,17 @@ set(GE2_REGEMM_SOURCES
 )
 
 # (1) 통합 백엔드용: BUILD_STANDALONE_OPS 미정의
-add_library(ge2_regemmm_core OBJECT ${GE2_REGEMM_SOURCES}) # typo 방지용? 아래로 수정
-# ↑ 오타 주의: 이름 통일 위해 실제 타깃은 ge2_regemm_core 로 재정의
-set_property(TARGET ge2_regemmm_core PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-add_library(ge2_regemm_core ALIAS ge2_regemmm_core)
-target_include_directories(ge2_regemmm_core
+# *** 오타 수정: ge2_regemmm_core -> ge2_regemm_core (m이 2개) ***
+add_library(ge2_regemm_core OBJECT ${GE2_REGEMM_SOURCES})
+set_property(TARGET ge2_regemm_core PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+# (ALIAS 제거: $<TARGET_OBJECTS:...>에서 ALIAS 사용 불가)
+target_include_directories(ge2_regemm_core
   PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${PROJECT_INCLUDE_DIR}
-    backends/cuda/ops/gemm/include     # "regemm/*.h"
+    backends/cuda/ops/gemm/include
 )
-apply_win_warnings(ge2_regemmm_core)
+apply_win_warnings(ge2_regemm_core)
 
 # (2) 독립 모듈용: BUILD_STANDALONE_OPS=1 정의
 add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES})
@@ -123,7 +123,7 @@ set_target_properties(ge2_regemm_standalone PROPERTIES
 target_include_directories(ge2_regemm_standalone
   PRIVATE
     ${CMAKE_SOURCE_DIR}
-    backends/cuda/ops/_common/shim     # ai_shim.hpp
+    backends/cuda/ops/_common/shim
     backends/cuda/ops/gemm/include
 )
 target_compile_definitions(ge2_regemm_standalone PRIVATE BUILD_STANDALONE_OPS=1)
@@ -138,48 +138,37 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/rmsnorm/kernels.cu
   backends/cuda/ops/rmsnorm/launcher.cu
-
   backends/cuda/ops/layernorm/kernels.cu
   backends/cuda/ops/layernorm/launcher.cu
-
   backends/cuda/ops/softmax/kernels.cu
   backends/cuda/ops/softmax/launcher.cu
-
   backends/cuda/ops/cross_entropy/kernels.cu
   backends/cuda/ops/cross_entropy/launcher.cu
-
   backends/cuda/ops/dropout/kernels.cu
   backends/cuda/ops/dropout/launcher.cu
-
   backends/cuda/ops/conv2d/kernels.cu
   backends/cuda/ops/conv2d/launcher.cu
-
   backends/cuda/ops/pool2d/kernels.cu
   backends/cuda/ops/pool2d/launcher.cu
-
   backends/cuda/ops/sdpa/launcher.cu
-
   backends/cuda/ops/elementwise/kernels.cu
   backends/cuda/ops/elementwise/launcher.cu
-
   backends/cuda/ops/reduction/kernels.cu
   backends/cuda/ops/reduction/launcher.cu
-
   backends/cuda/ops/concat/launcher.cu
   backends/cuda/ops/slice/launcher.cu
   backends/cuda/ops/pad/launcher.cu
-
   backends/cuda/ops/memory/launcher.cu
   backends/cuda/ops/memory/kernels.cu
-
   backends/cuda/ops/upsample2d/launcher.cu
   backends/cuda/ops/view/launcher.cu
-
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
+  # ✅ OBJECT 소스는 "sources" 목록에 포함 (올바른 사용)
   $<TARGET_OBJECTS:ge2_regemm_core>
 )
+
 
 set_target_properties(ai_backend_cuda PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -250,8 +239,12 @@ apply_win_warnings(_ops_common)
 pybind11_add_module(_ops_gemm MODULE
   src/bindings/gemm_pybind.cpp
 )
-target_link_libraries(_ops_gemm PRIVATE
+# ❌ 잘못: target_link_libraries에 $<TARGET_OBJECTS:...> 넣지 않기
+# ✅ 정정: OBJECT 소스는 target_sources 로 포함
+target_sources(_ops_gemm PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
+)
+target_link_libraries(_ops_gemm PRIVATE
   CUDA::cudart
   CUDA::cublas
 )
@@ -274,6 +267,8 @@ if (WIN32)
   )
 endif()
 apply_win_warnings(_ops_gemm)
+
+
 
 # =========================
 # Python 모듈 (_ops_dropout) — 독립 바인딩
@@ -319,8 +314,12 @@ target_include_directories(_ops_conv2d PRIVATE
   backends/cuda/ops/gemm/include
   backends/cuda/ops/gemm
 )
-target_link_libraries(_ops_conv2d PRIVATE
+# ❌ 잘못: target_link_libraries에 $<TARGET_OBJECTS:...> 사용
+# ✅ 정정: target_sources 로 포함
+target_sources(_ops_conv2d PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
+)
+target_link_libraries(_ops_conv2d PRIVATE
   CUDA::cudart
   CUDA::cublas
   # CUDA::cudnn
@@ -338,6 +337,8 @@ if (WIN32)
   )
 endif()
 apply_win_warnings(_ops_conv2d)
+
+
 
 # =========================
 # Python 모듈 (_ops_pad) — op 전용 독립 바인딩

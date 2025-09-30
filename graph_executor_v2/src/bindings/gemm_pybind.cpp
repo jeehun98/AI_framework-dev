@@ -13,6 +13,7 @@
 //   - stream 인자는 void* (cudaStream_t reinterpret_cast)
 //   - Tensor/GemmAttrs를 직접 쓰거나, NumPy 친화 오버로드 사용 가능
 //   - 공용 타입은 graph_executor_v2.ops._ops_common 에서 1회 노출됨
+//   - B안: 여기서 _ops_common의 타입들을 re-export 하여 편의 제공
 
 #include <string>
 #include <stdexcept>
@@ -62,15 +63,27 @@ static ai::ActKind parse_act(const std::string& s) {
 }
 
 PYBIND11_MODULE(_ops_gemm, m) {
-    // 공용 타입(ActKind, GemmAttrs) 등록 모듈 선 import
-    // (CMake에서 add_dependencies(_ops_gemm _ops_common)도 함께 설정)
-    py::module_::import("graph_executor_v2.ops._ops_common");
-
+    m.attr("__package__") = "graph_executor_v2.ops";
     m.doc() = R"(graph_executor_v2 GEMM bindings (regemm epilogue: bias+activation fused)
 - forward/backward: f32, row-major, no-transpose
 - bias broadcasting priority: Scalar > PerN(len==N) > PerM(len==M)
 - Use GemmAttrs directly or forward_ex/backward_ex with Python primitives.
 - NumPy helpers delegate to graph_executor_v2._core.)";
+
+    // ======================================================
+    // 공용 타입 모듈 import + re-export (B안)
+    //  - 여기서 바로 사용할 수 있게 노출 (타입 항등성 유지)
+    // ======================================================
+    py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
+    m.attr("ActKind")       = common.attr("ActKind");
+    m.attr("GemmAttrs")     = common.attr("GemmAttrs");
+    // Tensor 계열 타입/팩토리도 re-export (저수준 경로 사용 편의)
+    m.attr("Device")        = common.attr("Device");
+    m.attr("DType")         = common.attr("DType");
+    m.attr("Layout")        = common.attr("Layout");
+    m.attr("TensorDesc")    = common.attr("TensorDesc");
+    m.attr("Tensor")        = common.attr("Tensor");
+    m.attr("make_tensor_2d")= common.attr("make_tensor_2d");
 
     // =========================
     // 1) 저수준 (ai::Tensor 기반)
@@ -269,7 +282,11 @@ PYBIND11_MODULE(_ops_gemm, m) {
 
     // 메타
     m.attr("__package__") = "graph_executor_v2.ops";
-    m.attr("__all__")     = py::make_tuple(
+    m.attr("__all__") = py::make_tuple(
+        // re-export된 공용 타입들
+        "ActKind", "GemmAttrs",
+        "Device", "DType", "Layout", "TensorDesc", "Tensor", "make_tensor_2d",
+        // 바인딩 함수들
         "forward", "backward",
         "forward_ex", "backward_ex",
         "forward_numpy", "backward_numpy"
