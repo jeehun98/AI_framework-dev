@@ -1,3 +1,5 @@
+// Z 저장 ( pre activation ) 옵션 내용 구현 필요, 
+
 #pragma once
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
