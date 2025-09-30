@@ -103,18 +103,17 @@ set(GE2_REGEMM_SOURCES
 )
 
 # (1) 통합 백엔드용: BUILD_STANDALONE_OPS 미정의
-add_library(ge2_regemm_core OBJECT ${GE2_REGEMM_SOURCES})
-set_target_properties(ge2_regemm_core PROPERTIES
-  CUDA_SEPARABLE_COMPILATION ON
-)
-target_include_directories(ge2_regemm_core
+add_library(ge2_regemmm_core OBJECT ${GE2_REGEMM_SOURCES}) # typo 방지용? 아래로 수정
+# ↑ 오타 주의: 이름 통일 위해 실제 타깃은 ge2_regemm_core 로 재정의
+set_property(TARGET ge2_regemmm_core PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+add_library(ge2_regemm_core ALIAS ge2_regemmm_core)
+target_include_directories(ge2_regemmm_core
   PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${PROJECT_INCLUDE_DIR}
     backends/cuda/ops/gemm/include     # "regemm/*.h"
 )
-# 통합 경로는 shim이 아니라 진짜 ai 헤더를 사용하므로 전처리 정의 없음
-apply_win_warnings(ge2_regemm_core)
+apply_win_warnings(ge2_regemmm_core)
 
 # (2) 독립 모듈용: BUILD_STANDALONE_OPS=1 정의
 add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES})
@@ -135,9 +134,8 @@ apply_win_warnings(ge2_regemm_standalone)
 #  - 통합 백엔드 경로에서는 ge2_regemm_core 객체 재사용
 # =========================
 add_library(ai_backend_cuda STATIC
-  src/ops/register_ops.cpp           # CUDA 백엔드 op 등록
+  src/ops/register_ops.cpp
 
-  # ---- 각 CUDA ops ----
   backends/cuda/ops/rmsnorm/kernels.cu
   backends/cuda/ops/rmsnorm/launcher.cu
 
@@ -180,7 +178,6 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
-  # GEMM 객체(통합용) 결합 — 중복 소스 나열 금지
   $<TARGET_OBJECTS:ge2_regemm_core>
 )
 
@@ -190,7 +187,7 @@ set_target_properties(ai_backend_cuda PROPERTIES
 )
 target_include_directories(ai_backend_cuda
   PUBLIC
-    backends/cuda/ops/gemm/include       # regemm/api.h 외부서 필요 시
+    backends/cuda/ops/gemm/include
     ${PROJECT_INCLUDE_DIR}
   PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -226,8 +223,29 @@ if (BUILD_PYTHON)
 endif()
 
 # =========================
+# Python 모듈 (_ops_common) — 공용 타입 바인딩
+# =========================
+pybind11_add_module(_ops_common MODULE
+  src/bindings/ops_common_pybind.cpp
+)
+target_include_directories(_ops_common PRIVATE
+  ${PROJECT_INCLUDE_DIR}
+  ${CMAKE_SOURCE_DIR}
+)
+set_target_properties(_ops_common PROPERTIES
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_common PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+apply_win_warnings(_ops_common)
+
+# =========================
 # Python 모듈 (_ops_gemm) — 독립 바인딩
-#  - ge2_regemm_standalone 객체 재사용
 # =========================
 pybind11_add_module(_ops_gemm MODULE
   src/bindings/gemm_pybind.cpp
@@ -239,12 +257,10 @@ target_link_libraries(_ops_gemm PRIVATE
 )
 target_include_directories(_ops_gemm PRIVATE
   ${CMAKE_SOURCE_DIR}
-  backends/cuda/ops/_common/shim      # ai_shim.hpp
-  backends/cuda/ops/gemm/include      # regemm headers
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/gemm/include
 )
-# 모듈 자체에도 shim 경로 사용 신호(선택적): 필요 없지만 맞춰둠
 target_compile_definitions(_ops_gemm PRIVATE BUILD_STANDALONE_OPS=1)
-
 set_target_properties(_ops_gemm PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -289,7 +305,6 @@ apply_win_warnings(_ops_dropout)
 
 # =========================
 # Python 모듈 (_ops_conv2d) — 독립 바인딩
-#  - conv2d가 im2col+gemm을 쓴다면 ge2_regemm_standalone 재사용
 # =========================
 pybind11_add_module(_ops_conv2d MODULE
   src/bindings/conv2d_pybind.cpp
@@ -305,10 +320,10 @@ target_include_directories(_ops_conv2d PRIVATE
   backends/cuda/ops/gemm
 )
 target_link_libraries(_ops_conv2d PRIVATE
-  $<TARGET_OBJECTS:ge2_regemm_standalone>  # ← GEMM 재사용
+  $<TARGET_OBJECTS:ge2_regemm_standalone>
   CUDA::cudart
-  CUDA::cublas                              # im2col+gemm이라면 필요
-  # CUDA::cudnn                              # cudnn 경로 사용 시
+  CUDA::cublas
+  # CUDA::cudnn
 )
 set_target_properties(_ops_conv2d PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -329,28 +344,23 @@ apply_win_warnings(_ops_conv2d)
 # =========================
 pybind11_add_module(_ops_pad MODULE
   src/bindings/pad_pybind.cpp
-  backends/cuda/ops/pad/launcher.cu   # pad은 보통 launcher만 존재 (프로젝트 구조 기준)
+  backends/cuda/ops/pad/launcher.cu
 )
-
 target_compile_definitions(_ops_pad PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_pad PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/pad
 )
-
 target_link_libraries(_ops_pad PRIVATE
   CUDA::cudart
 )
-
 set_target_properties(_ops_pad PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_pad PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
@@ -367,36 +377,38 @@ pybind11_add_module(_ops_pool2d MODULE
   backends/cuda/ops/pool2d/launcher.cu
   backends/cuda/ops/pool2d/kernels.cu
 )
-
 target_compile_definitions(_ops_pool2d PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_pool2d PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/pool2d
 )
-
 target_link_libraries(_ops_pool2d PRIVATE
   CUDA::cudart
 )
-
 set_target_properties(_ops_pool2d PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_pool2d PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
-# (선택) 공통 경고/옵션 헬퍼가 있다면 다음 한 줄로 대체
 apply_win_warnings(_ops_pool2d)
 
+# =========================
+# _ops_common 선행 의존성 일괄 추가 (안전 가드)
+# =========================
+set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout)
+foreach(mod IN LISTS _ops_modules)
+  if (TARGET ${mod} AND TARGET _ops_common)
+    add_dependencies(${mod} _ops_common)
+  endif()
+endforeach()
 
 # =========================
 # 상태 출력
