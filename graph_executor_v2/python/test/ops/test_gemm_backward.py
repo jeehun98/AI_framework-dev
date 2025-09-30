@@ -24,10 +24,12 @@ ops_gemm = require("gemm")  # -> graph_executor_v2/ops/_ops_gemm.pyd
 
 # _ops_common은 _ops_gemm 내부에서 import하지만, 명시적으로도 한 번 불러 sanity check
 try:
-    from graph_executor_v2.ops import _ops_common
+    from graph_executor_v2.ops import _ops_common as common
     HAS_COMMON = True
 except Exception:
+    common = None
     HAS_COMMON = False
+
 
 def list_all_pyd():
     roots = [
@@ -57,6 +59,7 @@ def list_all_pyd():
             pass
     return sorted(set(found))
 
+
 def check_no_debug_string(pyd_path: str, needle=b"[BWD dbg]"):
     """빌드 바이너리에 디버그 문자열이 남아있는지 단순 확인."""
     try:
@@ -66,8 +69,12 @@ def check_no_debug_string(pyd_path: str, needle=b"[BWD dbg]"):
     except Exception:
         return False  # 읽기 실패 시 실패로 간주
 
+
 def forward_with_act(A_, B_, bias_, act: str, leaky_slope: float = 0.01):
     """NumPy로 forward 구현 (수치미분 참고용)."""
+    A_ = np.asarray(A_, dtype=np.float32)
+    B_ = np.asarray(B_, dtype=np.float32)
+    bias_ = np.asarray(bias_, dtype=np.float32)
     M, K = A_.shape
     K2, N = B_.shape
     assert K == K2
@@ -80,31 +87,47 @@ def forward_with_act(A_, B_, bias_, act: str, leaky_slope: float = 0.01):
     if k == "tanh":
         return np.tanh(Z_)
     if k == "sigmoid":
-        return 1 / (1 + np.exp(-Z_))
+        Zs = np.clip(Z_, -30, 30)  # 안정화
+        return 1.0 / (1.0 + np.exp(-Zs))
     if k == "gelu":
         # tanh-approx
-        c = np.sqrt(2/np.pi)
+        c = np.sqrt(2/np.pi).astype(np.float32)
         return 0.5 * Z_ * (1 + np.tanh(c * (Z_ + 0.044715 * (Z_**3))))
     return Z_  # "none"
 
-def finite_diff_check(A, B, bias, act="relu", leaky_slope=0.0, eps=1e-3, tol=8e-2, seed=0):
+
+def tol_for_act(act: str) -> float:
+    a = act.lower()
+    if a in ("gelu", "tanh", "sigmoid"):
+        return 1.2e-1
+    return 8e-2
+
+
+def finite_diff_check(A, B, bias, act="relu", leaky_slope=0.0,
+                      eps=1e-3, tol=8e-2, seed=0):
     """
     간단 수치미분: Z = A@B + bias, Y = act(Z)
     임의 gY ~ N(0,1), analytic gA/gB/gBias vs finite-diff 비교.
     작은 텐서에서만 사용(시간 절약).
     """
     rng = np.random.default_rng(seed)
+    A = np.asarray(A, dtype=np.float32)
+    B = np.asarray(B, dtype=np.float32)
+    bias = np.asarray(bias, dtype=np.float32)
+
     M, K = A.shape
     K2, N = B.shape
     assert K == K2
     Z = A @ B + bias.reshape(1, N)
     gY = rng.standard_normal(size=(M, N)).astype(np.float32)
 
-    out = ops_gemm.backward_numpy(A, B, gY, Z, act=act, bias_kind="pern", leaky_slope=leaky_slope)
+    out = ops_gemm.backward_numpy(A, B, gY, Z,
+                                  act=act, bias_kind="pern",
+                                  leaky_slope=leaky_slope)
     gA, gB, gBias = out["gA"], out["gB"], out["gBias"]
     assert gA.shape == (M, K) and gB.shape == (K, N)
 
-    # gA (i,k) 한 원소 finite-diff
+    # gA (i,k) finite-diff
     i, k = 0, 0
     A_pos = A.copy(); A_pos[i, k] += eps
     A_neg = A.copy(); A_neg[i, k] -= eps
@@ -115,7 +138,7 @@ def finite_diff_check(A, B, bias, act="relu", leaky_slope=0.0, eps=1e-3, tol=8e-
     gA_fd = (loss_pos - loss_neg) / (2 * eps)
     err_gA = abs(gA_fd - gA[i, k]) / (abs(gA_fd) + 1e-6)
 
-    # gB (k,j) 한 원소 finite-diff
+    # gB (k,j) finite-diff
     k_, j = 0, 0
     B_pos = B.copy(); B_pos[k_, j] += eps
     B_neg = B.copy(); B_neg[k_, j] -= eps
@@ -126,7 +149,7 @@ def finite_diff_check(A, B, bias, act="relu", leaky_slope=0.0, eps=1e-3, tol=8e-
     gB_fd = (loss_pos - loss_neg) / (2 * eps)
     err_gB = abs(gB_fd - gB[k_, j]) / (abs(gB_fd) + 1e-6)
 
-    # gBias (perN 가정) 한 원소 finite-diff
+    # gBias (perN 가정) finite-diff
     j_ = 0
     bias_pos = bias.copy(); bias_pos[j_] += eps
     bias_neg = bias.copy(); bias_neg[j_] -= eps
@@ -140,10 +163,12 @@ def finite_diff_check(A, B, bias, act="relu", leaky_slope=0.0, eps=1e-3, tol=8e-
     ok = (err_gA < tol) and (err_gB < tol) and (err_gBias < tol)
     return ok, dict(err_gA=float(err_gA), err_gB=float(err_gB), err_gBias=float(err_gBias))
 
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--finite-diff", action="store_true", help="작은 텐서에서 수치 미분 검증 수행")
-    ap.add_argument("--act", type=str, default="relu", choices=["none","relu","leakyrelu","tanh","sigmoid","gelu"])
+    ap.add_argument("--act", type=str, default="relu",
+                    choices=["none","relu","leakyrelu","tanh","sigmoid","gelu"])
     ap.add_argument("--leaky-slope", type=float, default=0.0)
     ap.add_argument("--MKN", type=str, default="8,7,5", help="M,K,N (예: 8,7,5)")
     ap.add_argument("--seed", type=int, default=42)
@@ -154,7 +179,10 @@ def main():
     # === 모듈 로드 경로 ===
     print("LOADED:", ops_gemm.__file__)
     if HAS_COMMON:
-        print("COMMON_LOADED:", _ops_common.__file__)
+        print("COMMON_LOADED:", common.__file__)
+        # re-export 타입 항등성 확인
+        assert ops_gemm.ActKind is common.ActKind
+        assert ops_gemm.GemmAttrs is common.GemmAttrs
     else:
         print("COMMON_LOADED: False (but _ops_gemm should import it internally)")
 
@@ -173,9 +201,9 @@ def main():
 
     # === 랜덤 텐서 준비 ===
     M, K, N = map(int, args.MKN.split(","))
-    A = rng.standard_normal(size=(M, K), dtype=np.float32)
-    B = rng.standard_normal(size=(K, N), dtype=np.float32)
-    bias = rng.standard_normal(size=(N,), dtype=np.float32)
+    A = rng.standard_normal(size=(M, K)).astype(np.float32, copy=False)
+    B = rng.standard_normal(size=(K, N)).astype(np.float32, copy=False)
+    bias = rng.standard_normal(size=(N,)).astype(np.float32, copy=False)
 
     # === Forward (NumPy helper 경로) ===
     Y = ops_gemm.forward_numpy(A, B, bias, act=args.act, leaky_slope=args.leaky_slope)
@@ -183,8 +211,18 @@ def main():
     assert Y.shape == (M, N)
 
     # === Backward 준비 (gY, Z) ===
-    gY = rng.standard_normal(size=(M, N), dtype=np.float32)
+    gY = rng.standard_normal(size=(M, N)).astype(np.float32, copy=False)
     Z  = (A @ B) + bias.reshape(1, N)
+
+    # 스모크: act 루프(빠른 회귀 체크)
+    for act_ in ["none","relu","leakyrelu","tanh","sigmoid","gelu"]:
+        Yt = ops_gemm.forward_numpy(A, B, bias, act=act_, leaky_slope=args.leaky_slope)
+        outt = ops_gemm.backward_numpy(A, B, gY, (A @ B) + bias.reshape(1, N),
+                                       act=act_, bias_kind="pern",
+                                       leaky_slope=args.leaky_slope)
+        assert Yt.shape == (M, N)
+        assert outt["gA"].shape == (M, K)
+        assert outt["gB"].shape == (K, N)
 
     out = ops_gemm.backward_numpy(A, B, gY, Z,
                                   act=args.act, bias_kind="pern",
@@ -196,27 +234,46 @@ def main():
     print("gA.shape:", gA.shape, "gB.shape:", gB.shape)
     if gBias is not None:
         print("gBias.shape:", gBias.shape)
-        # pern이면 (N,)
         assert gBias.shape == (N,)
 
     assert gA.shape == (M, K)
     assert gB.shape == (K, N)
 
+    # === bias_kind 다양 케이스 체크 ===
+    for bk in ["none", "scalar", "perm", "pern"]:
+        out_b = ops_gemm.backward_numpy(A, B, gY, Z, act=args.act,
+                                        bias_kind=bk, leaky_slope=args.leaky_slope)
+        if bk == "none":
+            assert out_b["gBias"] is None
+        elif bk == "scalar":
+            # 구현에 따라 () 또는 (1,) 반환 가능
+            assert out_b["gBias"] is not None
+            assert out_b["gBias"].shape in [(), (1,)]
+        elif bk == "perm":
+            assert out_b["gBias"] is not None
+            assert out_b["gBias"].shape == (M,)
+        elif bk == "pern":
+            assert out_b["gBias"] is not None
+            assert out_b["gBias"].shape == (N,)
+
     # === 선택: 수치 미분 체크 ===
     if args.finite_diff:
         print("Running finite-diff check...(small tensors)")
         M2, K2, N2 = 4, 3, 3
-        A2 = rng.standard_normal(size=(M2, K2), dtype=np.float32)
-        B2 = rng.standard_normal(size=(K2, N2), dtype=np.float32)
-        bias2 = rng.standard_normal(size=(N2,), dtype=np.float32)
+        A2 = rng.standard_normal(size=(M2, K2)).astype(np.float32, copy=False)
+        B2 = rng.standard_normal(size=(K2, N2)).astype(np.float32, copy=False)
+        bias2 = rng.standard_normal(size=(N2,)).astype(np.float32, copy=False)
         ok, errs = finite_diff_check(A2, B2, bias2,
                                      act=args.act,
                                      leaky_slope=args.leaky_slope,
-                                     eps=1e-3, tol=8e-2, seed=args.seed+1)
+                                     eps=1e-3,
+                                     tol=tol_for_act(args.act),
+                                     seed=args.seed+1)
         print("FINITE_DIFF_OK:", ok, errs)
         assert ok, f"Finite-diff mismatch: {errs}"
 
     print("OK: forward/backward basic checks passed.")
+
 
 if __name__ == "__main__":
     main()

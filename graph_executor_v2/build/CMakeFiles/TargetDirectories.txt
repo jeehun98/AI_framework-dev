@@ -1,5 +1,5 @@
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_core.dir
-C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ge2_regemmm_core.dir
+C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ge2_regemm_core.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ge2_regemm_standalone.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/ai_backend_cuda.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_core.dir
