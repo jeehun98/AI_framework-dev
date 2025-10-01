@@ -1,0 +1,946 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineSystem.cmake:205 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Windows - 10.0.26100 - AMD64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/cl.exe 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      Microsoft (R) C/C++ 최적화 컴파일러 버전 19.42.34435(x64)
+      Copyright (c) Microsoft Corporation. All rights reserved.
+      
+      CMakeCXXCompilerId.cpp
+      Microsoft (R) Incremental Linker Version 14.42.34435.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+      
+      /out:CMakeCXXCompilerId.exe 
+      CMakeCXXCompilerId.obj 
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.exe"
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.obj"
+      
+      The CXX compiler identification is MSVC, found in:
+        C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/4.0.2/CompilerIdCXX/CMakeCXXCompilerId.exe
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:1322 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:250 (CMAKE_DETERMINE_MSVC_SHOWINCLUDES_PREFIX)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Detecting CXX compiler /showIncludes prefix:
+        main.c
+        참고: 포함 파일: C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\ShowIncludes\\foo.h
+        
+      Found prefix "참고: 포함 파일: "
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:1271 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCUDACompiler.cmake:75 (CMAKE_DETERMINE_COMPILER_ID_VENDOR)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Checking whether the CUDA compiler is NVIDIA using "" matched "nvcc: NVIDIA \\(R\\) Cuda compiler driver":
+      nvcc: NVIDIA (R) Cuda compiler driver
+      Copyright (c) 2005-2024 NVIDIA Corporation
+      Built on Wed_Oct_30_01:18:48_Pacific_Daylight_Time_2024
+      Cuda compilation tools, release 12.6, V12.6.85
+      Build cuda_12.6.r12.6/compiler.35059454_0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:53 (__determine_compiler_id_test)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCUDACompiler.cmake:136 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the CUDA compiler identification source file "CMakeCUDACompilerId.cu" succeeded.
+      Compiler: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/nvcc.exe 
+      Build flags: 
+      Id flags: --keep;--keep-dir;tmp -v
+      
+      The output was:
+      0
+      
+      C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA>call "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../../VC/Auxiliary/Build/vcvars64.bat" 
+      **********************************************************************
+      ** Visual Studio 2022 Developer Command Prompt v17.14.13
+      ** Copyright (c) 2022 Microsoft Corporation
+      **********************************************************************
+      [vcvarsall.bat] Environment initialized for: 'x64'
+      #$ C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../../VC/Auxiliary/Build/vcvars64.bat
+      #$ ACSetupSvcPort=23210
+      #$ ACSvcPort=17532
+      #$ ALLUSERSPROFILE=C:\\ProgramData
+      #$ APPDATA=C:\\Users\\owner\\AppData\\Roaming
+      #$ CommandPromptType=Native
+      #$ CommonProgramFiles=C:\\Program Files\\Common Files
+      #$ CommonProgramFiles(x86)=C:\\Program Files (x86)\\Common Files
+      #$ CommonProgramW6432=C:\\Program Files\\Common Files
+      #$ COMPUTERNAME=LAPTOP-F1C7NHJG
+      #$ ComSpec=C:\\WINDOWS\\system32\\cmd.exe
+      #$ CUDA_PATH=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6
+      #$ CUDA_PATH_V11_8=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8
+      #$ CUDA_PATH_V12_4=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.4
+      #$ CUDA_PATH_V12_6=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6
+      #$ DevEnvDir=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\
+      #$ DriverData=C:\\Windows\\System32\\Drivers\\DriverData
+      #$ EFC_22192_1262719628=1
+      #$ EFC_22192_1592913036=1
+      #$ EFC_22192_2283032206=1
+      #$ EFC_22192_2775293581=1
+      #$ EFC_22192_3789132940=1
+      #$ ExtensionSdkDir=C:\\Program Files (x86)\\Microsoft SDKs\\Windows Kits\\10\\ExtensionSDKs
+      #$ EXTERNAL_INCLUDE=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\VS\\include;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\um;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\cppwinrt;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\VS\\include;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\um;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\cppwinrt
+      #$ FPS_BROWSER_APP_PROFILE_STRING=Internet Explorer
+      #$ FPS_BROWSER_USER_PROFILE_STRING=Default
+      #$ Framework40Version=v4.0
+      #$ FrameworkDir=C:\\WINDOWS\\Microsoft.NET\\Framework64\\
+      #$ FrameworkDIR64=C:\\WINDOWS\\Microsoft.NET\\Framework64
+      #$ FrameworkVersion=v4.0.30319
+      #$ FrameworkVersion64=v4.0.30319
+      #$ HOMEDRIVE=C:
+      #$ HOMEPATH=\\Users\\owner
+      #$ INCLUDE=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\VS\\include;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\um;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\cppwinrt;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\include;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\VS\\include;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\um;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\\\include\\10.0.26100.0\\\\cppwinrt
+      #$ LIB=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\lib\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.26100.0\\ucrt\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\\\lib\\10.0.26100.0\\\\um\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\lib\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.26100.0\\ucrt\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\\\lib\\10.0.26100.0\\\\um\\x64
+      #$ LIBPATH=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\lib\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\lib\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\lib\\x86\\store\\references;C:\\Program Files (x86)\\Windows Kits\\10\\UnionMetadata\\10.0.26100.0;C:\\Program Files (x86)\\Windows Kits\\10\\References\\10.0.26100.0;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\ATLMFC\\lib\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\lib\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\lib\\x86\\store\\references;C:\\Program Files (x86)\\Windows Kits\\10\\UnionMetadata\\10.0.26100.0;C:\\Program Files (x86)\\Windows Kits\\10\\References\\10.0.26100.0;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319
+      #$ LOCALAPPDATA=C:\\Users\\owner\\AppData\\Local
+      #$ LOGONSERVER=\\\\LAPTOP-F1C7NHJG
+      #$ NUMBER_OF_PROCESSORS=20
+      #$ NVTOOLSEXT_PATH=C:\\Program Files\\NVIDIA Corporation\\NvToolsExt\\
+      #$ OneDrive=C:\\Users\\owner\\OneDrive
+      #$ OS=Windows_NT
+      #$ Path=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\pybind11\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\libs\\python312.lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\DLLs;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.41.34120\\bin\\Hostx64\\x64;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\libnvvp;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\mingw64\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Users\\owner\\Downloads\\cmake-3.30.3\\cmake-3.30.3;C:\\msys64\\mingw64\\bin;C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src;C:\\Program Files\\nodejs\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\Nsight Compute 2024.3.2\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\owner\\AppData\\Local\\GitHubDesktop\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\owner\\AppData\\Roaming\\npm;C:\\Users\\owner\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0-full_build\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg
+      #$ PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC
+      #$ Platform=x64
+      #$ PROCESSOR_ARCHITECTURE=AMD64
+      #$ PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 154 Stepping 3, GenuineIntel
+      #$ PROCESSOR_LEVEL=6
+      #$ PROCESSOR_REVISION=9a03
+      #$ ProgramData=C:\\ProgramData
+      #$ ProgramFiles=C:\\Program Files
+      #$ ProgramFiles(x86)=C:\\Program Files (x86)
+      #$ ProgramW6432=C:\\Program Files
+      #$ PROMPT=$P$G
+      #$ PSModulePath=C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules
+      #$ PUBLIC=C:\\Users\\Public
+      #$ PYTHONPATH=C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src
+      #$ RlsSvcPort=22112
+      #$ SESSIONNAME=Console
+      #$ SystemDrive=C:
+      #$ SystemRoot=C:\\WINDOWS
+      #$ UCRTVersion=10.0.26100.0
+      #$ UniversalCRTSdkDir=C:\\Program Files (x86)\\Windows Kits\\10\\
+      #$ USERDOMAIN=LAPTOP-F1C7NHJG
+      #$ USERDOMAIN_ROAMINGPROFILE=LAPTOP-F1C7NHJG
+      #$ USERNAME=owner
+      #$ USERPROFILE=C:\\Users\\owner
+      #$ VCIDEInstallDir=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\
+      #$ VCINSTALLDIR=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\
+      #$ VCPKG_ROOT=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg
+      #$ VCToolsInstallDir=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\
+      #$ VCToolsRedistDir=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Redist\\MSVC\\14.42.34433\\
+      #$ VCToolsVersion=14.42.34433
+      #$ VisualStudioVersion=17.0
+      #$ VS140COMNTOOLS=C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\Common7\\Tools\\
+      #$ VS170COMNTOOLS=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\
+      #$ VSCMD_ARG_app_plat=Desktop
+      #$ VSCMD_ARG_HOST_ARCH=x64
+      #$ VSCMD_ARG_TGT_ARCH=x64
+      #$ VSCMD_VER=17.14.13
+      #$ vsconsoleoutput=1
+      #$ VSINSTALLDIR=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\
+      #$ windir=C:\\WINDOWS
+      #$ WindowsLibPath=C:\\Program Files (x86)\\Windows Kits\\10\\UnionMetadata\\10.0.26100.0;C:\\Program Files (x86)\\Windows Kits\\10\\References\\10.0.26100.0
+      #$ WindowsSdkBinPath=C:\\Program Files (x86)\\Windows Kits\\10\\bin\\
+      #$ WindowsSdkDir=C:\\Program Files (x86)\\Windows Kits\\10\\
+      #$ WindowsSDKLibVersion=10.0.26100.0\\
+      #$ WindowsSdkVerBinPath=C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\
+      #$ WindowsSDKVersion=10.0.26100.0\\
+      #$ ZES_ENABLE_SYSMAN=1
+      #$ __DOTNET_ADD_64BIT=1
+      #$ __DOTNET_PREFERRED_BITNESS=64
+      #$ __VSCMD_PREINIT_PATH=C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\pybind11\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\libs\\python312.lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\DLLs;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.41.34120\\bin\\Hostx64\\x64;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\libnvvp;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\mingw64\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Users\\owner\\Downloads\\cmake-3.30.3\\cmake-3.30.3;C:\\msys64\\mingw64\\bin;C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src;C:\\Program Files\\nodejs\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\Nsight Compute 2024.3.2\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\owner\\AppData\\Local\\GitHubDesktop\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\owner\\AppData\\Roaming\\npm;C:\\Users\\owner\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0-full_build\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\
+      #$ __VSCMD_PREINIT_VCToolsVersion=14.42.34433
+      #$ __VSCMD_PREINIT_VS170COMNTOOLS=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\
+      #$ PATH=C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\pybind11\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\libs\\python312.lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\DLLs;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.41.34120\\bin\\Hostx64\\x64;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\libnvvp;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\mingw64\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Users\\owner\\Downloads\\cmake-3.30.3\\cmake-3.30.3;C:\\msys64\\mingw64\\bin;C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src;C:\\Program Files\\nodejs\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\Nsight Compute 2024.3.2\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\owner\\AppData\\Local\\GitHubDesktop\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\owner\\AppData\\Roaming\\npm;C:\\Users\\owner\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0-full_build\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg
+      #$ _NVVM_BRANCH_=nvvm
+      #$ _SPACE_= 
+      #$ _CUDART_=cudart
+      #$ _HERE_=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin
+      #$ _THERE_=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin
+      #$ _TARGET_SIZE_=
+      #$ _TARGET_DIR_=
+      #$ _TARGET_SIZE_=64
+      #$ _WIN_PLATFORM_=x64
+      #$ TOP=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/..
+      #$ CICC_PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../nvvm/bin
+      #$ NVVMIR_LIBRARY_DIR=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../nvvm/libdevice
+      #$ PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../nvvm/bin;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\pybind11\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\libs\\python312.lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\DLLs;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.41.34120\\bin\\Hostx64\\x64;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\libnvvp;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\mingw64\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Users\\owner\\Downloads\\cmake-3.30.3\\cmake-3.30.3;C:\\msys64\\mingw64\\bin;C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src;C:\\Program Files\\nodejs\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\Nsight Compute 2024.3.2\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\owner\\AppData\\Local\\GitHubDesktop\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\owner\\AppData\\Roaming\\npm;C:\\Users\\owner\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0-full_build\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg
+      #$ INCLUDES="-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"  
+      #$ LIBRARIES=  "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"
+      #$ CUDAFE_FLAGS=
+      #$ PTXAS_FLAGS=
+      #$ erase tmp/a_dlink.reg.c
+      CMakeCUDACompilerId.cu
+      #$ resource file tmp/CMakeCUDACompilerId.cpp4.ii.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -E -TP -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 -FI "cuda_runtime.h" "CMakeCUDACompilerId.cu" ]
+      #$ cl.exe @"tmp/CMakeCUDACompilerId.cpp4.ii.res" > "tmp/CMakeCUDACompilerId.cpp4.ii" 
+      CMakeCUDACompilerId.cu
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      #$ cudafe++ --ms_c++14 --microsoft_version=1942 --msvc_target_version=1942 --compiler_bindir "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../.." --sdk_dir "C:/Program Files (x86)/Windows Kits/10/" --display_error_number --orig_src_file_name "CMakeCUDACompilerId.cu" --orig_src_path_name "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\CMakeCUDACompilerId.cu" --allow_managed --m64 --parse_templates --gen_c_file_name "tmp/CMakeCUDACompilerId.cudafe1.cpp" --stub_file_name "CMakeCUDACompilerId.cudafe1.stub.c" --gen_module_id_file --module_id_file_name "tmp/CMakeCUDACompilerId.module_id" "tmp/CMakeCUDACompilerId.cpp4.ii" 
+      #$ resource file tmp/CMakeCUDACompilerId.cpp1.ii.res: [-D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -E -TP  -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 -FI "cuda_runtime.h" "CMakeCUDACompilerId.cu" ]
+      #$ cl.exe @"tmp/CMakeCUDACompilerId.cpp1.ii.res" > "tmp/CMakeCUDACompilerId.cpp1.ii" 
+      CMakeCUDACompilerId.cu
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      #$ ""%CICC_PATH%\\cicc" --ms_c++14 --microsoft_version=1942 --msvc_target_version=1942 --compiler_bindir "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../.." --sdk_dir "C:/Program Files (x86)/Windows Kits/10/" --display_error_number --orig_src_file_name "CMakeCUDACompilerId.cu" --orig_src_path_name "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\CMakeCUDACompilerId.cu" --allow_managed  -arch compute_52 -m64 --no-version-ident -ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 --include_file_name "CMakeCUDACompilerId.fatbin.c" -tused --module_id_file_name "tmp/CMakeCUDACompilerId.module_id" --gen_c_file_name "tmp/CMakeCUDACompilerId.cudafe1.c" --stub_file_name "tmp/CMakeCUDACompilerId.cudafe1.stub.c" --gen_device_file_name "tmp/CMakeCUDACompilerId.cudafe1.gpu"  "tmp/CMakeCUDACompilerId.cpp1.ii" -o "tmp/CMakeCUDACompilerId.ptx""
+      #$ ptxas -arch=sm_52 -m64 "tmp/CMakeCUDACompilerId.ptx"  -o "tmp/CMakeCUDACompilerId.sm_52.cubin" 
+      #$ fatbinary --create="tmp/CMakeCUDACompilerId.fatbin" -64 --cicc-cmdline="-ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 " "--image3=kind=elf,sm=52,file=tmp/CMakeCUDACompilerId.sm_52.cubin" "--image3=kind=ptx,sm=52,file=tmp/CMakeCUDACompilerId.ptx" --embedded-fatbin="tmp/CMakeCUDACompilerId.fatbin.c" 
+      #$ resource file tmp/CMakeCUDACompilerId.obj.res: [-D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -c -TP  -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"   "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.cudafe1.cpp" ]
+      #$ cl.exe @"tmp/CMakeCUDACompilerId.obj.res" -Fo"tmp/CMakeCUDACompilerId.obj" 
+      CMakeCUDACompilerId.cudafe1.cpp
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+      #$ resource file tmp/a_dlink.sm_52.cubin.optf: [-m64 --arch=sm_52 --register-link-binaries="tmp/a_dlink.reg.c"    "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64" -cpu-arch=X86_64 "tmp/CMakeCUDACompilerId.obj"  cudadevrt.lib  -o "tmp/a_dlink.sm_52.cubin"]
+      #$ nvlink -optf "tmp/a_dlink.sm_52.cubin.optf"
+      #$ fatbinary --create="tmp/a_dlink.fatbin" -64 --cicc-cmdline="-ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 " -link "--image3=kind=elf,sm=52,file=tmp/a_dlink.sm_52.cubin" --embedded-fatbin="tmp/a_dlink.fatbin.c" 
+      #$ resource file tmp/a_dlink.obj.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -c -TP -EHsc -DFATBINFILE="\\"tmp/a_dlink.fatbin.c\\"" -DREGISTERLINKBINARYFILE="\\"tmp/a_dlink.reg.c\\"" -I. -D__NV_EXTRA_INITIALIZATION= -D__NV_EXTRA_FINALIZATION= -D__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin\\crt\\link.stub" ]
+      #$ cl.exe @"tmp/a_dlink.obj.res" -Fo"tmp/a_dlink.obj" 
+      link.stub
+      #$ resource file tmp/a.exe.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib]
+      #$ cl.exe @"tmp/a.exe.res" -Fe"a.exe" 
+         a.lib 라이브러리 및 a.exp 개체를 생성하고 있습니다.
+      
+      
+      Compilation of the CUDA compiler identification source "CMakeCUDACompilerId.cu" produced "a.exe"
+      
+      Compilation of the CUDA compiler identification source "CMakeCUDACompilerId.cu" produced "a.exp"
+      
+      Compilation of the CUDA compiler identification source "CMakeCUDACompilerId.cu" produced "a.lib"
+      
+      The CUDA compiler identification is NVIDIA, found in:
+        C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/4.0.2/CompilerIdCUDA/a.exe
+      The host compiler identification is MSVC
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:1322 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:250 (CMAKE_DETERMINE_MSVC_SHOWINCLUDES_PREFIX)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCUDACompiler.cmake:136 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Detecting CUDA compiler /showIncludes prefix:
+        nvcc fatal   : Don't know what to do with 'C:/c'
+        
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:1322 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:250 (CMAKE_DETERMINE_MSVC_SHOWINCLUDES_PREFIX)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCUDACompiler.cmake:136 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Detecting CUDA compiler /showIncludes prefix:
+        nvcc fatal   : Don't know what to do with 'C:/c'
+        
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/Internal/CMakeNVCCParseImplicitInfo.cmake:128 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCUDACompiler.cmake:247 (cmake_nvcc_parse_implicit_info)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CUDA nvcc implicit link information:
+        found 'PATH=' string: [C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\pybind11\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\libs\\python312.lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\DLLs;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.41.34120\\bin\\Hostx64\\x64;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\libnvvp;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\mingw64\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Users\\owner\\Downloads\\cmake-3.30.3\\cmake-3.30.3;C:\\msys64\\mingw64\\bin;C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src;C:\\Program Files\\nodejs\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\Nsight Compute 2024.3.2\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\owner\\AppData\\Local\\GitHubDesktop\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\owner\\AppData\\Roaming\\npm;C:\\Users\\owner\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0-full_build\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg]
+        found 'LIBRARIES=' string: ["/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"]
+        found 'INCLUDES=' string: ["-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"  ]
+        considering line: []
+        considering line: [C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA>call "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../../VC/Auxiliary/Build/vcvars64.bat" ]
+        considering line: [**********************************************************************]
+        considering line: [** Visual Studio 2022 Developer Command Prompt v17.14.13]
+        considering line: [** Copyright (c) 2022 Microsoft Corporation]
+        considering line: [**********************************************************************]
+        considering line: [[vcvarsall.bat] Environment initialized for: 'x64']
+        considering line: [C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../../VC/Auxiliary/Build/vcvars64.bat]
+        considering line: [erase tmp/a_dlink.reg.c]
+        considering line: [CMakeCUDACompilerId.cu]
+        considering line: [resource file tmp/CMakeCUDACompilerId.cpp4.ii.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -E -TP -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 -FI "cuda_runtime.h" "CMakeCUDACompilerId.cu" ]]
+        considering line: [cl.exe @"tmp/CMakeCUDACompilerId.cpp4.ii.res" > "tmp/CMakeCUDACompilerId.cpp4.ii" ]
+        considering line: [CMakeCUDACompilerId.cu]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [cudafe++ --ms_c++14 --microsoft_version=1942 --msvc_target_version=1942 --compiler_bindir "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../.." --sdk_dir "C:/Program Files (x86)/Windows Kits/10/" --display_error_number --orig_src_file_name "CMakeCUDACompilerId.cu" --orig_src_path_name "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\CMakeCUDACompilerId.cu" --allow_managed --m64 --parse_templates --gen_c_file_name "tmp/CMakeCUDACompilerId.cudafe1.cpp" --stub_file_name "CMakeCUDACompilerId.cudafe1.stub.c" --gen_module_id_file --module_id_file_name "tmp/CMakeCUDACompilerId.module_id" "tmp/CMakeCUDACompilerId.cpp4.ii" ]
+        considering line: [resource file tmp/CMakeCUDACompilerId.cpp1.ii.res: [-D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -E -TP  -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 -FI "cuda_runtime.h" "CMakeCUDACompilerId.cu" ]]
+        considering line: [cl.exe @"tmp/CMakeCUDACompilerId.cpp1.ii.res" > "tmp/CMakeCUDACompilerId.cpp1.ii" ]
+        considering line: [CMakeCUDACompilerId.cu]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [""%CICC_PATH%\\cicc" --ms_c++14 --microsoft_version=1942 --msvc_target_version=1942 --compiler_bindir "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../.." --sdk_dir "C:/Program Files (x86)/Windows Kits/10/" --display_error_number --orig_src_file_name "CMakeCUDACompilerId.cu" --orig_src_path_name "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\CMakeCUDACompilerId.cu" --allow_managed  -arch compute_52 -m64 --no-version-ident -ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 --include_file_name "CMakeCUDACompilerId.fatbin.c" -tused --module_id_file_name "tmp/CMakeCUDACompilerId.module_id" --gen_c_file_name "tmp/CMakeCUDACompilerId.cudafe1.c" --stub_file_name "tmp/CMakeCUDACompilerId.cudafe1.stub.c" --gen_device_file_name "tmp/CMakeCUDACompilerId.cudafe1.gpu"  "tmp/CMakeCUDACompilerId.cpp1.ii" -o "tmp/CMakeCUDACompilerId.ptx""]
+        considering line: [ptxas -arch=sm_52 -m64 "tmp/CMakeCUDACompilerId.ptx"  -o "tmp/CMakeCUDACompilerId.sm_52.cubin" ]
+        considering line: [fatbinary --create="tmp/CMakeCUDACompilerId.fatbin" -64 --cicc-cmdline="-ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 " "--image3=kind=elf,sm=52,file=tmp/CMakeCUDACompilerId.sm_52.cubin" "--image3=kind=ptx,sm=52,file=tmp/CMakeCUDACompilerId.ptx" --embedded-fatbin="tmp/CMakeCUDACompilerId.fatbin.c" ]
+        considering line: [resource file tmp/CMakeCUDACompilerId.obj.res: [-D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -c -TP  -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"   "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.cudafe1.cpp" ]]
+        considering line: [cl.exe @"tmp/CMakeCUDACompilerId.obj.res" -Fo"tmp/CMakeCUDACompilerId.obj" ]
+        considering line: [CMakeCUDACompilerId.cudafe1.cpp]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [resource file tmp/a_dlink.sm_52.cubin.optf: [-m64 --arch=sm_52 --register-link-binaries="tmp/a_dlink.reg.c"    "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64" -cpu-arch=X86_64 "tmp/CMakeCUDACompilerId.obj"  cudadevrt.lib  -o "tmp/a_dlink.sm_52.cubin"]]
+          extracted link line: [resource file tmp/a_dlink.sm_52.cubin.optf: [-m64 --arch=sm_52 --register-link-binaries="tmp/a_dlink.reg.c"    "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64" -cpu-arch=X86_64 "tmp/CMakeCUDACompilerId.obj"  cudadevrt.lib  -o "tmp/a_dlink.sm_52.cubin"]]
+        considering line: [nvlink -optf "tmp/a_dlink.sm_52.cubin.optf"]
+          ignoring nvlink line
+        considering line: [fatbinary --create="tmp/a_dlink.fatbin" -64 --cicc-cmdline="-ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 " -link "--image3=kind=elf,sm=52,file=tmp/a_dlink.sm_52.cubin" --embedded-fatbin="tmp/a_dlink.fatbin.c" ]
+        considering line: [resource file tmp/a_dlink.obj.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -c -TP -EHsc -DFATBINFILE="\\"tmp/a_dlink.fatbin.c\\"" -DREGISTERLINKBINARYFILE="\\"tmp/a_dlink.reg.c\\"" -I. -D__NV_EXTRA_INITIALIZATION= -D__NV_EXTRA_FINALIZATION= -D__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin\\crt\\link.stub" ]]
+        considering line: [cl.exe @"tmp/a_dlink.obj.res" -Fo"tmp/a_dlink.obj" ]
+        considering line: [link.stub]
+        considering line: [resource file tmp/a.exe.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib]]
+          extracted link line: [resource file tmp/a.exe.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib]]
+        considering line: [cl.exe @"tmp/a.exe.res" -Fe"a.exe" ]
+          extracted link line: [cl.exe -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib -Fe"a.exe" ]
+        considering line: [   a.lib 라이브러리 및 a.exp 개체를 생성하고 있습니다.]
+        considering line: []
+      
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        link line: [cuda-fake-ld cl.exe -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib -Fe"a.exe" ]
+          arg [cuda-fake-ld] ==> ignore
+          arg [cl.exe] ==> recognize MSVC cl
+          arg [-D__CUDA_ARCH_LIST__=520] ==> ignore
+          arg [-D__NV_LEGACY_LAUNCH] ==> ignore
+          arg [-nologo] ==> ignore
+          arg [C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj] ==> ignore
+          arg [C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj] ==> ignore
+          arg [-link] ==> ignore MSVC cl option
+          arg [-INCREMENTAL:NO] ==> ignore
+          arg [/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64] ==> dir [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64]
+          arg [cudadevrt.lib] ==> lib [cudadevrt.lib]
+          arg [cudart_static.lib] ==> lib [cudart_static.lib]
+          arg [-Fea.exe] ==> ignore
+        collapse library dir [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64] ==> [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64]
+        implicit libs: [cudadevrt.lib;cudart_static.lib]
+        implicit objs: []
+        implicit dirs: [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/Internal/CMakeNVCCParseImplicitInfo.cmake:146 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCUDACompiler.cmake:247 (cmake_nvcc_parse_implicit_info)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CUDA nvcc include information:
+        found 'PATH=' string: [C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\\\MSBuild\\Current\\Bin\\amd64;C:\\WINDOWS\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\pybind11\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\include;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\libs\\python312.lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\DLLs;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.41.34120\\bin\\Hostx64\\x64;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\libnvvp;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\mingw64\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Users\\owner\\Downloads\\cmake-3.30.3\\cmake-3.30.3;C:\\msys64\\mingw64\\bin;C:\\Users\\owner\\Desktop\\Al_backend_cplusplus\\src;C:\\Program Files\\nodejs\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\Nsight Compute 2024.3.2\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\owner\\AppData\\Local\\GitHubDesktop\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\\Users\\owner\\AppData\\Roaming\\npm;C:\\Users\\owner\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\owner\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0-full_build\\bin;C:\\Users\\owner\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\ConnectionManagerExe;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\vcpkg]
+        found 'LIBRARIES=' string: ["/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"]
+        found 'INCLUDES=' string: ["-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"  ]
+        considering line: []
+        considering line: [C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA>call "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../../VC/Auxiliary/Build/vcvars64.bat" ]
+        considering line: [**********************************************************************]
+        considering line: [** Visual Studio 2022 Developer Command Prompt v17.14.13]
+        considering line: [** Copyright (c) 2022 Microsoft Corporation]
+        considering line: [**********************************************************************]
+        considering line: [[vcvarsall.bat] Environment initialized for: 'x64']
+        considering line: [C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../../VC/Auxiliary/Build/vcvars64.bat]
+        considering line: [erase tmp/a_dlink.reg.c]
+        considering line: [CMakeCUDACompilerId.cu]
+        considering line: [resource file tmp/CMakeCUDACompilerId.cpp4.ii.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -E -TP -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 -FI "cuda_runtime.h" "CMakeCUDACompilerId.cu" ]]
+        considering line: [cl.exe @"tmp/CMakeCUDACompilerId.cpp4.ii.res" > "tmp/CMakeCUDACompilerId.cpp4.ii" ]
+        considering line: [CMakeCUDACompilerId.cu]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [cudafe++ --ms_c++14 --microsoft_version=1942 --msvc_target_version=1942 --compiler_bindir "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../.." --sdk_dir "C:/Program Files (x86)/Windows Kits/10/" --display_error_number --orig_src_file_name "CMakeCUDACompilerId.cu" --orig_src_path_name "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\CMakeCUDACompilerId.cu" --allow_managed --m64 --parse_templates --gen_c_file_name "tmp/CMakeCUDACompilerId.cudafe1.cpp" --stub_file_name "CMakeCUDACompilerId.cudafe1.stub.c" --gen_module_id_file --module_id_file_name "tmp/CMakeCUDACompilerId.module_id" "tmp/CMakeCUDACompilerId.cpp4.ii" ]
+        considering line: [resource file tmp/CMakeCUDACompilerId.cpp1.ii.res: [-D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -E -TP  -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 -FI "cuda_runtime.h" "CMakeCUDACompilerId.cu" ]]
+        considering line: [cl.exe @"tmp/CMakeCUDACompilerId.cpp1.ii.res" > "tmp/CMakeCUDACompilerId.cpp1.ii" ]
+        considering line: [CMakeCUDACompilerId.cu]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [""%CICC_PATH%\\cicc" --ms_c++14 --microsoft_version=1942 --msvc_target_version=1942 --compiler_bindir "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/HostX64/x64/../../../../../../.." --sdk_dir "C:/Program Files (x86)/Windows Kits/10/" --display_error_number --orig_src_file_name "CMakeCUDACompilerId.cu" --orig_src_path_name "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\CMakeCUDACompilerId.cu" --allow_managed  -arch compute_52 -m64 --no-version-ident -ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 --include_file_name "CMakeCUDACompilerId.fatbin.c" -tused --module_id_file_name "tmp/CMakeCUDACompilerId.module_id" --gen_c_file_name "tmp/CMakeCUDACompilerId.cudafe1.c" --stub_file_name "tmp/CMakeCUDACompilerId.cudafe1.stub.c" --gen_device_file_name "tmp/CMakeCUDACompilerId.cudafe1.gpu"  "tmp/CMakeCUDACompilerId.cpp1.ii" -o "tmp/CMakeCUDACompilerId.ptx""]
+        considering line: [ptxas -arch=sm_52 -m64 "tmp/CMakeCUDACompilerId.ptx"  -o "tmp/CMakeCUDACompilerId.sm_52.cubin" ]
+        considering line: [fatbinary --create="tmp/CMakeCUDACompilerId.fatbin" -64 --cicc-cmdline="-ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 " "--image3=kind=elf,sm=52,file=tmp/CMakeCUDACompilerId.sm_52.cubin" "--image3=kind=ptx,sm=52,file=tmp/CMakeCUDACompilerId.ptx" --embedded-fatbin="tmp/CMakeCUDACompilerId.fatbin.c" ]
+        considering line: [resource file tmp/CMakeCUDACompilerId.obj.res: [-D__CUDA_ARCH__=520 -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -c -TP  -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"   "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.cudafe1.cpp" ]]
+        considering line: [cl.exe @"tmp/CMakeCUDACompilerId.obj.res" -Fo"tmp/CMakeCUDACompilerId.obj" ]
+        considering line: [CMakeCUDACompilerId.cudafe1.cpp]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        considering line: [resource file tmp/a_dlink.sm_52.cubin.optf: [-m64 --arch=sm_52 --register-link-binaries="tmp/a_dlink.reg.c"    "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64" -cpu-arch=X86_64 "tmp/CMakeCUDACompilerId.obj"  cudadevrt.lib  -o "tmp/a_dlink.sm_52.cubin"]]
+          extracted link line: [resource file tmp/a_dlink.sm_52.cubin.optf: [-m64 --arch=sm_52 --register-link-binaries="tmp/a_dlink.reg.c"    "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64" -cpu-arch=X86_64 "tmp/CMakeCUDACompilerId.obj"  cudadevrt.lib  -o "tmp/a_dlink.sm_52.cubin"]]
+        considering line: [nvlink -optf "tmp/a_dlink.sm_52.cubin.optf"]
+          ignoring nvlink line
+        considering line: [fatbinary --create="tmp/a_dlink.fatbin" -64 --cicc-cmdline="-ftz=0 -prec_div=1 -prec_sqrt=1 -fmad=1 " -link "--image3=kind=elf,sm=52,file=tmp/a_dlink.sm_52.cubin" --embedded-fatbin="tmp/a_dlink.fatbin.c" ]
+        considering line: [resource file tmp/a_dlink.obj.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo -c -TP -EHsc -DFATBINFILE="\\"tmp/a_dlink.fatbin.c\\"" -DREGISTERLINKBINARYFILE="\\"tmp/a_dlink.reg.c\\"" -I. -D__NV_EXTRA_INITIALIZATION= -D__NV_EXTRA_FINALIZATION= -D__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__  "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../include"    -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=6 -D__CUDACC_VER_BUILD__=85 -D__CUDA_API_VER_MAJOR__=12 -D__CUDA_API_VER_MINOR__=6 -D__NVCC_DIAG_PRAGMA_SUPPORT__=1 "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin\\crt\\link.stub" ]]
+        considering line: [cl.exe @"tmp/a_dlink.obj.res" -Fo"tmp/a_dlink.obj" ]
+        considering line: [link.stub]
+        considering line: [resource file tmp/a.exe.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib]]
+          extracted link line: [resource file tmp/a.exe.res: [-D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib]]
+        considering line: [cl.exe @"tmp/a.exe.res" -Fe"a.exe" ]
+          extracted link line: [cl.exe -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib -Fe"a.exe" ]
+        considering line: [   a.lib 라이브러리 및 a.exp 개체를 생성하고 있습니다.]
+        considering line: []
+      
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        link line: [cuda-fake-ld cl.exe -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -nologo "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj" "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj" -link -INCREMENTAL:NO   "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64"  cudadevrt.lib  cudart_static.lib -Fe"a.exe" ]
+          arg [cuda-fake-ld] ==> ignore
+          arg [cl.exe] ==> recognize MSVC cl
+          arg [-D__CUDA_ARCH_LIST__=520] ==> ignore
+          arg [-D__NV_LEGACY_LAUNCH] ==> ignore
+          arg [-nologo] ==> ignore
+          arg [C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\a_dlink.obj] ==> ignore
+          arg [C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\4.0.2\\CompilerIdCUDA\\tmp\\CMakeCUDACompilerId.obj] ==> ignore
+          arg [-link] ==> ignore MSVC cl option
+          arg [-INCREMENTAL:NO] ==> ignore
+          arg [/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64] ==> dir [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64]
+          arg [cudadevrt.lib] ==> lib [cudadevrt.lib]
+          arg [cudart_static.lib] ==> lib [cudart_static.lib]
+          arg [-Fea.exe] ==> ignore
+        collapse library dir [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/bin/../lib/x64] ==> [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64]
+        implicit libs: [cudadevrt.lib;cudart_static.lib]
+        implicit objs: []
+        implicit dirs: [C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64]
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-favfzz"
+      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-favfzz"
+    cmakeVariables:
+      CMAKE_CUDA_ARCHITECTURES: "86"
+      CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
+      CMAKE_CXX_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-favfzz'
+        
+        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_c0301
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP   /DWIN32 /D_WINDOWS /EHsc  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_c0301.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_c0301.dir\\ /FS -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1942 --intdir=CMakeFiles\\cmTC_c0301.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_c0301.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_c0301.exe /implib:cmTC_c0301.lib /pdb:cmTC_c0301.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:227 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'CXX': C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1442~1.344/bin/Hostx64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:270 (cmake_determine_linker_id)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the CXX compiler's linker: "C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1442~1.344/bin/Hostx64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.42.34435.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCUDACompiler.cmake:19 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting CUDA compiler ABI info"
+    directories:
+      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-y8dbqt"
+      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-y8dbqt"
+    cmakeVariables:
+      CMAKE_CUDA_ARCHITECTURES: "86"
+      CMAKE_CUDA_FLAGS: "-D_WINDOWS -Xcompiler=\" /EHsc\""
+      CMAKE_CUDA_FLAGS_DEBUG: "-Xcompiler=\" -Zi -Ob0 -Od /RTC1\""
+      CMAKE_CUDA_RUNTIME_LIBRARY: "Static"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_CUDA_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-y8dbqt'
+        
+        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_b5d1f
+        [1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Zi -Ob0 -Od /RTC1" "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MDd   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu -o CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_b5d1f.dir\\,-FS
+        cl : 명령줄 warning D9002 : 알 수 없는 '-v' 옵션을 무시합니다.
+        CMakeCUDACompilerABI.cu
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        cl : 명령줄 warning D9002 : 알 수 없는 '-v' 옵션을 무시합니다.
+        CMakeCUDACompilerABI.cu
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        CMakeCUDACompilerABI.cu
+        cl : 명령줄 warning D9002 : 알 수 없는 '-v' 옵션을 무시합니다.
+        tmpxft_00004cbc_00000000-10_CMakeCUDACompilerABI.cudafe1.cpp
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+        C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.\x0d
+        C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCompilerCUDAArch.h(10): warning C4305: 'return': 'int'에서 'bool'(으)로 잘립니다.\x0d
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_b5d1f.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_b5d1f.exe /implib:cmTC_b5d1f.lib /pdb:cmTC_b5d1f.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64" && cd ."
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:191 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCUDACompiler.cmake:19 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CUDA implicit include dir info: rv=start
+        warn: unable to parse implicit include dirs!
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:227 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCUDACompiler.cmake:19 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CUDA implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        ignore line: [Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-y8dbqt']
+        ignore line: []
+        ignore line: [Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_b5d1f]
+        ignore line: [[1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Zi -Ob0 -Od /RTC1" "--generate-code=arch=compute_86 code=[compute_86 sm_86]" -Xcompiler=-MDd   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu -o CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_b5d1f.dir\\ -FS]
+        ignore line: [cl : 명령줄 warning D9002 : 알 수 없는 '-v' 옵션을 무시합니다.]
+        ignore line: [CMakeCUDACompilerABI.cu]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [cl : 명령줄 warning D9002 : 알 수 없는 '-v' 옵션을 무시합니다.]
+        ignore line: [CMakeCUDACompilerABI.cu]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [CMakeCUDACompilerABI.cu]
+        ignore line: [cl : 명령줄 warning D9002 : 알 수 없는 '-v' 옵션을 무시합니다.]
+        ignore line: [tmpxft_00004cbc_00000000-10_CMakeCUDACompilerABI.cudafe1.cpp]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.]
+        ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.\x0d]
+        ignore line: [C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCompilerCUDAArch.h(10): warning C4305: 'return': 'int'에서 'bool'(으)로 잘립니다.\x0d]
+        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_b5d1f.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_b5d1f.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_b5d1f.exe /implib:cmTC_b5d1f.lib /pdb:cmTC_b5d1f.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64" && cd ."]
+        ignore line: []
+        ignore line: []
+        linker tool for 'CUDA': C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1442~1.344/bin/Hostx64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:270 (cmake_determine_linker_id)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CMakeTestCUDACompiler.cmake:19 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the CUDA compiler's linker: "C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1442~1.344/bin/Hostx64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.42.34435.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/cmake/data/share/cmake-4.0/Modules/CheckCXXCompilerFlag.cmake:55 (cmake_check_compiler_flag)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/share/cmake/pybind11/pybind11Common.cmake:321 (check_cxx_compiler_flag)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/share/cmake/pybind11/pybind11Common.cmake:393 (_pybind11_return_if_cxx_and_linker_flags_work)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/share/cmake/pybind11/pybind11Common.cmake:427 (_pybind11_generate_lto)"
+      - "C:/Users/owner/AppData/Local/Programs/Python/Python312/Lib/site-packages/pybind11/share/cmake/pybind11/pybind11Config.cmake:257 (include)"
+      - "CMakeLists.txt:31 (find_package)"
+    checks:
+      - "Performing Test HAS_MSVC_GL_LTCG"
+    directories:
+      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-ovdtep"
+      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-ovdtep"
+    cmakeVariables:
+      CMAKE_CUDA_ARCHITECTURES: "86"
+      CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
+      CMAKE_CXX_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAS_MSVC_GL_LTCG"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/CMakeScratch/TryCompile-ovdtep'
+        
+        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_fcb80
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DHAS_MSVC_GL_LTCG  /DWIN32 /D_WINDOWS /EHsc  /Zi /Ob0 /Od /RTC1 -std:c++17 -MD   /GL /showIncludes /FoCMakeFiles\\cmTC_fcb80.dir\\src.cxx.obj /FdCMakeFiles\\cmTC_fcb80.dir\\ /FS -c C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ovdtep\\src.cxx
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1942 --intdir=CMakeFiles\\cmTC_fcb80.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_fcb80.dir\\src.cxx.obj  /out:cmTC_fcb80.exe /implib:cmTC_fcb80.lib /pdb:cmTC_fcb80.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  -LTCG  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+...
