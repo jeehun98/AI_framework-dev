@@ -338,6 +338,44 @@ endif()
 apply_win_warnings(_ops_dropout)
 
 # =========================
+# Python 모듈 (_ops_rmsnorm) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_rmsnorm MODULE
+  src/bindings/rmsnorm_pybind.cpp
+  backends/cuda/ops/rmsnorm/launcher.cu
+  backends/cuda/ops/rmsnorm/kernels.cu
+)
+
+target_compile_definitions(_ops_rmsnorm PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_rmsnorm PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/rmsnorm
+)
+
+target_link_libraries(_ops_rmsnorm PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_rmsnorm PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_rmsnorm PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_rmsnorm)
+
+
+# =========================
 # Python 모듈 (_ops_pad) — op 전용 독립 바인딩
 # =========================
 pybind11_add_module(_ops_pad MODULE
@@ -414,6 +452,81 @@ target_include_directories(_ops_rnn PRIVATE
   # (필요하면) rnn 헤더 폴더도 추가
   backends/cuda/ops/rnn
 )
+
+# =========================
+# Python 모듈 (_ops_softmax) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_softmax MODULE
+  src/bindings/softmax_pybind.cpp
+  backends/cuda/ops/softmax/launcher.cu
+  backends/cuda/ops/softmax/kernels.cu
+)
+
+target_compile_definitions(_ops_softmax PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_softmax PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/softmax
+)
+
+target_link_libraries(_ops_softmax PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_softmax PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_softmax PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_softmax)
+
+# =========================
+# Python 모듈 (_ops_layernorm) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_layernorm MODULE
+  src/bindings/layernorm_pybind.cpp
+  backends/cuda/ops/layernorm/launcher.cu
+  backends/cuda/ops/layernorm/kernels.cu
+)
+
+target_compile_definitions(_ops_layernorm PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_layernorm PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/layernorm
+)
+
+target_link_libraries(_ops_layernorm PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_layernorm PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_layernorm PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_layernorm)
+
 
 # ✅ REGEMM standalone 객체 포함 (conv2d와 동일)
 target_sources(_ops_rnn PRIVATE

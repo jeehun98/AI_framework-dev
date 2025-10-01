@@ -97,7 +97,7 @@ template<int BS>
 __global__ void softmax_bwd_kernel(const float* __restrict__ Y, // softmax 결과
                                    const float* __restrict__ dY,
                                    float* __restrict__ dX,
-                                   int M, int N, bool logsoftmax)
+                                   int M, int N, float scale, bool logsoftmax)
 {
   const int row = blockIdx.x;
   if (row >= M) return;
@@ -128,7 +128,8 @@ __global__ void softmax_bwd_kernel(const float* __restrict__ Y, // softmax 결�
     __syncthreads();
     dot = s_dot;
 
-    for (int i = threadIdx.x; i < N; i += BS) dx[i] = (gy[i] - dot) * y[i];
+    for (int i = threadIdx.x; i < N; i += BS) 
+      dx[i] = scale * ((gy[i] - dot) * y[i]); 
 
   } else {
     // dX = dY - sum(dY) * softmax(x)
@@ -152,7 +153,8 @@ __global__ void softmax_bwd_kernel(const float* __restrict__ Y, // softmax 결�
     __syncthreads();
     sum_dy = s_sum_dy;
 
-    for (int i = threadIdx.x; i < N; i += BS) dx[i] = gy[i] - sum_dy * y[i];
+    for (int i = threadIdx.x; i < N; i += BS) 
+      dx[i] = scale * (gy[i] - sum_dy * y[i]);
   }
 }
 
@@ -173,11 +175,11 @@ void softmax_forward_kernel_launcher(const float* X, const float* Mask,
 
 void softmax_backward_kernel_launcher(const float* Y, const float* dY,
                                       float* dX, int M, int N,
-                                      bool logsoftmax, cudaStream_t s)
+                                      float scale, bool logsoftmax, cudaStream_t s)
 {
   constexpr int BS = 256;
   dim3 grid(M), block(BS);
-  softmax_bwd_kernel<BS><<<grid, block, 0, s>>>(Y, dY, dX, M, N, logsoftmax);
+  softmax_bwd_kernel<BS><<<grid, block, 0, s>>>(Y, dY, dX, M, N, scale, logsoftmax);
 }
 
 } // namespace ai
