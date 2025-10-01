@@ -69,6 +69,33 @@ __global__ void krowwise_sum_accum(const float* __restrict__ M,
   atomicAdd(out + j, acc);
 }
 
+// ---------------- transpose 2D ----------------
+// in[M,N] (row-major) -> out[N,M] (row-major)
+__global__ void transpose2d_kernel(const float* __restrict__ A,
+                                   float* __restrict__ AT,
+                                   int M, int N) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x; // row index in A
+  int j = blockIdx.y * blockDim.y + threadIdx.y; // col index in A
+  if (i < M && j < N) {
+    AT[j * M + i] = A[i * N + j];
+  }
+}
+
+Status transpose_2d(const ai::Tensor& A,
+                                      ai::Tensor& AT,
+                                      int M, int N,
+                                      ai::StreamHandle s) {
+  const float* src = static_cast<const float*>(A.data);
+  float* dst = static_cast<float*>(AT.data);
+  dim3 block(16, 16);
+  dim3 grid((M + block.x - 1) / block.x,
+            (N + block.y - 1) / block.y);
+  transpose2d_kernel<<<grid, block, 0,
+      reinterpret_cast<cudaStream_t>(s)>>>(src, dst, M, N);
+  return ai::Status::Ok;
+}
+
+
 // ===== helpers =====
 static inline int div_up(int n, int d){ return (n + d - 1) / d; }
 static inline int64_t numel_of(const Tensor& t){ return t.numel(); }

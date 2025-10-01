@@ -399,27 +399,32 @@ endif()
 apply_win_warnings(_ops_pool2d)
 
 # =========================
-# Python 모듈 (_ops_rnn) — ✅ 새로 추가: RNN 독립 바인딩
+# Python 모듈 (_ops_rnn) — 독립 바인딩
 # =========================
 pybind11_add_module(_ops_rnn MODULE
   src/bindings/rnn_pybind.cpp
-  backends/cuda/ops/rnn/kernels.cu
   backends/cuda/ops/rnn/launcher.cu
+  backends/cuda/ops/rnn/kernels.cu
 )
 target_compile_definitions(_ops_rnn PRIVATE BUILD_STANDALONE_OPS=1)
 target_include_directories(_ops_rnn PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/gemm/include
+  # (필요하면) rnn 헤더 폴더도 추가
+  backends/cuda/ops/rnn
 )
-# REGEMM standalone 객체 포함 (GEMM 호출 사용)
+
+# ✅ REGEMM standalone 객체 포함 (conv2d와 동일)
 target_sources(_ops_rnn PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
 )
+
 target_link_libraries(_ops_rnn PRIVATE
   CUDA::cudart
   CUDA::cublas
 )
+
 set_target_properties(_ops_rnn PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -433,6 +438,13 @@ if (WIN32)
   )
 endif()
 apply_win_warnings(_ops_rnn)
+
+# _ops_common 이 먼저 빌드되도록(공용 타입/헬퍼)
+if (TARGET _ops_rnn AND TARGET _ops_common)
+  add_dependencies(_ops_rnn _ops_common)
+endif()
+
+
 
 # =========================
 # _ops_common 선행 의존성 일괄 추가 (안전 가드)

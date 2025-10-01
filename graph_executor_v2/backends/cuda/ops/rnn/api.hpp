@@ -28,6 +28,7 @@ Status add_inplace(Tensor& A, const Tensor& B, StreamHandle s);
 Status tanh_out(const Tensor& X, Tensor& Y, StreamHandle s);
 Status tanh_bwd_from_out(const Tensor& Y, const Tensor& dY, Tensor& dZ, StreamHandle s);
 Status rowwise_sum_accum(const Tensor& M, Tensor& out, int B, int H, StreamHandle s);
+Status transpose_2d(const Tensor& A, Tensor& AT, int M, int N, StreamHandle s);
 // ========================================================================
 
 
