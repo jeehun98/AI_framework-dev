@@ -1196,6 +1196,87 @@ build C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_ex
   TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rmsnorm.pdb
 
 # =============================================================================
+# Object build statements for MODULE_LIBRARY target _ops_cross_entropy
+
+
+#############################################
+# Order-only phony target for _ops_cross_entropy
+
+build cmake_object_order_depends_target__ops_cross_entropy: phony || .
+
+build CMakeFiles\_ops_cross_entropy.dir\src\bindings\cross_entropy_pybind.cpp.obj: CXX_COMPILER___ops_cross_entropy_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\cross_entropy_pybind.cpp || cmake_object_order_depends_target__ops_cross_entropy
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_cross_entropy_EXPORTS
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /GL /MP
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  OBJECT_DIR = CMakeFiles\_ops_cross_entropy.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_cross_entropy.dir\src\bindings
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_cross_entropy.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pdb
+
+build CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj: CUDA_COMPILER___ops_cross_entropy_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy\launcher.cu || cmake_object_order_depends_target__ops_cross_entropy
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_cross_entropy_EXPORTS
+  DEP_FILE = CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\_ops_cross_entropy.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_cross_entropy.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pdb
+
+build CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj: CUDA_COMPILER___ops_cross_entropy_unscanned_Release C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy\kernels.cu || cmake_object_order_depends_target__ops_cross_entropy
+  CONFIG = Release
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DPy_NO_LINK_LIB -D_ops_cross_entropy_EXPORTS
+  DEP_FILE = CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj.d
+  FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc
+  INCLUDES = -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\as042\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\_ops_cross_entropy.dir
+  OBJECT_FILE_DIR = CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_cross_entropy.dir\
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pdb
+
+
+# =============================================================================
+# Device Link build statements for MODULE_LIBRARY target _ops_cross_entropy
+
+
+#############################################
+# Link the shared module CMakeFiles\_ops_cross_entropy.dir\cmake_device_link.obj
+
+build CMakeFiles\_ops_cross_entropy.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_cross_entropy_Release CMakeFiles\_ops_cross_entropy.dir\src\bindings\cross_entropy_pybind.cpp.obj CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib
+  LANGUAGE_COMPILE_FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD
+  LINK_FLAGS = -Xcompiler=-LTCG
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
+  OBJECT_DIR = CMakeFiles\_ops_cross_entropy.dir
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_cross_entropy.dir\
+  TARGET_FILE = CMakeFiles\_ops_cross_entropy.dir\cmake_device_link.obj
+  TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.lib
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pdb
+
+# =============================================================================
+# Link build statements for MODULE_LIBRARY target _ops_cross_entropy
+
+
+#############################################
+# Link the shared module C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd
+
+build C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd: CXX_MODULE_LIBRARY_LINKER___ops_cross_entropy_Release CMakeFiles\_ops_cross_entropy.dir\src\bindings\cross_entropy_pybind.cpp.obj CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj CMakeFiles\_ops_cross_entropy.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib
+  CONFIG = Release
+  LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
+  LINK_FLAGS = /machine:x64 /INCREMENTAL:NO -LTCG
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  C:\Users\as042\AppData\Local\Programs\Python\Python312\libs\python312.lib  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
+  OBJECT_DIR = CMakeFiles\_ops_cross_entropy.dir
+  POST_BUILD = cd .
+  PRE_LINK = cd .
+  TARGET_COMPILE_PDB = CMakeFiles\_ops_cross_entropy.dir\
+  TARGET_FILE = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd
+  TARGET_IMPLIB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.lib
+  TARGET_PDB = C:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pdb
+
+# =============================================================================
 # Object build statements for MODULE_LIBRARY target _ops_pad
 
 
@@ -1628,6 +1709,10 @@ build _ops_conv2d: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor
 
 build _ops_conv2d.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd
 
+build _ops_cross_entropy: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd
+
+build _ops_cross_entropy.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd
+
 build _ops_dropout: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd
 
 build _ops_dropout.pyd: phony C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd
@@ -1672,7 +1757,7 @@ build ai_core: phony ai_core.lib
 #############################################
 # Folder: C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build
 
-build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rmsnorm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rnn.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_softmax.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_layernorm.pyd
+build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rmsnorm.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rnn.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_softmax.pyd C$:\Users\as042\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_layernorm.pyd
 
 # =============================================================================
 # Built-in targets
