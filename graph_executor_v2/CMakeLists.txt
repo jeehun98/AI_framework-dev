@@ -374,6 +374,43 @@ endif()
 
 apply_win_warnings(_ops_rmsnorm)
 
+# =========================
+# Python 모듈 (_ops_cross_entropy) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_cross_entropy MODULE
+  src/bindings/cross_entropy_pybind.cpp
+  backends/cuda/ops/cross_entropy/launcher.cu
+  backends/cuda/ops/cross_entropy/kernels.cu
+)
+
+target_compile_definitions(_ops_cross_entropy PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_cross_entropy PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/cross_entropy
+)
+
+target_link_libraries(_ops_cross_entropy PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_cross_entropy PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_cross_entropy PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_cross_entropy)
+
 
 # =========================
 # Python 모듈 (_ops_pad) — op 전용 독립 바인딩

@@ -8,6 +8,7 @@ C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_conv2d.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_dropout.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_rmsnorm.dir
+C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_cross_entropy.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_pad.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_pool2d.dir
 C:/Users/as042/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_rnn.dir
