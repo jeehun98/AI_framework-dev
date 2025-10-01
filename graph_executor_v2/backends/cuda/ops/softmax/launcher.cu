@@ -11,7 +11,7 @@ static inline bool is_row_major_2d_f32(const Tensor& t){
 }
 
 void softmax_forward_kernel_launcher(const float*, const float*, float*, int, int, float, bool, cudaStream_t);
-void softmax_backward_kernel_launcher(const float*, const float*, float*, int, int, bool, cudaStream_t);
+void softmax_backward_kernel_launcher(const float*, const float*, float*, int, int, float, bool, cudaStream_t);
 
 static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
 
@@ -61,7 +61,7 @@ Status SoftmaxCudaBackwardLaunch(const Tensor& Y_or_X, const Tensor* Mask,
   // 간단히: y_or_x는 이미 softmax 출력이라고 가정 (실서비스면 옵션으로 분기)
   Yptr = static_cast<const float*>(Y_or_X.data);
 
-  softmax_backward_kernel_launcher(Yptr, dYptr, dXptr, M, N, attrs.log, to_cuda(stream));
+  softmax_backward_kernel_launcher(Yptr, dYptr, dXptr, M, N, attrs.scale, attrs.log, to_cuda(stream));
   return Status::Ok;
 }
 

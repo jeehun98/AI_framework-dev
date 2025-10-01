@@ -2,8 +2,13 @@
 #include <cuda_runtime.h>
 #include <cassert>
 #include "backends/cuda/ops/layernorm/api.hpp"
-#include "ai/dispatch.hpp"
-#include "ai/tensor.hpp"
+
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/tensor.hpp"
+  #include "ai/dispatch.hpp" // Status, StreamHandle
+#endif
 
 namespace ai {
 
