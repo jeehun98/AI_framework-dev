@@ -82,6 +82,7 @@ add_library(ai_core STATIC
   src/ops/memory.cpp
   src/ops/upsample2d.cpp
   src/ops/view.cpp
+  src/ops/rnn.cpp            # ✅ RNN 오퍼 통합
 )
 
 target_include_directories(ai_core
@@ -165,10 +166,13 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
+  # ✅ RNN 통합 (통합 백엔드)
+  backends/cuda/ops/rnn/kernels.cu
+  backends/cuda/ops/rnn/launcher.cu
+
   # ✅ OBJECT 소스는 "sources" 목록에 포함 (올바른 사용)
   $<TARGET_OBJECTS:ge2_regemm_core>
 )
-
 
 set_target_properties(ai_backend_cuda PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -239,8 +243,7 @@ apply_win_warnings(_ops_common)
 pybind11_add_module(_ops_gemm MODULE
   src/bindings/gemm_pybind.cpp
 )
-# ❌ 잘못: target_link_libraries에 $<TARGET_OBJECTS:...> 넣지 않기
-# ✅ 정정: OBJECT 소스는 target_sources 로 포함
+# OBJECT 소스는 target_sources 로 포함
 target_sources(_ops_gemm PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
 )
@@ -268,7 +271,43 @@ if (WIN32)
 endif()
 apply_win_warnings(_ops_gemm)
 
-
+# =========================
+# Python 모듈 (_ops_conv2d) — 독립 바인딩
+# =========================
+pybind11_add_module(_ops_conv2d MODULE
+  src/bindings/conv2d_pybind.cpp
+  backends/cuda/ops/conv2d/launcher.cu
+  backends/cuda/ops/conv2d/kernels.cu
+)
+target_compile_definitions(_ops_conv2d PRIVATE BUILD_STANDALONE_OPS=1)
+target_include_directories(_ops_conv2d PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/conv2d
+  backends/cuda/ops/gemm/include
+  backends/cuda/ops/gemm
+)
+target_sources(_ops_conv2d PRIVATE
+  $<TARGET_OBJECTS:ge2_regemm_standalone>
+)
+target_link_libraries(_ops_conv2d PRIVATE
+  CUDA::cudart
+  CUDA::cublas
+  # CUDA::cudnn
+)
+set_target_properties(_ops_conv2d PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_conv2d PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+apply_win_warnings(_ops_conv2d)
 
 # =========================
 # Python 모듈 (_ops_dropout) — 독립 바인딩
@@ -297,48 +336,6 @@ if (WIN32)
   )
 endif()
 apply_win_warnings(_ops_dropout)
-
-# =========================
-# Python 모듈 (_ops_conv2d) — 독립 바인딩
-# =========================
-pybind11_add_module(_ops_conv2d MODULE
-  src/bindings/conv2d_pybind.cpp
-  backends/cuda/ops/conv2d/launcher.cu
-  backends/cuda/ops/conv2d/kernels.cu
-)
-target_compile_definitions(_ops_conv2d PRIVATE BUILD_STANDALONE_OPS=1)
-target_include_directories(_ops_conv2d PRIVATE
-  ${CMAKE_SOURCE_DIR}
-  backends/cuda/ops/_common/shim
-  backends/cuda/ops/conv2d
-  backends/cuda/ops/gemm/include
-  backends/cuda/ops/gemm
-)
-# ❌ 잘못: target_link_libraries에 $<TARGET_OBJECTS:...> 사용
-# ✅ 정정: target_sources 로 포함
-target_sources(_ops_conv2d PRIVATE
-  $<TARGET_OBJECTS:ge2_regemm_standalone>
-)
-target_link_libraries(_ops_conv2d PRIVATE
-  CUDA::cudart
-  CUDA::cublas
-  # CUDA::cudnn
-)
-set_target_properties(_ops_conv2d PROPERTIES
-  CUDA_SEPARABLE_COMPILATION ON
-  CUDA_RESOLVE_DEVICE_SYMBOLS ON
-  PREFIX "" SUFFIX ".pyd"
-  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-)
-if (WIN32)
-  set_target_properties(_ops_conv2d PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-  )
-endif()
-apply_win_warnings(_ops_conv2d)
-
-
 
 # =========================
 # Python 모듈 (_ops_pad) — op 전용 독립 바인딩
@@ -402,9 +399,45 @@ endif()
 apply_win_warnings(_ops_pool2d)
 
 # =========================
+# Python 모듈 (_ops_rnn) — ✅ 새로 추가: RNN 독립 바인딩
+# =========================
+pybind11_add_module(_ops_rnn MODULE
+  src/bindings/rnn_pybind.cpp
+  backends/cuda/ops/rnn/kernels.cu
+  backends/cuda/ops/rnn/launcher.cu
+)
+target_compile_definitions(_ops_rnn PRIVATE BUILD_STANDALONE_OPS=1)
+target_include_directories(_ops_rnn PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/gemm/include
+)
+# REGEMM standalone 객체 포함 (GEMM 호출 사용)
+target_sources(_ops_rnn PRIVATE
+  $<TARGET_OBJECTS:ge2_regemm_standalone>
+)
+target_link_libraries(_ops_rnn PRIVATE
+  CUDA::cudart
+  CUDA::cublas
+)
+set_target_properties(_ops_rnn PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_rnn PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+apply_win_warnings(_ops_rnn)
+
+# =========================
 # _ops_common 선행 의존성 일괄 추가 (안전 가드)
 # =========================
-set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout)
+set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn)
 foreach(mod IN LISTS _ops_modules)
   if (TARGET ${mod} AND TARGET _ops_common)
     add_dependencies(${mod} _ops_common)
