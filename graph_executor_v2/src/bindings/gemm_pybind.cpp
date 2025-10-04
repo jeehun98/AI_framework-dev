@@ -126,11 +126,25 @@ PYBIND11_MODULE(_ops_gemm, m) {
            ai::Tensor* gBias,        // optional
            const ai::GemmAttrs& attrs,
            void* stream /* = nullptr */) {
-            auto st = ai::GemmCudaBackward(
-                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
-            );
-            raise_if_not_ok(st, "backward");
-        },
+            // ---- PerN 강제 세이프가드 ----
+            const int64_t M = A.desc.shape.at(0);
+            const int64_t N = B.desc.shape.at(1);
+            if (gBias && gBias->data) {
+                const auto& s = gBias->desc.shape;
+                auto bad_perm =
+                    (s.size()==1 && s[0]==M) ||
+                    (s.size()==2 && s[0]==M && s[1]==1);
+                if (bad_perm) {
+                    throw std::invalid_argument(
+                        "[_ops_gemm::backward] gBias shape suggests PerM (len==M). "
+                        "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
+                }
+            }
+             auto st = ai::GemmCudaBackward(
+                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
+             );
+             raise_if_not_ok(st, "backward");
+         },
         py::arg("A"),
         py::arg("B"),
         py::arg("C")     = nullptr,
@@ -208,6 +222,20 @@ PYBIND11_MODULE(_ops_gemm, m) {
             attrs.act         = parse_act(act);
             attrs.with_bias   = with_bias;
             attrs.leaky_slope = leaky_slope;
+            // ---- PerN 강제 세이프가드 ----
+            const int64_t M = A.desc.shape.at(0);
+            const int64_t N = B.desc.shape.at(1);
+            if (gBias && gBias->data) {
+                const auto& s = gBias->desc.shape;
+                auto bad_perm =
+                    (s.size()==1 && s[0]==M) ||
+                    (s.size()==2 && s[0]==M && s[1]==1);
+                if (bad_perm) {
+                    throw std::invalid_argument(
+                        "[_ops_gemm::backward_ex] gBias shape suggests PerM (len==M). "
+                        "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
+                }
+            }
             auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
             raise_if_not_ok(st, "backward_ex");
         },

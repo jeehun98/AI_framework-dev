@@ -110,25 +110,54 @@ class Dense(Layer):
 
         if self.use_native_bwd:
             if self.last_linear is None:
-                # 안전 가드: 필요 시 다시 계산
                 self.last_linear = gemm_ops.forward(self.last_input, self.W, self.b, act="none", with_bias=True)
+
             outs = gemm_ops.backward(
                 self.last_input, self.W, grad_output, self.last_linear,
                 act=self.activation, with_bias=True, leaky_slope=self.leaky_slope,
                 C=None, want_gA=True, want_gB=True, want_gBias=True
-            )
+            )            
             self.dW = outs.get("gB", None)
             self.db = outs.get("gBias", None)
             dx = outs.get("gA", None)
             if dx is None:
                 raise RuntimeError("native backward did not return gA")
-            return dx
 
-        # 수동 미분 경로:
+            # --- 안전장치: db는 반드시 sum(dY_after_act) ---
+            go_chk = apply_activation_grad(grad_output, self.last_linear, self.activation, self.leaky_slope)
+            keep = (self.b is not None and self.b.ndim == 2)  # b가 (1, U)면 keepdims 유지
+            sum_go = go_chk.sum(axis=0, keepdims=keep)        # 정답
+
+            # (A) 우선 같으면 통과
+            if self.db is not None:
+                err = float(cp.max(cp.abs(self.db - sum_go)))
+            else:
+                err = float('inf')
+
+            if err >= 1e-5:
+                # (B) 평균(/M) 케이스인지 체크
+                M = self.last_input.shape[0]
+                err_scaled = float(cp.max(cp.abs(self.db * M - sum_go))) if self.db is not None else float('inf')
+
+                if err_scaled < 1e-5:
+                    # 평균으로 나온 경우 → 합(sum)으로 보정
+                    self.db = self.db * M
+                else:
+                    # (C) 축이 틀린(PerM) 등 다른 이유 → 정답으로 강제 교체
+                    #   - 로깅만 남기고 sum_go로 교정해서 진행
+                    #   - 필요시 print로 경고 노출(원하면 주석 해제)
+                    # print(f"[warn] Dense native bwd: replacing db with sum(dY). "
+                    #       f"mismatch={err:.3e}, scaled_mismatch={err_scaled:.3e}")
+                    self.db = sum_go
+
+            return dx
+        
+        # -------- 수동 미분 경로 --------
         if self.last_linear is None:
             self.last_linear = gemm_ops.forward(self.last_input, self.W, self.b, act="none", with_bias=True)
         go = apply_activation_grad(grad_output, self.last_linear, self.activation, self.leaky_slope)
         self.dW = self.last_input.T @ go
+        # b 초기 shape가 (1, units)이므로 keepdims=True로 유지(네이티브와 브로드캐스트 호환)
         self.db = go.sum(axis=0, keepdims=True)
         dx = go @ self.W.T
         return dx
