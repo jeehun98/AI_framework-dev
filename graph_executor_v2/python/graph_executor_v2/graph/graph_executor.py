@@ -2,8 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
 import cupy as cp
+import math
 
-# 레이어/ops 가져오기 (당신 프로젝트 구조에 맞춤)
+# 레이어/ops 가져오기 (프로젝트 구조에 맞춤)
 from graph_executor_v2.layers.conv2d import Conv2D
 from graph_executor_v2.layers.linear import Linear
 from graph_executor_v2.layers.dense_gemm import Dense
@@ -36,12 +37,13 @@ class Node:
 
 @dataclass
 class GraphIR:
-    tensors: List[TesnorDesc] = field(default_factory=list)  # typo guard below
+    tensors: List[TensorDesc] = field(default_factory=list)
     nodes: List[Node] = field(default_factory=list)
     input_ids: List[int] = field(default_factory=list)
     output_ids: List[int] = field(default_factory=list)
 
-# small typo correction (keep compatibility if you paste quickly)
+
+# small alias (빠른 붙여넣기용 하위호환)
 TesnorDesc = TensorDesc
 
 
@@ -64,13 +66,16 @@ class MemoryArena:
 
     def view(self, desc: TensorDesc) -> cp.ndarray:
         buf = self.buffers[desc.buffer_id]
-        start = desc.offset
-        end = start + int(cp.prod(cp.array(desc.shape)))
-        return buf[start:end].view(dtype=desc.dtype).reshape(desc.shape)
-
+        start = int(desc.offset)
+        # 순수 파이썬으로 numel 계산 (캡처 중 H2D 방지)
+        numel = int(math.prod(int(s) for s in desc.shape))
+        end = start + numel
+        # 전부 디바이스 메모리 상의 view/reshape라서 캡처에 안전
+        return buf[start:end].view(dtype=desc.dtype).reshape(tuple(int(s) for s in desc.shape))
 
 def _numel(shape: Tuple[int, ...]) -> int:
-    return int(cp.prod(cp.array(shape)))
+    # 순수 파이썬 계산 (CUDA 그래프 캡처 중 H2D 발생 방지)
+    return int(math.prod(int(s) for s in shape))
 
 
 def plan_memory(ir: GraphIR) -> MemoryArena:
@@ -81,6 +86,7 @@ def plan_memory(ir: GraphIR) -> MemoryArena:
         need = t.offset + _numel(t.shape)
         per_buf_need[t.buffer_id] = max(per_buf_need.get(t.buffer_id, 0), need)
     for bid, need in per_buf_need.items():
+        # (단순화) float32 아레나. 필요시 t.dtype별 풀로 확장 가능.
         arena.allocate(bid, need, dtype=cp.float32)
     return arena
 
@@ -92,10 +98,13 @@ class GraphCompiler:
     model: Sequential-like (model.layers 리스트 보유)
     """
     def __init__(self, model) -> None:
+        self._use_runtime_graph_api: bool = True  # 기본값: runtime API 경로 사용
         self.model = model
         self.ir: Optional[GraphIR] = None
         self.arena: Optional[MemoryArena] = None
-        self._cuda_graph_exec = None
+        # CUDA Graph 관련 핸들
+        self._gexec: Optional[Any] = None          # GraphExec 또는 graphExec_t(int)
+        self._cap_stream: Optional[cp.cuda.Stream] = None
 
     def compile(self, input_shape: Tuple[int, ...], use_cuda_graph: bool = False):
         """
@@ -150,11 +159,11 @@ class GraphCompiler:
                         "dCol":   cp.empty((HWo, K),    dtype=cp.float32),
                         "W_KC":   cp.empty((K,   Cout), dtype=cp.float32),
                         "Y_tmp":  cp.empty((HWo, Cout), dtype=cp.float32),
-                        "Z_rows": cp.empty((HWo, Cout), dtype=cp.float32),  # act=none이어도 내부 로직이 쓰므로 확보
+                        "Z_rows": cp.empty((HWo, Cout), dtype=cp.float32),  # act=none이어도 내부 로직용
                     }
                     node.ws_fwd = ws_fwd
                 else:
-                    node.ws_fwd = None  # fallback 경로에서 내부 helper 사용
+                    node.ws_fwd = None  # fallback 경로
 
                 ir.nodes.append(node)
                 cur_tid = y_tid
@@ -213,21 +222,80 @@ class GraphCompiler:
 
         # ----- 3. CUDA Graph(선택) -----
         if use_cuda_graph:
-            g = cp.cuda.graph.Graph()
-            with g.capture():
-                _ = self._run_impl(None)  # warm-up inside capture
-            self._cuda_graph_exec = g.instantiate()
+            # 3-1) 워밍업 1회 (플랜/워크스페이스 고정)
+            warm_x = cp.empty(input_shape, dtype=cp.float32)
+            _ = self._run_impl(warm_x)
+            cp.cuda.get_current_stream().synchronize()
+
+            # 3-2) 캡처
+            self._cap_stream = cp.cuda.Stream(non_blocking=True)
+            with self._cap_stream:
+                self._cap_stream.begin_capture()
+                _ = self._run_impl(None)
+                graph = self._cap_stream.end_capture()  # cp.cuda.graph.Graph (버전에 따라 다름)
+
+            # 3-3) instantiate & upload (객체 메서드 → 모듈함수 → 런타임 포인터 폴백)
+            # 기본은 high-level 경로로 가정
+            self._use_runtime_graph_api = False
+            self._graph_api_kind = "unknown"
+
+            try:
+                # A) 가장 쉬운 경로: Graph 객체가 launch/upload 메서드를 직접 제공
+                #    (여기서는 따로 instantiate 필요 없음)
+                if hasattr(graph, "upload") and hasattr(graph, "launch"):
+                    graph.upload(self._cap_stream)
+                    self._gexec = graph            # 실행 시 graph.launch(stream) 호출
+                    self._graph_api_kind = "graph-object"
+                else:
+                    raise AttributeError("no-graph-object-methods")
+            except AttributeError:
+                # B) 모듈 함수 스타일 (일부 버전)
+                try:
+                    # 일부 구버전에는 cupy.cuda.graph.upload/launch 만 있고
+                    # instantiate는 아예 없을 수 있음. 그래프 객체 그대로 전달.
+                    cp.cuda.graph.upload(graph, self._cap_stream)
+                    self._gexec = graph            # 실행 시 cp.cuda.graph.launch(graph, stream)
+                    self._graph_api_kind = "module-func"
+                except Exception:
+                    # C) 최후: 런타임 포인터 API
+                    #   - 그래프 포인터는 graph.graph (cudaGraph_t) 또는 graph.ptr 중 하나로 노출됨
+                    raw = getattr(graph, "graph", None)
+                    if raw is None:
+                        raw = getattr(graph, "ptr", None)
+                    if raw is None:
+                        # 그래도 없으면 더 진행 불가 → 명시 에러
+                        raise TypeError("This CuPy version exposes neither Graph.launch/upload nor graph/ptr.")
+                    gexec = cp.cuda.runtime.graphInstantiate(int(raw))
+                    if isinstance(gexec, tuple):
+                        gexec = gexec[0]
+                    self._gexec = int(gexec)
+                    cp.cuda.runtime.graphUpload(self._gexec, self._cap_stream.ptr)
+                    self._use_runtime_graph_api = True
+                    self._graph_api_kind = "runtime-pointer"
+
         return self
 
     # ======================== 실행 ========================
 
     def run(self, x: cp.ndarray) -> cp.ndarray:
-        if self._cuda_graph_exec is not None:
-            # 입력 복사 → 캡처된 실행 → 출력 view 반환
+        if self._gexec is not None:
             inp = self.arena.view(self.ir.tensors[self.ir.input_ids[0]])
             inp[...] = x
-            self._cuda_graph_exec.launch()
-            return self.arena.view(self.ir.tensors[self.ir.output_ids[0]])
+
+            if self._use_runtime_graph_api:
+                # C 경로: 포인터 기반 런타임 API
+                cp.cuda.runtime.graphLaunch(self._gexec, self._cap_stream.ptr)
+            else:
+                # A/B 경로: high-level
+                if self._graph_api_kind == "graph-object":
+                    # Graph 객체 자체에 launch 메서드
+                    self._gexec.launch(self._cap_stream)
+                else:
+                    # 모듈 함수 스타일
+                    cp.cuda.graph.launch(self._gexec, self._cap_stream)
+
+            self._cap_stream.synchronize()
+            return self.arena.view(self.ir.tensors[self.ir.output_ids[0]]).copy()
         else:
             return self._run_impl(x)
 
@@ -246,7 +314,11 @@ class GraphCompiler:
                 Y = self.arena.view(self.ir.tensors[node.outputs[0]])
                 layer: Conv2D = node.layer_ref
                 attrs = node.attrs
-                # fast path: groups==1 → low-level 런처 + WS 주입 + Z==Y alias
+
+                # 현재 스트림 포인터 (캡처/일반 모두 동일 API)
+                stream_ptr = cp.cuda.get_current_stream().ptr
+
+                # fast path: groups==1 → 저수준 런처 + WS 주입 + Z==Y alias
                 if layer.groups == 1:
                     a = _gconv.Conv2DAttrs()
                     a.stride_h, a.stride_w = attrs["stride"]
@@ -265,17 +337,17 @@ class GraphCompiler:
                         int(X.data.ptr), list(map(int, X.shape)),
                         int(layer.W.data.ptr), list(map(int, layer.W.shape)),
                         int(Y.data.ptr), list(map(int, Y.shape)),
-                        int(layer.b.data.ptr) if (layer.use_bias and layer.b is not None) else None,
+                        int(layer.b.data.ptr) if (layer.use_bias and getattr(layer, "b", None) is not None) else None,
                         int(Y.data.ptr),  # Z alias to Y
                         a,
-                        0,  # stream
+                        int(stream_ptr),  # ★ 현재 스트림 사용 (0 금지: 캡처 스트림과 분리 위험)
                         int(ws["dCol"].data.ptr),
                         int(ws["W_KC"].data.ptr),
                         int(ws["Y_tmp"].data.ptr),
                         int(ws["Z_rows"].data.ptr),
                     )
                 else:
-                    # fallback: 그룹 conv은 고수준 헬퍼 사용(임시 내부버퍼 쓰지만 동작 OK)
+                    # fallback: 그룹 conv은 고수준 헬퍼 사용
                     y = conv_ops.forward(
                         X, layer.W, layer.b if layer.use_bias else None,
                         stride=layer.stride, padding=layer.padding,
@@ -313,12 +385,15 @@ class GraphCompiler:
                 with_bias = node.attrs.get("with_bias", True)
                 W = getattr(layer, "W")
                 b = getattr(layer, "b", None) if with_bias else None
-                y = gemm_ops.forward(A, W, b, act=str(act), with_bias=bool(with_bias),
-                                     save_z=False, out=Y)
+                y = gemm_ops.forward(
+                    A, W, b,
+                    act=str(act), with_bias=bool(with_bias),
+                    save_z=False, out=Y
+                )
                 if y is not Y:
                     Y[...] = y
             else:
                 raise RuntimeError(f"Unknown node kind: {kind}")
 
-        # 3) 출력
+        # 3) 출력 (view 반환; 필요시 호출측에서 copy)
         return self.arena.view(self.ir.tensors[self.ir.output_ids[0]])

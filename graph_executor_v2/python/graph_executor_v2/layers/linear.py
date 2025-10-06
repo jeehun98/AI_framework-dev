@@ -68,3 +68,10 @@ class Linear(Layer):
         if dX is None:
             raise RuntimeError("Linear backward did not return gA")
         return dX
+
+    def compute_output_shape(self, input_shape):
+        if len(input_shape) != 2:
+            raise ValueError(f"Linear expects 2D input (N,D), got {input_shape}")
+        n, d_in = map(int, input_shape)
+        out_features = int(self.out_features)
+        return (n, out_features)
