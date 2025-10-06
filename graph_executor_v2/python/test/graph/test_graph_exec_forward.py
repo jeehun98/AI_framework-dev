@@ -6,7 +6,7 @@ THIS = os.path.abspath(os.path.dirname(__file__))
 ROOT = os.path.abspath(os.path.join(THIS, "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-
+# python/test/graph/test_graph_exec_forward.py
 import cupy as cp
 from graph_executor_v2.layers.base import Layer
 from graph_executor_v2.layers.conv2d import Conv2D
@@ -57,8 +57,6 @@ class MiniModel:
             l.build(cur)
             cur = l.compute_output_shape(cur)
         self.output_shape = cur
-
-    
 
 if __name__ == "__main__":
     x = cp.random.randn(4, 3, 32, 32).astype(cp.float32)
