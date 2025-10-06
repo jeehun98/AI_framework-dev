@@ -27,7 +27,8 @@ PYBIND11_MODULE(_ops_common, m) {
         .def_readwrite("trans_b",     &ai::GemmAttrs::trans_b)
         .def_readwrite("act",         &ai::GemmAttrs::act)
         .def_readwrite("with_bias",   &ai::GemmAttrs::with_bias)
-        .def_readwrite("leaky_slope", &ai::GemmAttrs::leaky_slope);
+        .def_readwrite("leaky_slope", &ai::GemmAttrs::leaky_slope)
+        .def_readwrite("save_z",      &ai::GemmAttrs::save_z);
 
     // --- NEW: Tensor 계열 ---
     py::enum_<ai::Device>(m, "Device", py::arithmetic(), py::module_local(false))

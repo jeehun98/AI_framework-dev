@@ -74,15 +74,13 @@ PYBIND11_MODULE(_ops_conv2d, m) {
   * Backward: dCol[HWo,K], dTmp[max(Cout*K, HWo*K)], (optional) W_CK[Cout,K], dY_HT[HWo,Cout], dWpack[Cout,K], gy_rows[Cout,HWo], Z_rows[Cout,HWo]
 )";
 
-  // ----- ActKind 노출 -----
-  py::enum_<ActKind>(m, "ActKind")
-    .value("None",      ActKind::None)
-    .value("ReLU",      ActKind::ReLU)
-    .value("LeakyReLU", ActKind::LeakyReLU)
-    .value("GELU",      ActKind::GELU)
-    .value("Sigmoid",   ActKind::Sigmoid)
-    .value("Tanh",      ActKind::Tanh)
-    .export_values();
+  m.attr("__package__") = "graph_executor_v2.ops";
+  m.doc() = R"(Independent conv2d CUDA ops binding ... )";
+
+  // ===== re-export common types to avoid duplicate registration =====
+  py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
+  m.attr("ActKind") = common.attr("ActKind");
+  // (필요하면 Device/DType/Layout/TensorDesc/Tensor 등도 같은 방식으로 재노출 가능)
 
   // ----- Conv2DAttrs -----
   py::class_<Conv2DAttrs>(m, "Conv2DAttrs")
