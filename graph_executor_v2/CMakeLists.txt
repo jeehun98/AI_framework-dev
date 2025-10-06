@@ -98,7 +98,6 @@ apply_win_warnings(ai_core)
 # =========================
 set(GE2_REGEMM_SOURCES
   backends/cuda/ops/gemm/launcher.cu
-  backends/cuda/ops/gemm/backward.cu
   backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu
   backends/cuda/ops/gemm/kernels/regemm_backward.cu
 )

@@ -1,10 +1,16 @@
 # python/graph_executor_v2/ops/gemm.py
 from __future__ import annotations
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple, Union
 import cupy as cp
+
 from .common import (
-    assert_f32_2d, as_tensor_2d, empty_like_2d, empty_2d,
-    get_stream_ptr, ensure_cuda_dlls, to_voidp_capsule,   # ✅ 사용
+    assert_f32_2d,
+    as_tensor_2d,
+    empty_like_2d,
+    empty_2d,
+    get_stream_ptr,
+    ensure_cuda_dlls,
+    to_voidp_capsule,
 )
 
 # 바인딩(공용 타입 re-export 포함). 필요시 _ops_common 자동 로드.
@@ -13,8 +19,9 @@ from graph_executor_v2.ops import _ops_gemm as g
 # (Windows) CUDA DLL 경로 가드
 ensure_cuda_dlls()
 
+
 # ------------------------------------------------------------
-# Forward: fused GEMM(+bias+activation)
+# Forward: fused GEMM(+bias+activation) with optional Z(pre) save
 # ------------------------------------------------------------
 def forward(
     A: cp.ndarray,
@@ -26,38 +33,90 @@ def forward(
     leaky_slope: float = 0.01,
     stream: Optional[int] = None,
     out: Optional[cp.ndarray] = None,
-) -> cp.ndarray:
+    # NEW: pre-activation Z 저장 옵션
+    save_z: bool = False,
+    z_out: Optional[cp.ndarray] = None,
+    return_z: bool = False,
+) -> Union[cp.ndarray, Tuple[cp.ndarray, cp.ndarray]]:
     """
-    Fused GEMM(+bias+activation):  Y = A @ B (+ bias) -> act
+    Fused GEMM(+bias+activation):  Y = act( A @ B (+ bias) )
       - A: (M, K), B: (K, N)
-      - bias: (1, N) | (M, 1) | (M, N) | None
+      - bias: (N,) | (1, N) | (M, 1) | (M, N) | None
       - dtype=float32, row-major 2D
+      - save_z=True면 pre-activation Z를 z_out에 저장(없으면 내부에서 할당)
+      - return_z=True면 (Y, Z)를 반환
     """
     M, K = assert_f32_2d(A, "A")
     K2, N = assert_f32_2d(B, "B")
     if K != K2:
         raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
-    if with_bias and bias is None:
-        raise ValueError("with_bias=True but bias is None")
-    if bias is not None:
-        assert_f32_2d(bias, "bias")
 
+    # with_bias 추론 (사용자가 명시했으면 그대로)
+    if with_bias is False and bias is not None:
+        # 사용자가 실수로 with_bias=False로 두더라도 bias를 주면 True로 올려줌
+        with_bias = True
+
+    # bias 처리: 1D (N,)도 허용 → (1,N)으로 승격
+    tBias = None
+    if with_bias:
+        if bias is None:
+            raise ValueError("with_bias=True but bias is None")
+        if not isinstance(bias, cp.ndarray):
+            raise TypeError("bias must be a CuPy ndarray")
+        if bias.dtype != cp.float32:
+            bias = bias.astype(cp.float32, copy=False)
+
+        if bias.ndim == 1:
+            if bias.size != N:
+                raise ValueError(f"bias 1D length must be N={N}, got {bias.size}")
+            bias = bias.reshape(1, N)
+        elif bias.ndim == 2:
+            # (1,N) | (M,1) | (M,N) 허용, 실제 브로드캐스트는 커널에서 처리
+            bm, bn = bias.shape
+            if not ((bm == 1 and bn == N) or (bm == M and bn == 1) or (bm == M and bn == N)):
+                raise ValueError(f"unsupported bias shape {bias.shape}; expected (1,N)|(M,1)|(M,N)")
+        else:
+            raise ValueError(f"unsupported bias ndim={bias.ndim}")
+        tBias = as_tensor_2d(bias)
+
+    # 출력 Y
     if out is None:
         out = cp.empty((M, N), dtype=cp.float32)
+    elif out.shape != (M, N) or out.dtype != cp.float32:
+        raise ValueError(f"out must be float32[{M},{N}]")
 
+    # Z 저장 버퍼
+    if save_z or return_z:
+        if z_out is None:
+            z_out = cp.empty((M, N), dtype=cp.float32)
+        else:
+            if z_out.shape != (M, N) or z_out.dtype != cp.float32:
+                raise ValueError(f"z_out must be float32[{M},{N}]")
+    else:
+        z_out = None  # 커널에 Z_saved 전달하지 않음
+
+    # 래핑
     tA = as_tensor_2d(A)
     tB = as_tensor_2d(B)
     tY = as_tensor_2d(out)
-    tBias = as_tensor_2d(bias) if bias is not None else None
+    tZ = as_tensor_2d(z_out) if z_out is not None else None
 
     stream_ptr = get_stream_ptr(stream)
 
+    # C++ 바인딩 시그니처:
+    # forward_ex(A,B,Bias,Y, trans_a,trans_b, act, with_bias, leaky_slope, save_z, Z_saved, stream)
     g.forward_ex(
         tA, tB, tBias, tY,
-        False, False,          # trans_a, trans_b
-        act, with_bias, float(leaky_slope),
-        to_voidp_capsule(stream_ptr)   # ✅ 캡슐 전달
+        False, False,              # trans_a, trans_b
+        act, bool(with_bias), float(leaky_slope),
+        bool(save_z or return_z),  # save_z
+        tZ,                        # Z_saved
+        to_voidp_capsule(stream_ptr),
     )
+
+    # 반환
+    if return_z or save_z:
+        return out, z_out  # (Y, Z)
     return out
 
 
@@ -79,7 +138,7 @@ def backward(
     want_gB: bool = True,
     want_gBias: bool = False,
     stream: Optional[int] = None,
-    warn_mismatch: bool = False,      # ✅ 선택: 안전 경고 토글
+    warn_mismatch: bool = False,
 ) -> Dict[str, cp.ndarray]:
     """
     Backward for fused GEMM(+bias+activation).
@@ -100,36 +159,41 @@ def backward(
     if Mg != M or Ng != N or Mz != M or Nz != N:
         raise ValueError(f"Shape mismatch: gY(Z) must be (M={M}, N={N})")
 
+    if not isinstance(with_bias, bool):
+        with_bias = bool(with_bias)
     if with_bias is False and want_gBias:
         raise ValueError("want_gBias=True requires with_bias=True")
 
-    tA = as_tensor_2d(A)
-    tB = as_tensor_2d(B)
+    # 래핑
+    tA  = as_tensor_2d(A)
+    tB  = as_tensor_2d(B)
     tgY = as_tensor_2d(gY)
-    tZ = as_tensor_2d(Z)
-    tC = as_tensor_2d(C) if C is not None else None
+    tZ  = as_tensor_2d(Z)
+    tC  = as_tensor_2d(C) if C is not None else None
 
     # 출력 버퍼 준비
     gA_arr = empty_like_2d(A) if want_gA else None
     gB_arr = empty_like_2d(B) if want_gB else None
     gC_arr = empty_like_2d(Z) if (C is not None) else None
 
-    # ✅ 핵심: gBias는 PerN 보장을 위해 (1, N)로 할당
+    # ✅ PerN 보장: (1, N)
     gBias_arr = empty_2d(1, N) if (want_gBias and with_bias) else None
 
-    t_gA = as_tensor_2d(gA_arr) if gA_arr is not None else None
-    t_gB = as_tensor_2d(gB_arr) if gB_arr is not None else None
-    t_gC = as_tensor_2d(gC_arr) if gC_arr is not None else None
+    t_gA    = as_tensor_2d(gA_arr)   if gA_arr  is not None else None
+    t_gB    = as_tensor_2d(gB_arr)   if gB_arr  is not None else None
+    t_gC    = as_tensor_2d(gC_arr)   if gC_arr  is not None else None
     t_gBias = as_tensor_2d(gBias_arr) if gBias_arr is not None else None
 
     stream_ptr = get_stream_ptr(stream)
 
+    # C++ 바인딩 시그니처:
+    # backward_ex(A,B,C,gY,Z, gA,gB,gC,gBias, trans_a,trans_b, act, with_bias, leaky_slope, stream)
     g.backward_ex(
         tA, tB, tC, tgY, tZ,
         t_gA, t_gB, t_gC, t_gBias,
-        False, False,              # trans_a, trans_b
-        act, with_bias, float(leaky_slope),
-        to_voidp_capsule(stream_ptr)   # ✅ 캡슐 전달
+        False, False,
+        act, bool(with_bias), float(leaky_slope),
+        to_voidp_capsule(stream_ptr),
     )
 
     # 선택: gBias 모양/NaN 방어 (디버그 시 유용)
@@ -138,8 +202,6 @@ def backward(
             # 이 경고가 뜨면 바인딩/런처에서 PerM으로 추론됐다는 뜻
             print(f"[warn] gBias shape is {gBias_arr.shape}, expected (1,{N}). "
                   f"Ensure PerN bias grad (length N).")
-
-        # NaN/Inf 간단 체크
         if not cp.isfinite(gBias_arr).all():
             print("[warn] gBias contains non-finite values.")
 

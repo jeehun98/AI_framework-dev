@@ -42,6 +42,7 @@ static void raise_if_not_ok(ai::Status st, const char* where) {
         case S::ShapeMismatch:         msg = "ShapeMismatch: check M,K / K,N / Y(M,N)"; break;
         case S::StrideMismatch:        msg = "StrideMismatch: invalid leading dimensions (lda/ldb/ldd)"; break;
         case S::MissingInput:          msg = "MissingInput: required input missing (e.g., C for gC)"; break;
+        case S::MissingOutput:         msg = "MissingOutput: required output missing (e.g., save_z=True but Z_saved is None)"; break;
         case S::Invalid:               msg = "Invalid: argument range/validity error (e.g., int32 overflow)"; break;
         default:                       msg = "Unknown error";
     }
@@ -67,38 +68,47 @@ PYBIND11_MODULE(_ops_gemm, m) {
     m.doc() = R"(graph_executor_v2 GEMM bindings (regemm epilogue: bias+activation fused)
 - forward/backward: f32, row-major, no-transpose
 - bias broadcasting priority: Scalar > PerN(len==N) > PerM(len==M)
-- Use GemmAttrs directly or forward_ex/backward_ex with Python primitives.
+- Supports saving pre-activation Z in forward (save_z).
 - NumPy helpers delegate to graph_executor_v2._core.)";
 
     // ======================================================
     // 공용 타입 모듈 import + re-export (B안)
-    //  - 여기서 바로 사용할 수 있게 노출 (타입 항등성 유지)
     // ======================================================
     py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
-    m.attr("ActKind")       = common.attr("ActKind");
-    m.attr("GemmAttrs")     = common.attr("GemmAttrs");
-    // Tensor 계열 타입/팩토리도 re-export (저수준 경로 사용 편의)
-    m.attr("Device")        = common.attr("Device");
-    m.attr("DType")         = common.attr("DType");
-    m.attr("Layout")        = common.attr("Layout");
-    m.attr("TensorDesc")    = common.attr("TensorDesc");
-    m.attr("Tensor")        = common.attr("Tensor");
-    m.attr("make_tensor_2d")= common.attr("make_tensor_2d");
+    m.attr("ActKind")        = common.attr("ActKind");
+    m.attr("GemmAttrs")      = common.attr("GemmAttrs");
+    m.attr("Device")         = common.attr("Device");
+    m.attr("DType")          = common.attr("DType");
+    m.attr("Layout")         = common.attr("Layout");
+    m.attr("TensorDesc")     = common.attr("TensorDesc");
+    m.attr("Tensor")         = common.attr("Tensor");
+    m.attr("make_tensor_2d") = common.attr("make_tensor_2d");
 
     // =========================
     // 1) 저수준 (ai::Tensor 기반)
     // =========================
 
     // forward: A:[M,K], B:[K,N], Bias:[1|M|N]|None -> Y:[M,N]
+    // Optional: Z_saved:[M,N] to stash pre-activation (attrs.save_z True or implied)
     m.def(
         "forward",
         [](const ai::Tensor& A,
            const ai::Tensor& B,
            const ai::Tensor* Bias,
            ai::Tensor& Y,
-           const ai::GemmAttrs& attrs,
+           ai::GemmAttrs attrs,
+           ai::Tensor* Z_saved,          // NEW: optional
            void* stream /* = nullptr */) {
-            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream);
+            // If Z_saved is provided but attrs.save_z is false, enable it implicitly
+            if (Z_saved && Z_saved->data && !attrs.save_z) {
+                attrs.save_z = true;
+            }
+            // If attrs.save_z is true but Z_saved is null -> raise early for clearer error
+            if (attrs.save_z && (!Z_saved || !Z_saved->data)) {
+                throw std::invalid_argument(
+                    "[_ops_gemm::forward] save_z=True requires a valid Z_saved Tensor");
+            }
+            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
             raise_if_not_ok(st, "forward");
         },
         py::arg("A"),
@@ -106,8 +116,9 @@ PYBIND11_MODULE(_ops_gemm, m) {
         py::arg("bias") = nullptr,
         py::arg("Y"),
         py::arg("attrs"),
+        py::arg("Z_saved") = nullptr,    // NEW
         py::arg("stream") = nullptr,
-        "Run fused GEMM(+bias+activation) on CUDA (low-level, ai::Tensor + GemmAttrs)."
+        "Run fused GEMM(+bias+activation). Optionally saves pre-activation Z into Z_saved."
     );
 
     // backward:
@@ -140,11 +151,11 @@ PYBIND11_MODULE(_ops_gemm, m) {
                         "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
                 }
             }
-             auto st = ai::GemmCudaBackward(
-                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
-             );
-             raise_if_not_ok(st, "backward");
-         },
+            auto st = ai::GemmCudaBackward(
+                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
+            );
+            raise_if_not_ok(st, "backward");
+        },
         py::arg("A"),
         py::arg("B"),
         py::arg("C")     = nullptr,
@@ -156,7 +167,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
         py::arg("gBias") = nullptr,
         py::arg("attrs"),
         py::arg("stream") = nullptr,
-        "Compute gradients for fused GEMM(+bias+activation) (low-level, ai::Tensor + GemmAttrs)."
+        "Compute gradients for fused GEMM(+bias+activation) using pre-activation Z."
     );
 
     // =========================
@@ -173,6 +184,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
            std::string act,
            bool with_bias,
            float leaky_slope,
+           bool save_z,               // NEW
+           ai::Tensor* Z_saved,       // NEW
            void* stream /*=nullptr*/) {
             ai::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
@@ -180,10 +193,21 @@ PYBIND11_MODULE(_ops_gemm, m) {
             attrs.act         = parse_act(act);
             attrs.with_bias   = with_bias;
             attrs.leaky_slope = leaky_slope;
+            attrs.save_z      = save_z;
+
             if (attrs.with_bias && Bias == nullptr) {
                 throw std::invalid_argument("with_bias=True but bias is None");
             }
-            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream);
+            if (attrs.save_z) {
+                if (!Z_saved || !Z_saved->data) {
+                    throw std::invalid_argument("save_z=True requires Z_saved Tensor");
+                }
+            } else if (Z_saved && Z_saved->data) {
+                // User passed Z_saved without setting save_z -> enable implicitly
+                attrs.save_z = true;
+            }
+
+            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
             raise_if_not_ok(st, "forward_ex");
         },
         py::arg("A"),
@@ -195,8 +219,11 @@ PYBIND11_MODULE(_ops_gemm, m) {
         py::arg("act") = "none",
         py::arg("with_bias") = false,
         py::arg("leaky_slope") = 0.01f,
+        py::arg("save_z") = false,       // NEW
+        py::arg("Z_saved") = nullptr,    // NEW
         py::arg("stream") = nullptr,
-        "Run fused GEMM with epilogue params provided as Python primitives."
+        "Run fused GEMM with epilogue params provided as Python primitives. "
+        "Optionally save pre-activation into Z_saved when save_z=True."
     );
 
     m.def(
@@ -222,6 +249,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
             attrs.act         = parse_act(act);
             attrs.with_bias   = with_bias;
             attrs.leaky_slope = leaky_slope;
+
             // ---- PerN 강제 세이프가드 ----
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
