@@ -1,3 +1,4 @@
+# python/graph_executor_v2/layers/conv2d.py
 from __future__ import annotations
 from typing import Optional, Tuple
 import cupy as cp
@@ -40,7 +41,7 @@ class Conv2D(Layer):
 
         # cache
         self.last_input: Optional[cp.ndarray] = None
-        self.last_z: Optional[cp.ndarray] = None  # pre-activation (Y와 동일 shape; act=none이면 alias)
+        self.last_z: Optional[cp.ndarray] = None  # pre-activation (act=none이면 Y와 alias)
 
         # grads
         self.dW: Optional[cp.ndarray] = None
@@ -78,7 +79,7 @@ class Conv2D(Layer):
         """
         Forward (act='none'):
           커널에서 pre-activation Z를 저장(save_z=True).
-          act='none'이므로 Y==Z이고, 파이썬 래퍼가 Z_saved를 out과 alias로 전달합니다.
+          act='none'이므로 Y==Z이고, 래퍼가 Z_saved를 out과 alias로 자동 처리.
         """
         self.last_input = x
         y = conv_ops.forward(
@@ -87,10 +88,10 @@ class Conv2D(Layer):
             dilation=self.dilation, groups=self.groups,
             with_bias=self.use_bias,
             act="none",
-            save_z=True,       # 항상 Z를 저장
+            save_z=True,       # 항상 Z를 저장 (CUDA Graph용)
             Z_saved=None,      # 래퍼가 act='none'이면 out과 alias로 자동 처리
         )
-        # act='none'이라 y와 Z가 같음 → 캐시에 보관
+        # act='none'이라 y와 Z가 동일 → 캐시
         self.last_z = y
         return y
 

@@ -69,9 +69,12 @@ PYBIND11_MODULE(_ops_conv2d, m) {
 - Shapes:
   * X: [N,Cin,H,W], W: [Cout,Cin,Kh,Kw], B: [Cout]
   * Y/Z: [N,Cout,Hout,Wout]
+- Workspaces:
+  * Forward: dCol[HWo,K], W_KC[K,Cout], Y_tmp[HWo,Cout], (optional) Z_rows[HWo,Cout]
+  * Backward: dCol[HWo,K], dTmp[max(Cout*K, HWo*K)], (optional) W_CK[Cout,K], dY_HT[HWo,Cout], dWpack[Cout,K], gy_rows[Cout,HWo], Z_rows[Cout,HWo]
 )";
 
-  // ----- ActKind 노출 (ai_shim.hpp 또는 ai/dispatch.hpp 에 정의됨) -----
+  // ----- ActKind 노출 -----
   py::enum_<ActKind>(m, "ActKind")
     .value("None",      ActKind::None)
     .value("ReLU",      ActKind::ReLU)
@@ -81,7 +84,7 @@ PYBIND11_MODULE(_ops_conv2d, m) {
     .value("Tanh",      ActKind::Tanh)
     .export_values();
 
-  // ----- Conv2DAttrs (with_bias/act/leaky_slope/save_z 포함) -----
+  // ----- Conv2DAttrs -----
   py::class_<Conv2DAttrs>(m, "Conv2DAttrs")
     .def(py::init<>())
     .def_readwrite("stride_h",    &Conv2DAttrs::stride_h)
@@ -97,7 +100,8 @@ PYBIND11_MODULE(_ops_conv2d, m) {
     .def_readwrite("save_z",      &Conv2DAttrs::save_z);
 
   // ========================= forward =========================
-  // forward(..., z_ptr=None, attrs, stream): attrs.save_z=True면 z_ptr 필수
+  // forward(..., z_ptr=None, attrs, stream, *, dCol_ptr=0, W_KC_ptr=0, Y_tmp_ptr=0, Z_rows_ptr=0)
+  // attrs.save_z=True면 z_ptr과 Z_rows_ptr 필수
   m.def("forward",
     [](uintptr_t x_ptr, const std::vector<int64_t>& x_shape,        // [N,Cin,H,W]
        uintptr_t w_ptr, const std::vector<int64_t>& w_shape,        // [Cout,Cin,Kh,Kw]
@@ -105,7 +109,12 @@ PYBIND11_MODULE(_ops_conv2d, m) {
        py::object b_ptr_obj,                                        // int or None (bias=[Cout])
        py::object z_ptr_obj,                                        // int or None (Z_saved=[N,Cout,Ho,Wo])
        Conv2DAttrs attrs,
-       uintptr_t stream_ptr) {
+       uintptr_t stream_ptr,
+       // --- workspace pointers (optional, default 0=none) ---
+       uintptr_t dCol_ptr,
+       uintptr_t W_KC_ptr,
+       uintptr_t Y_tmp_ptr,
+       uintptr_t Z_rows_ptr) {
 
         Tensor X = make_tensor_4d(x_ptr, x_shape);
         Tensor W = make_tensor_4d(w_ptr, w_shape);
@@ -127,12 +136,26 @@ PYBIND11_MODULE(_ops_conv2d, m) {
           Zptr = &Ztmp;
         }
 
-        if (attrs.save_z && Zptr == nullptr) {
+        // Workspace struct
+        Conv2DWorkspaceFwd ws{};
+        ws.dCol   = reinterpret_cast<float*>(dCol_ptr);
+        ws.W_KC   = reinterpret_cast<float*>(W_KC_ptr);
+        ws.Y_tmp  = reinterpret_cast<float*>(Y_tmp_ptr);
+        ws.Z_rows = reinterpret_cast<float*>(Z_rows_ptr);
+
+        // 필수성 체크
+        if (!ws.dCol || !ws.W_KC || !ws.Y_tmp) {
+          throw std::invalid_argument("[_ops_conv2d.forward] workspace pointers (dCol, W_KC, Y_tmp) are required");
+        }
+        if (attrs.save_z && (Zptr == nullptr)) {
           throw std::invalid_argument("[_ops_conv2d.forward] attrs.save_z=True requires z_ptr (Z_saved)");
+        }
+        if (attrs.save_z && (!ws.Z_rows)) {
+          throw std::invalid_argument("[_ops_conv2d.forward] attrs.save_z=True requires Z_rows workspace");
         }
 
         StreamHandle stream = reinterpret_cast<StreamHandle>(stream_ptr);
-        auto st = Conv2DCudaLaunch(X, W, Bptr, Y, attrs, stream, Zptr);
+        auto st = Conv2DCudaLaunch(X, W, Bptr, Y, attrs, stream, Zptr, &ws);
         throw_if_bad(st, "forward");
       },
     py::arg("x_ptr"), py::arg("x_shape"),
@@ -141,11 +164,16 @@ PYBIND11_MODULE(_ops_conv2d, m) {
     py::arg("bias_ptr") = py::none(),
     py::arg("z_ptr")    = py::none(),
     py::arg("attrs")    = Conv2DAttrs{},
-    py::arg("stream")   = static_cast<uintptr_t>(0)
+    py::arg("stream")   = static_cast<uintptr_t>(0),
+    // workspace args (keyword-only 권장)
+    py::arg("dCol_ptr")   = static_cast<uintptr_t>(0),
+    py::arg("W_KC_ptr")   = static_cast<uintptr_t>(0),
+    py::arg("Y_tmp_ptr")  = static_cast<uintptr_t>(0),
+    py::arg("Z_rows_ptr") = static_cast<uintptr_t>(0)
   );
 
   // ========================= backward =========================
-  // backward(..., z_ptr,z_shape, ...): Z(pre-activation) 필수
+  // backward(..., z_ptr,z_shape, ..., *, dCol_ptr, dTmp_ptr, W_CK_ptr, dWpack_ptr, dY_HT_ptr, gy_rows_ptr, Z_rows_ptr)
   m.def("backward",
     [](uintptr_t x_ptr, const std::vector<int64_t>& x_shape,        // [N,Cin,H,W]
        uintptr_t w_ptr, const std::vector<int64_t>& w_shape,        // [Cout,Cin,Kh,Kw]
@@ -155,7 +183,15 @@ PYBIND11_MODULE(_ops_conv2d, m) {
        py::object db_ptr_obj,                                       // int or None
        py::object dx_ptr_obj,                                       // int or None
        Conv2DAttrs attrs,
-       uintptr_t stream_ptr) {
+       uintptr_t stream_ptr,
+       // --- workspace pointers (all required to avoid mallocs) ---
+       uintptr_t dCol_ptr,
+       uintptr_t dTmp_ptr,
+       uintptr_t W_CK_ptr,
+       uintptr_t dWpack_ptr,
+       uintptr_t dY_HT_ptr,
+       uintptr_t gy_rows_ptr,
+       uintptr_t Z_rows_ptr) {
 
         Tensor X  = make_tensor_4d(x_ptr,  x_shape);
         Tensor W  = make_tensor_4d(w_ptr,  w_shape);
@@ -181,8 +217,34 @@ PYBIND11_MODULE(_ops_conv2d, m) {
           dX = &dX_t;
         }
 
+        // Workspace struct
+        Conv2DWorkspaceBwd ws{};
+        ws.dCol    = reinterpret_cast<float*>(dCol_ptr);
+        ws.dTmp    = reinterpret_cast<float*>(dTmp_ptr);
+        ws.W_CK    = reinterpret_cast<float*>(W_CK_ptr);
+        ws.dWpack  = reinterpret_cast<float*>(dWpack_ptr);
+        ws.dY_HT   = reinterpret_cast<float*>(dY_HT_ptr);
+        ws.gy_rows = reinterpret_cast<float*>(gy_rows_ptr);
+        ws.Z_rows  = reinterpret_cast<float*>(Z_rows_ptr);
+
+        // 필수성 체크
+        if (!ws.dCol || !ws.dTmp) {
+          throw std::invalid_argument("[_ops_conv2d.backward] workspace dCol_ptr and dTmp_ptr are required");
+        }
+        if (!ws.gy_rows || !ws.Z_rows) {
+          throw std::invalid_argument("[_ops_conv2d.backward] workspace gy_rows_ptr and Z_rows_ptr are required");
+        }
+        // dX 경로면 W_CK, dY_HT 필요
+        // dW 경로면 dWpack 필요
+        if (dX && (!ws.W_CK || !ws.dY_HT)) {
+          throw std::invalid_argument("[_ops_conv2d.backward] gX path requires W_CK_ptr and dY_HT_ptr workspaces");
+        }
+        if (dW && (!ws.dWpack)) {
+          throw std::invalid_argument("[_ops_conv2d.backward] gW path requires dWpack_ptr workspace");
+        }
+
         StreamHandle stream = reinterpret_cast<StreamHandle>(stream_ptr);
-        auto st = Conv2DCudaBackwardLaunch(X, W, dY, Z, dW, dB, dX, attrs, stream);
+        auto st = Conv2DCudaBackwardLaunch(X, W, dY, Z, dW, dB, dX, attrs, stream, &ws);
         throw_if_bad(st, "backward");
       },
     py::arg("x_ptr"),  py::arg("x_shape"),
@@ -193,6 +255,14 @@ PYBIND11_MODULE(_ops_conv2d, m) {
     py::arg("db_ptr") = py::none(),
     py::arg("dx_ptr") = py::none(),
     py::arg("attrs")  = Conv2DAttrs{},
-    py::arg("stream") = static_cast<uintptr_t>(0)
+    py::arg("stream") = static_cast<uintptr_t>(0),
+    // workspace args (keyword-only 권장)
+    py::arg("dCol_ptr")    = static_cast<uintptr_t>(0),
+    py::arg("dTmp_ptr")    = static_cast<uintptr_t>(0),
+    py::arg("W_CK_ptr")    = static_cast<uintptr_t>(0),
+    py::arg("dWpack_ptr")  = static_cast<uintptr_t>(0),
+    py::arg("dY_HT_ptr")   = static_cast<uintptr_t>(0),
+    py::arg("gy_rows_ptr") = static_cast<uintptr_t>(0),
+    py::arg("Z_rows_ptr")  = static_cast<uintptr_t>(0)
   );
 }

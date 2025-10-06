@@ -11,7 +11,6 @@
   #include "ai/op_schema.hpp"
 #endif
 
-
 namespace ai {
 
 // ===== utils & externs (기존 그대로) =====
@@ -56,7 +55,7 @@ static inline void reduce_db_rows_kernel_launcher(const float* gy, float* db, in
   reduce_db_rows_kernel<<<grid, block, 0, s>>>(gy, db, Cout, HWo);
 }
 
-// ===== pack/unpack W (기존 그대로) =====
+// ===== pack/unpack W (기존 커널 시그니처) =====
 __global__ void pack_w_oihw_to_KC(const float* __restrict__ W, float* __restrict__ out_KC,
                                   int Cout, int Cin, int Kh, int Kw);
 __global__ void pack_w_oihw_to_CK(const float* __restrict__ W, float* __restrict__ out_CK,
@@ -79,7 +78,6 @@ __device__ __forceinline__ float dact(ai::ActKind act, float z, float gy, float 
       return gy * (1.f - t*t);
     }
     case ai::ActKind::GELU: {
-      // fast approx derivative
       const float c = sqrtf(2.f / 3.1415926535f);
       float z3 = z*z*z;
       float th = tanhf(c*(z + 0.044715f*z3));
@@ -104,13 +102,16 @@ __global__ void apply_dact_rows(const float* __restrict__ gy_post,
   }
 }
 
-// ======================= Forward =======================
+// ======================= Forward (no cudaMalloc) =======================
 Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tensor& Y,
-                        const Conv2DAttrs& a, StreamHandle stream, Tensor* Z_saved)
+                        const Conv2DAttrs& a, StreamHandle stream, Tensor* Z_saved,
+                        const Conv2DWorkspaceFwd* ws_fwd)
 {
   if (!is4_f32_cuda(X) || !is4_f32_cuda(Y)) return Status::Invalid;
   if (!is4_f32_cuda(W)) return Status::Invalid;
   if (a.groups != 1)    return Status::Unimplemented;
+  if (!ws_fwd || !ws_fwd->dCol || !ws_fwd->W_KC || !ws_fwd->Y_tmp)
+    return Status::MissingInput; // workspace 부족
 
   const int N   = (int)X.desc.shape[0];
   const int Cin = (int)X.desc.shape[1];
@@ -144,17 +145,12 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
   const int HWo = Ho*Wo;
   auto s = to_cuda(stream);
 
-  // workspaces (임시 유지 — CUDA Graph화 시 외부 주입/캐시로 교체)
-  float *dCol=nullptr, *W_KC=nullptr, *Y_tmp=nullptr, *Z_tmp=nullptr;
-  if (cudaMalloc(&dCol,  sizeof(float)*HWo*K)    != cudaSuccess) return Status::RuntimeError;
-  if (cudaMalloc(&W_KC,  sizeof(float)*K*Cout)   != cudaSuccess) { cudaFree(dCol); return Status::RuntimeError; }
-  if (cudaMalloc(&Y_tmp, sizeof(float)*HWo*Cout) != cudaSuccess) { cudaFree(dCol); cudaFree(W_KC); return Status::RuntimeError; }
-  if (want_z) {
-    if (cudaMalloc(&Z_tmp, sizeof(float)*HWo*Cout) != cudaSuccess) {
-      cudaFree(dCol); cudaFree(W_KC); cudaFree(Y_tmp);
-      return Status::RuntimeError;
-    }
-  }
+  float* dCol   = ws_fwd->dCol;            // [HWo, K]
+  float* W_KC   = ws_fwd->W_KC;            // [K, Cout]
+  float* Y_tmp  = ws_fwd->Y_tmp;           // [HWo, Cout]
+  float* Z_rows = ws_fwd->Z_rows;          // [HWo, Cout] or nullptr
+
+  if (want_z && !Z_rows) return Status::MissingInput; // pre-act rows 필요
 
   // pack W → [K, Cout]
   {
@@ -167,7 +163,7 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
   g.act         = a.act;
   g.leaky_slope = a.leaky_slope;
   g.with_bias   = (dB != nullptr);
-  g.save_z      = want_z; // regemm에게 pre-activation 저장 요청
+  g.save_z      = want_z; // pre-activation 저장
 
   for (int n=0; n<N; ++n) {
     const float* x_n = static_cast<const float*>(X.data) + (size_t)n*Cin*H*Wd;
@@ -182,18 +178,18 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
       Ho, Wo, s
     );
 
-    // GEMM: [HWo,K] @ [K,Cout] -> [HWo,Cout] into Y_tmp (epilogue bias+act). Z_tmp는 pre-act 저장.
+    // GEMM rows
     Tensor tA{dCol,  {DType::F32, Layout::RowMajor, {HWo, K},    {K, 1}},     Device::CUDA, 0};
     Tensor tB{W_KC,  {DType::F32, Layout::RowMajor, {K,   Cout}, {Cout, 1}},  Device::CUDA, 0};
     Tensor tY{Y_tmp, {DType::F32, Layout::RowMajor, {HWo, Cout}, {Cout, 1}},  Device::CUDA, 0};
 
-    Tensor tZcap{};
+    Tensor tZcap{};  // [HWo,Cout] pre-act rows
     if (want_z) {
-      tZcap = Tensor{Z_tmp, {DType::F32, Layout::RowMajor, {HWo, Cout}, {Cout,1}}, Device::CUDA, 0};
+      tZcap = Tensor{Z_rows, {DType::F32, Layout::RowMajor, {HWo, Cout}, {Cout,1}}, Device::CUDA, 0};
     }
-    
+
     const ai::Tensor* BiasPtr = nullptr;
-    ai::Tensor BiasT;  // 로컬 lvalue로 잡아둔다
+    ai::Tensor BiasT;
     if (dB) {
       BiasT.data         = const_cast<float*>(dB);
       BiasT.device       = ai::Device::CUDA;
@@ -206,40 +202,30 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
     }
 
     ai::Status st = ai::GemmCudaLaunch(
-        tA, tB,
-        BiasPtr,      // ← 임시 주소 대신 로컬 변수 주소
-        tY, g, stream,
+        tA, tB, BiasPtr, tY, g, stream,
         (want_z ? &tZcap : nullptr)
     );
+    if (st != ai::Status::Ok) return st;
 
-    if (st != ai::Status::Ok) {
-      cudaFree(dCol); cudaFree(W_KC); cudaFree(Y_tmp); if (Z_tmp) cudaFree(Z_tmp);
-      return st;
-    }
-
-    // transpose: [HWo, Cout] -> [Cout, HWo] directly into y_n (NCHW contiguous)
+    // rows -> NCHW
     transpose_kernel_launcher(Y_tmp, y_n, /*M=*/HWo, /*N=*/Cout, s);
-
     if (want_z) {
-      // Z도 동일하게 NCHW로 저장
-      transpose_kernel_launcher(Z_tmp, z_n, /*M=*/HWo, /*N=*/Cout, s);
+      transpose_kernel_launcher(Z_rows, z_n, /*M=*/HWo, /*N=*/Cout, s);
     }
   }
 
-  cudaFree(dCol);
-  cudaFree(W_KC);
-  cudaFree(Y_tmp);
-  if (Z_tmp) cudaFree(Z_tmp);
   return Status::Ok;
 }
 
-// ======================= Backward =======================
+// ======================= Backward (no cudaMalloc) =======================
 Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& dY_post,
                                 const Tensor& Z, Tensor* dW, Tensor* dB, Tensor* dX,
-                                const Conv2DAttrs& a, StreamHandle stream)
+                                const Conv2DAttrs& a, StreamHandle stream,
+                                const Conv2DWorkspaceBwd* ws_bwd)
 {
   if (!is4_f32_cuda(X) || !is4_f32_cuda(W) || !is4_f32_cuda(dY_post) || !is4_f32_cuda(Z)) return Status::Invalid;
   if (a.groups != 1) return Status::Unimplemented;
+  if (!ws_bwd || !ws_bwd->dCol || !ws_bwd->dTmp) return Status::MissingInput;
 
   const int N   = (int)X.desc.shape[0];
   const int Cin = (int)X.desc.shape[1];
@@ -276,52 +262,30 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
   const int HWo = Ho*Wo;
   auto s = to_cuda(stream);
 
-  // workspaces
-  float *dCol=nullptr, *dTmp=nullptr, *W_CK=nullptr, *dWpack=nullptr, *dY_HT=nullptr;
-  float *gy_rows=nullptr, *Z_rows=nullptr; // [Cout,HWo]
-  if (cudaMalloc(&dCol, sizeof(float)*HWo*K) != cudaSuccess) return Status::RuntimeError;
+  // 외부 워크스페이스 바인딩
+  float* dCol   = ws_bwd->dCol;                   // [HWo, K]
+  float* dTmp   = ws_bwd->dTmp;                   // max(Cout*K, HWo*K)
+  float* W_CK   = ws_bwd->W_CK;                   // [Cout, K] (dX 경로 필요)
+  float* dWpack = ws_bwd->dWpack;                 // [Cout, K] (dW 경로 필요)
+  float* dY_HT  = ws_bwd->dY_HT;                  // [HWo,  Cout] (dX 경로 필요)
+  float* gy_rows= ws_bwd->gy_rows;                // [Cout, HWo]
+  float* Z_rows = ws_bwd->Z_rows;                 // [Cout, HWo]
 
-  size_t tmp_elems = (size_t)std::max(Cout*K, HWo*K);
-  if (cudaMalloc(&dTmp, sizeof(float)*tmp_elems) != cudaSuccess) { cudaFree(dCol); return Status::RuntimeError; }
+  if (!gy_rows || !Z_rows) return Status::MissingInput;
+  if (dX && (!W_CK || !dY_HT)) return Status::MissingInput;
+  if (dW && !dWpack) return Status::MissingInput;
 
+  // zero grads (안전)
   if (dB) cudaMemsetAsync(dB->data, 0, sizeof(float)*Cout, s);
   if (dW) cudaMemsetAsync(dW->data, 0, sizeof(float)*Cout*Cin*Kh*Kw, s);
   if (dX) cudaMemsetAsync(dX->data, 0, sizeof(float)*N*Cin*H*Wd, s);
+  if (dW) cudaMemsetAsync(dWpack,   0, sizeof(float)*Cout*K, s);
 
-  // dX용 W_CK & dY_HT 준비
+  // dX용 W_CK: [Cout, K]
   if (dX) {
     const float* dWsrc = static_cast<const float*>(W.data);
-    if (cudaMalloc(&W_CK, sizeof(float)*Cout*K) != cudaSuccess) {
-      cudaFree(dCol); cudaFree(dTmp);
-      return Status::RuntimeError;
-    }
     dim3 block(256), grid((K + block.x - 1)/block.x, Cout);
     pack_w_oihw_to_CK<<<grid, block, 0, s>>>(dWsrc, W_CK, Cout, Cin, Kh, Kw);
-
-    if (cudaMalloc(&dY_HT, sizeof(float)*HWo*Cout) != cudaSuccess) {
-      cudaFree(dCol); cudaFree(dTmp); cudaFree(W_CK);
-      return Status::RuntimeError;
-    }
-  }
-
-  // gy_rows & Z_rows: [Cout,HWo] (act bwd를 위해 NCHW -> rows로 전치)
-  if (cudaMalloc(&gy_rows, sizeof(float)*Cout*HWo) != cudaSuccess) {
-    cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dY_HT) cudaFree(dY_HT);
-    return Status::RuntimeError;
-  }
-  if (cudaMalloc(&Z_rows, sizeof(float)*Cout*HWo) != cudaSuccess) {
-    cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dY_HT) cudaFree(dY_HT); cudaFree(gy_rows);
-    return Status::RuntimeError;
-  }
-
-  // dW 누적 버퍼: [Cout, K]
-  if (dW) {
-    if (cudaMalloc(&dWpack, sizeof(float)*Cout*K) != cudaSuccess) {
-      cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dY_HT) cudaFree(dY_HT);
-      cudaFree(gy_rows); cudaFree(Z_rows);
-      return Status::RuntimeError;
-    }
-    cudaMemsetAsync(dWpack, 0, sizeof(float)*Cout*K, s);
   }
 
   // GEMM attrs (No epilogue here; epilogue는 forward에서만)
@@ -332,7 +296,7 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
     const float* gy_nP = static_cast<const float*>(dY_post.data)+ (size_t)n*Cout*Ho*Wo; // post-act grad
     const float* z_n   = static_cast<const float*>(Z.data)      + (size_t)n*Cout*Ho*Wo;
 
-    // NCHW → [Cout,HWo]
+    // NCHW → rows([Cout,HWo])
     transpose_kernel_launcher(gy_nP, gy_rows, /*M=*/Ho*Wo, /*N=*/Cout, s); // [HWo,Cout]->[Cout,HWo]
     transpose_kernel_launcher(z_n,   Z_rows,  /*M=*/Ho*Wo, /*N=*/Cout, s);
 
@@ -361,11 +325,8 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
       Tensor tB{dCol,                         {DType::F32, Layout::RowMajor, {HWo,  K},   {K,   1}}, Device::CUDA, 0};
       Tensor tO{dTmp,                         {DType::F32, Layout::RowMajor, {Cout, K},   {K,   1}}, Device::CUDA, 0};
       ai::Status st = ai::GemmCudaLaunch(tA, tB, /*Bias*/nullptr, tO, g, stream, nullptr);
-      if (st != ai::Status::Ok) { /* free & return */ 
-        cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dY_HT) cudaFree(dY_HT);
-        if (dWpack) cudaFree(dWpack); cudaFree(gy_rows); cudaFree(Z_rows);
-        return st;
-      }
+      if (st != ai::Status::Ok) return st;
+
       int total = Cout * K;
       dim3 b(256), gr((total + 255)/256);
       kadd_kernel<<<gr, b, 0, s>>>(dWpack, dTmp, total);
@@ -378,11 +339,8 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
       Tensor tB{W_CK,  {DType::F32, Layout::RowMajor, {Cout, K},   {K,    1}}, Device::CUDA, 0};
       Tensor tO{dTmp,  {DType::F32, Layout::RowMajor, {HWo, K},    {K,    1}}, Device::CUDA, 0};
       ai::Status st = ai::GemmCudaLaunch(tA, tB, /*Bias*/nullptr, tO, g, stream, nullptr);
-      if (st != ai::Status::Ok) { /* free & return */
-        cudaFree(dCol); cudaFree(dTmp); if (W_CK) cudaFree(W_CK); if (dY_HT) cudaFree(dY_HT);
-        if (dWpack) cudaFree(dWpack); cudaFree(gy_rows); cudaFree(Z_rows);
-        return st;
-      }
+      if (st != ai::Status::Ok) return st;
+
       float* dx_n = static_cast<float*>(dX->data) + (size_t)n*Cin*H*Wd;
       col2im_kernel_launcher(
         dTmp, dx_n,
@@ -395,18 +353,10 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
 
   // dWpack[Cout,K] -> dW[O,I,H,W]
   if (dW) {
-    const int K = Cin*Kh*Kw;
     dim3 block(256), grid((K + block.x - 1)/block.x, Cout);
     unpack_ck_to_oihw_add<<<grid, block, 0, s>>>(dWpack, static_cast<float*>(dW->data), Cout, Cin, Kh, Kw);
   }
 
-  cudaFree(dCol);
-  cudaFree(dTmp);
-  if (W_CK)   cudaFree(W_CK);
-  if (dWpack) cudaFree(dWpack);
-  if (dY_HT)  cudaFree(dY_HT);
-  if (gy_rows)cudaFree(gy_rows);
-  if (Z_rows) cudaFree(Z_rows);
   return Status::Ok;
 }
 
