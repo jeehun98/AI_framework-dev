@@ -1,4 +1,3 @@
-# python/graph_executor_v2/layers/conv2d.py
 from __future__ import annotations
 from typing import Optional, Tuple
 import cupy as cp
@@ -12,7 +11,7 @@ class Conv2D(Layer):
       - filters: out_channels
       - kernel_size/stride/padding/dilation: (h,w) 튜플
       - groups 지원
-      - activation은 여기서는 생략(Conv2D+활성화는 보통 별도 레이어 권장)
+      - (본 레이어는 활성화를 포함하지 않음; 필요 시 별도 Activation 레이어를 추가하세요)
     """
     def __init__(
         self,
@@ -37,10 +36,11 @@ class Conv2D(Layer):
         self.initializer = initializer
 
         self.W: Optional[cp.ndarray] = None  # (Cout, Cin/groups, KH, KW)
-        self.b: Optional[cp.ndarray] = None  # (Cout,) or (1,Cout,1,1)
+        self.b: Optional[cp.ndarray] = None  # (Cout,)
 
         # cache
         self.last_input: Optional[cp.ndarray] = None
+        self.last_z: Optional[cp.ndarray] = None  # pre-activation (Y와 동일 shape; act=none이면 alias)
 
         # grads
         self.dW: Optional[cp.ndarray] = None
@@ -69,36 +69,41 @@ class Conv2D(Layer):
         self.W, self.b = self._init_weights(Cin)
         # 출력 shape 계산
         N, _, H, W = map(int, input_shape)
-        KH, KW = self.kernel_size; sH,sW = self.stride; pH,pW = self.padding; dH,dW = self.dilation
+        KH, KW = self.kernel_size; sH, sW = self.stride; pH, pW = self.padding; dH, dW = self.dilation
         outH = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
         outW = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
         self.output_shape = (N, self.filters, outH, outW)
 
     def call(self, x: cp.ndarray) -> cp.ndarray:
+        """
+        Forward (act='none'):
+          커널에서 pre-activation Z를 저장(save_z=True).
+          act='none'이므로 Y==Z이고, 파이썬 래퍼가 Z_saved를 out과 alias로 전달합니다.
+        """
         self.last_input = x
-        if self.use_bias and self.b is not None:
-            # 바인딩이 (Cout,) or (1,Cout,1,1) 모두 지원한다고 가정
-            return conv_ops.forward(
-                x, self.W, self.b,
-                stride=self.stride, padding=self.padding,
-                dilation=self.dilation, groups=self.groups
-                
-            )
-        else:
-            return conv_ops.forward(
-                x, self.W, None,
-                stride=self.stride, padding=self.padding,
-                dilation=self.dilation, groups=self.groups
-                
-            )
-
-    def backward(self, grad_output: cp.ndarray) -> cp.ndarray:
-        outs = conv_ops.backward(
-            self.last_input, self.W, grad_output,
+        y = conv_ops.forward(
+            x, self.W, self.b if self.use_bias else None,
             stride=self.stride, padding=self.padding,
             dilation=self.dilation, groups=self.groups,
             with_bias=self.use_bias,
-            want_gX=True, want_gW=True, want_gB=self.use_bias
+            act="none",
+            save_z=True,       # 항상 Z를 저장
+            Z_saved=None,      # 래퍼가 act='none'이면 out과 alias로 자동 처리
+        )
+        # act='none'이라 y와 Z가 같음 → 캐시에 보관
+        self.last_z = y
+        return y
+
+    def backward(self, grad_output: cp.ndarray) -> cp.ndarray:
+        if self.last_input is None or self.last_z is None:
+            raise RuntimeError("Conv2D.backward called before forward")
+        outs = conv_ops.backward(
+            self.last_input, self.W, grad_output, self.last_z,
+            stride=self.stride, padding=self.padding,
+            dilation=self.dilation, groups=self.groups,
+            with_bias=self.use_bias,
+            act="none",
+            want_gX=True, want_gW=True, want_gB=self.use_bias,
         )
         self.dW = outs.get("gW", None)
         self.db = outs.get("gB", None)
@@ -111,7 +116,7 @@ class Conv2D(Layer):
         if len(input_shape) != 4:
             raise ValueError(f"Conv2D expects 4D NCHW, got {input_shape}")
         N, _, H, W = map(int, input_shape)
-        KH, KW = self.kernel_size; sH,sW = self.stride; pH,pW = self.padding; dH,dW = self.dilation
+        KH, KW = self.kernel_size; sH, sW = self.stride; pH, pW = self.padding; dH, dW = self.dilation
         outH = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
         outW = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
         return (N, self.filters, outH, outW)
