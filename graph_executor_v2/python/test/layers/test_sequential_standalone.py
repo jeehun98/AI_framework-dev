@@ -271,6 +271,6 @@ if __name__ == "__main__":
     compare_grads()
 
     # 3) 미니 학습 루프
-    mini_train(epochs=500, batch_size=64, lr=5e-2)
+    mini_train(epochs=100, batch_size=64, lr=5e-2)
 
     print("[Sequential+Dense+SoftmaxCE] enhanced tests ✅")

@@ -6,6 +6,9 @@ import cupy as cp
 from .base import Layer
 from graph_executor_v2.ops import conv2d as conv_ops
 
+_USE_NATIVE_GROUPS = False  # 현재는 fallback 사용
+
+
 class Conv2D(Layer):
     """
     Conv2D 레이어 (NCHW)
@@ -66,51 +69,136 @@ class Conv2D(Layer):
         super().build(input_shape)
         if len(input_shape) != 4:
             raise ValueError(f"Conv2D expects 4D NCHW, got {input_shape}")
-        _, Cin, _, _ = map(int, input_shape)
+        _, Cin, H, W = map(int, input_shape)
+        if Cin % self.groups != 0:
+            raise ValueError(f"Cin({Cin}) must be divisible by groups({self.groups})")
+        if self.filters % self.groups != 0:
+            raise ValueError(f"filters/Cout({self.filters}) must be divisible by groups({self.groups})")
+
         self.W, self.b = self._init_weights(Cin)
-        # 출력 shape 계산
-        N, _, H, W = map(int, input_shape)
+
         KH, KW = self.kernel_size; sH, sW = self.stride; pH, pW = self.padding; dH, dW = self.dilation
         outH = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
         outW = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
-        self.output_shape = (N, self.filters, outH, outW)
+        self.output_shape = (input_shape[0], self.filters, outH, outW)
 
     def call(self, x: cp.ndarray) -> cp.ndarray:
-        """
-        Forward (act='none'):
-          커널에서 pre-activation Z를 저장(save_z=True).
-          act='none'이므로 Y==Z이고, 래퍼가 Z_saved를 out과 alias로 자동 처리.
-        """
         self.last_input = x
-        y = conv_ops.forward(
-            x, self.W, self.b if self.use_bias else None,
-            stride=self.stride, padding=self.padding,
-            dilation=self.dilation, groups=self.groups,
-            with_bias=self.use_bias,
-            act="none",
-            save_z=True,       # 항상 Z를 저장 (CUDA Graph용)
-            Z_saved=None,      # 래퍼가 act='none'이면 out과 alias로 자동 처리
-        )
-        # act='none'이라 y와 Z가 동일 → 캐시
-        self.last_z = y
+        G = self.groups
+
+        # 빠른 경로: groups==1 또는 네이티브 groups 사용 허용 시
+        if G == 1 or _USE_NATIVE_GROUPS:
+            y = conv_ops.forward(
+                x, self.W, self.b if self.use_bias else None,
+                stride=self.stride, padding=self.padding,
+                dilation=self.dilation, groups=self.groups,
+                with_bias=self.use_bias,
+                act="none",
+                save_z=True,       # Z 저장(=out과 alias)
+                Z_saved=None,
+            )
+            self.last_z = y
+            return y
+
+        # ---- 파이썬 fallback: 그룹 분할 실행 ----
+        N, Cin, H, W = map(int, x.shape)
+        KH, KW = self.kernel_size
+        sH, sW = self.stride; pH, pW = self.padding; dH, dW = self.dilation
+        Cout = self.filters
+
+        Cin_g  = Cin  // G
+        Cout_g = Cout // G
+
+        outH = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
+        outW = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
+
+        y = cp.empty((N, Cout, outH, outW), dtype=cp.float32)
+        Z = y  # act='none' → Z==Y
+
+        for g in range(G):
+            ci0, ci1 = g*Cin_g,  (g+1)*Cin_g
+            co0, co1 = g*Cout_g, (g+1)*Cout_g
+
+            x_g = x[:, ci0:ci1, :, :]
+            W_g = self.W[co0:co1, :, :, :]             # (Cout_g, Cin_g, KH, KW)
+            b_g = None if not self.use_bias else self.b[co0:co1]
+
+            y_g = conv_ops.forward(
+                x_g, W_g, b_g,
+                stride=self.stride, padding=self.padding,
+                dilation=self.dilation, groups=1,        # 그룹 내부는 1로 고정
+                with_bias=self.use_bias,
+                act="none",
+                save_z=True,
+                Z_saved=None,
+            )
+            y[:, co0:co1, :, :] = y_g
+            # act='none' 이므로 Z도 동일
+        self.last_z = Z
         return y
 
     def backward(self, grad_output: cp.ndarray) -> cp.ndarray:
         if self.last_input is None or self.last_z is None:
             raise RuntimeError("Conv2D.backward called before forward")
-        outs = conv_ops.backward(
-            self.last_input, self.W, grad_output, self.last_z,
-            stride=self.stride, padding=self.padding,
-            dilation=self.dilation, groups=self.groups,
-            with_bias=self.use_bias,
-            act="none",
-            want_gX=True, want_gW=True, want_gB=self.use_bias,
-        )
-        self.dW = outs.get("gW", None)
-        self.db = outs.get("gB", None)
-        dx = outs.get("gX", None)
-        if dx is None:
-            raise RuntimeError("Conv2D backward did not return gX")
+
+        G = self.groups
+
+        # 빠른 경로: groups==1 또는 네이티브 groups 허용 시
+        if G == 1 or _USE_NATIVE_GROUPS:
+            outs = conv_ops.backward(
+                self.last_input, self.W, grad_output, self.last_z,
+                stride=self.stride, padding=self.padding,
+                dilation=self.dilation, groups=self.groups,
+                with_bias=self.use_bias,
+                act="none",
+                want_gX=True, want_gW=True, want_gB=self.use_bias,
+            )
+            self.dW = outs.get("gW", None)
+            self.db = outs.get("gB", None)
+            dx = outs.get("gX", None)
+            if dx is None:
+                raise RuntimeError("Conv2D backward did not return gX")
+            return dx
+
+        # ---- 파이썬 fallback: 그룹 분할 실행 ----
+        x = self.last_input
+        z = self.last_z
+        gy = grad_output
+
+        N, Cin, H, W = map(int, x.shape)
+        Cout = self.filters
+        Cin_g  = Cin  // G
+        Cout_g = Cout // G
+
+        dx = cp.zeros_like(x)
+        dW = cp.zeros_like(self.W)
+        db = None if not self.use_bias else cp.zeros((Cout,), dtype=cp.float32)
+
+        for g in range(G):
+            ci0, ci1 = g*Cin_g,  (g+1)*Cin_g
+            co0, co1 = g*Cout_g, (g+1)*Cout_g
+
+            x_g  = x[:,  ci0:ci1, :, :]
+            z_g  = z[:,  co0:co1, :, :]
+            gy_g = gy[:, co0:co1, :, :]
+            W_g  = self.W[co0:co1, :, :, :]
+            b_g  = None if not self.use_bias else self.b[co0:co1]
+
+            outs = conv_ops.backward(
+                x_g, W_g, gy_g, z_g,
+                stride=self.stride, padding=self.padding,
+                dilation=self.dilation, groups=1,
+                with_bias=self.use_bias,
+                act="none",
+                want_gX=True, want_gW=True, want_gB=self.use_bias,
+            )
+            dx[:, ci0:ci1, :, :] = outs["gX"]
+            dW[co0:co1, :, :, :] = outs["gW"]
+            if self.use_bias:
+                db[co0:co1] = outs["gB"]
+
+        self.dW = dW
+        self.db = db
         return dx
 
     def compute_output_shape(self, input_shape):
