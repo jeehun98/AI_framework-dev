@@ -26,14 +26,19 @@
     Invalid = 1,
     Unimplemented = 2,
     RuntimeError = 3,
+
+    // 상세 오류
     DeviceMismatch = 100,
     DtypeMismatch  = 101,
     LayoutMismatch = 102,
     ShapeMismatch  = 103,
     StrideMismatch = 104,
     TransposeNotSupported = 105,
+
     MissingInput   = 110,
+    MissingOutput  = 111,  // NEW: save_z 요청인데 Z가 없을 때 등
     RegistryNotFound = 120,
+
     CUDA_ERROR = 130,
     Unknown = 999
   };
@@ -175,13 +180,15 @@
     ActKind  act{ActKind::None};
     bool     with_bias{false};
     float    leaky_slope{0.01f};
+    bool     save_z{false}; // NEW: Z(pre-activation) 저장 의도
   };
 
   // ---------------- Registry stubs (declaration only) ----------------
   enum class OpKind { GEMM, GEMM_BWD };
 
+  // NEW: FWD 커널 시그니처에 Z_saved 추가 (nullptr 허용)
   using KernelFn = Status(*)(const Tensor& A, const Tensor& B, const Tensor* Bias,
-                             Tensor& Y, const GemmAttrs&, StreamHandle);
+                             Tensor& Y, const GemmAttrs&, StreamHandle, Tensor* Z_saved);
 
   struct OpKey {
     OpKind  kind;
@@ -214,6 +221,7 @@
     KernelFn find_best(const OpQuery& q) const;
   };
 
+  // BWD 커널
   using GemmBwdFn = Status(*)(const Tensor& A, const Tensor& B, const Tensor* C,
                               const Tensor& gY, const Tensor& Z,
                               Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
@@ -233,16 +241,34 @@
     }
   };
 
+  // NEW: BWD 쿼리(대칭 구조)
+  struct BwdOpQuery {
+    OpKind         kind;     // GEMM_BWD
+    const Tensor&  A;
+    const Tensor&  B;
+    const Tensor*  C;        // nullable
+    const Tensor&  gY;
+    const Tensor&  Z;
+    GemmAttrs      attrs;
+  };
+
   class BwdOpRegistry {
   public:
     static BwdOpRegistry& inst();
     void      reg(const BwdOpKey& key, GemmBwdFn fn);
-    GemmBwdFn find_best() const;
+    GemmBwdFn find_best(const BwdOpQuery& q) const; // NEW: 인자화
   };
 
   namespace ops {
-    // Forward GEMM entry used by RNN launcher (provided by core)
+    // Forward GEMM entry used by other modules (provided by core)
     // Returns 0 on success, non-zero on failure
+
+    // NEW: Z 저장 지원 버전
+    int gemm_run_ex(const Tensor& A, const Tensor& B, const Tensor* Bias,
+                    Tensor& Y, const GemmAttrs& attrs, StreamHandle s,
+                    Tensor* Z_saved);
+
+    // 호환: 기존(Z 저장 없음)
     int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
                  Tensor& Y, const GemmAttrs& attrs, StreamHandle s);
 
