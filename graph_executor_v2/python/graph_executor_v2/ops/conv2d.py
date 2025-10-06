@@ -1,3 +1,4 @@
+# python/graph_executor_v2/ops/conv2d.py
 from __future__ import annotations
 from typing import Optional, Tuple, Dict
 import cupy as cp
@@ -8,8 +9,10 @@ ensure_cuda_dlls()
 
 try:
     # 바인딩(새 시그니처):
-    # forward(x_ptr,x_shape,w_ptr,w_shape,y_ptr,y_shape,bias_ptr|None,z_ptr|None, attrs, stream)
-    # backward(x_ptr,x_shape,w_ptr,w_shape,dy_ptr,dy_shape,z_ptr,z_shape, dw_ptr|None, db_ptr|None, dx_ptr|None, attrs, stream)
+    # forward(x_ptr,x_shape,w_ptr,w_shape,y_ptr,y_shape,bias_ptr|None,z_ptr|None, attrs, stream,
+    #         dCol_ptr, W_KC_ptr, Y_tmp_ptr, Z_rows_ptr)
+    # backward(x_ptr,x_shape,w_ptr,w_shape,dy_ptr,dy_shape,z_ptr,z_shape, dw_ptr|None, db_ptr|None, dx_ptr|None, attrs, stream,
+    #          dCol_ptr, dTmp_ptr, W_CK_ptr, dWpack_ptr, dY_HT_ptr, gy_rows_ptr, Z_rows_ptr)
     from graph_executor_v2.ops import _ops_conv2d as _g
 except Exception as e:
     raise ImportError(
@@ -113,10 +116,8 @@ def forward(
     # 사용자가 Z_saved를 주지 않았는데 save_z=True면 기본 버퍼를 마련
     if save_z and Z_saved is None:
         if act_kind == getattr(_g.ActKind, "None"):
-            # 활성화 없음 → Z와 Y가 동일하므로 alias
-            Z_saved = out
+            Z_saved = out  # alias
         else:
-            # 활성화 있음 → Z가 Y로 덮어쓰이므로 별도 버퍼 필요
             Z_saved = cp.empty_like(out)
 
     if Z_saved is not None and Z_saved.shape != (N, Cout, H_out, W_out):
@@ -143,13 +144,31 @@ def forward(
     )
     sptr = int(get_stream_ptr(stream))
 
+    # ====== Workspaces (캡처-세이프) ======
+    # K, HWo, 내부 행렬 크기 계산
+    K   = (CinW * KH * KW)
+    HWo = (H_out * W_out)
+
+    # 필수
+    dCol   = cp.empty((HWo, K),     dtype=cp.float32)  # [HWo,K]
+    W_KC   = cp.empty((K,   Cout),  dtype=cp.float32)  # [K,Cout]
+    Y_tmp  = cp.empty((HWo, Cout),  dtype=cp.float32)  # [HWo,Cout]
+
+    # save_z면 행단위 Z 버퍼도 필요 (런처가 전치해 채운 뒤 NCHW로 복원)
+    Z_rows = cp.empty((HWo, Cout), dtype=cp.float32) if save_z else None
+
     _g.forward(
         int(X.data.ptr), [N, Cin, H, W_in],
         int(W.data.ptr), [Cout, CinW, KH, KW],
         int(out.data.ptr), [N, Cout, H_out, W_out],
         bias_ptr,
         int(Z_saved.data.ptr) if Z_saved is not None else None,
-        attrs, sptr
+        attrs, sptr,
+        # workspaces
+        int(dCol.data.ptr),
+        int(W_KC.data.ptr),
+        int(Y_tmp.data.ptr),
+        int(Z_rows.data.ptr) if Z_rows is not None else 0
     )
     return out
 
@@ -206,6 +225,20 @@ def backward(
     gW = cp.empty_like(W)                if want_gW else None
     gB = cp.empty((Cout,), cp.float32)   if (want_gB and with_bias) else None
 
+    # ====== Workspaces (캡처-세이프) ======
+    K   = (CinW * KH * KW)
+    H_out = Hy
+    W_out = Wy
+    HWo = (H_out * W_out)
+
+    dCol   = cp.empty((HWo, K), dtype=cp.float32)          # 필수
+    dTmp   = cp.empty((max(Cout*K, HWo*K),), dtype=cp.float32)  # 필수(1D 임시)
+    W_CK   = cp.empty((Cout, K), dtype=cp.float32) if want_gX else None
+    dY_HT  = cp.empty((HWo, Cout), dtype=cp.float32) if want_gX else None
+    dWpack = cp.empty((Cout, K), dtype=cp.float32) if want_gW else None
+    gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)  # 필수
+    Z_rows  = cp.empty((Cout, HWo), dtype=cp.float32)  # 필수
+
     _g.backward(
         int(X.data.ptr),  [N, Cin, H, W_in],
         int(W.data.ptr),  [Cout, CinW, KH, KW],
@@ -214,7 +247,15 @@ def backward(
         int(gW.data.ptr) if gW is not None else None,
         int(gB.data.ptr) if gB is not None else None,
         int(gX.data.ptr) if gX is not None else None,
-        attrs, sptr
+        attrs, sptr,
+        # workspaces
+        int(dCol.data.ptr),
+        int(dTmp.data.ptr),
+        int(W_CK.data.ptr)   if W_CK   is not None else 0,
+        int(dWpack.data.ptr) if dWpack is not None else 0,
+        int(dY_HT.data.ptr)  if dY_HT  is not None else 0,
+        int(gy_rows.data.ptr),
+        int(Z_rows.data.ptr)
     )
 
     out: Dict[str, cp.ndarray] = {}

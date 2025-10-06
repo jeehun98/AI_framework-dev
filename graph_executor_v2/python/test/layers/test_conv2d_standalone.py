@@ -14,7 +14,7 @@ def stats(arr, name):
     n = float(cp.linalg.norm(arr).astype(cp.float32))
     print(f"  {name}: max={m:.3e}, norm={n:.3e}, shape={tuple(arr.shape)}")
 
-def run_case(act_none=True):
+def run_case(act_none=True, repeat=2):
     cp.random.seed(1)
     x = cp.random.randn(8, 3, 32, 32).astype(cp.float32)  # NCHW
 
@@ -29,40 +29,43 @@ def run_case(act_none=True):
         initializer="he",
     )
 
-    # Forward
-    y = conv(x)
-    print(f"[Conv2D] forward OK: {y.shape}")
+    for step in range(repeat):
+        print(f"\n--- pass {step+1}/{repeat} ---")
 
-    # 레이어가 Z(pre-act)를 stash했는지 확인 (act=none이면 y==Z)
-    assert hasattr(conv, "last_z") and conv.last_z is not None, "last_z was not saved in forward"
-    z = conv.last_z
-    diff = float(cp.max(cp.abs(y - z)))
-    print(f"[Conv2D] check Z_saved: max|y - Z| = {diff:.3e}")
-    if act_none:
-        assert diff < 1e-6, f"Z_saved mismatch too large: {diff}"
+        # Forward
+        y = conv(x)
+        print(f"[Conv2D] forward OK: {y.shape}")
 
-    # Backward (바인딩 backward는 Z 필요)
-    gy = cp.random.randn(*y.shape).astype(cp.float32)
-    dx = conv.backward(gy)
+        # Z(pre-act) 저장 확인 (act=none이면 y==Z)
+        assert hasattr(conv, "last_z") and conv.last_z is not None, "last_z was not saved in forward"
+        z = conv.last_z
+        diff = float(cp.max(cp.abs(y - z)))
+        print(f"[Conv2D] check Z_saved: max|y - Z| = {diff:.3e}")
+        if act_none:
+            assert diff < 1e-6, f"Z_saved mismatch too large: {diff}"
 
-    # 기본 검증
-    assert dx.shape == x.shape, f"dx.shape={dx.shape}"
-    assert conv.dW is not None, "dW was not returned"
-    if conv.use_bias:
-        assert conv.db is not None, "db was not returned"
-    print("[Conv2D] backward OK")
-    stats(dx,  "dx")
-    stats(conv.dW, "dW")
-    if conv.db is not None:
-        stats(conv.db, "db")
+        # Backward (바인딩 backward는 Z 필요)
+        cp.random.seed(123 + step)  # 패스별 고정된 gY
+        gy = cp.random.randn(*y.shape).astype(cp.float32)
+        dx = conv.backward(gy)
+
+        # 기본 검증
+        assert dx.shape == x.shape, f"dx.shape={dx.shape}"
+        assert conv.dW is not None, "dW was not returned"
+        if conv.use_bias:
+            assert conv.db is not None, "db was not returned"
+        print("[Conv2D] backward OK")
+        stats(dx,  "dx")
+        stats(conv.dW, "dW")
+        if conv.db is not None:
+            stats(conv.db, "db")
 
 if __name__ == "__main__":
-    # 1) 기본 케이스: act=none → Y == Z 검증
-    run_case(act_none=True)
+    # 1) 기본 케이스: act=none → Y == Z 검증 + 2회 반복(워크스페이스 재사용 경로 체킹)
+    run_case(act_none=True, repeat=2)
 
-    # 2) (선택) 활성화 케이스: 만약 레이어 내부에서 act=relu를 지원/사용한다면
-    #    conv.call에서 act를 적용하도록 바꾸고(또는 별도 활성화 레이어), 아래 케이스를 켜면
-    #    Z는 pre-act, Y는 post-act 이므로 Y != Z가 나와야 합니다.
-    # run_case(act_none=False)
+    # 2) (선택) 활성화 케이스: 만약 레이어에서 act를 지원한다면 별도 레이어로 적용하고
+    #    Z는 pre-act, Y는 post-act이므로 Y != Z가 나와야 함.
+    # run_case(act_none=False, repeat=1)
 
-    print("[Conv2D] all good ✅")
+    print("\n[Conv2D] all good ✅")
