@@ -93,8 +93,11 @@ class GraphCompiler:
         # BWD capture
         self._gexec_bwd: Optional[Any] = None
         self._cap_stream_bwd: Optional[cp.cuda.Stream] = None
-        self._graph_api_kind_bwd: str = "unknown"
-        self._in_bwd_capture: bool = False  # capture guard
+        self._graph_api_kind_bwd: str = "none"
+        self._in_bwd_capture: bool = False        # 캡처 중 플래그
+        self._bwd_capture_error: Optional[str] = None
+        self._last_bwd_node: Optional[str] = None # 최근 실행한 BWD 노드(디버그)
+
 
         # Grad buffers (per tensor id)
         self._grad_bufs: List[Optional[cp.ndarray]] = []
@@ -182,14 +185,15 @@ class GraphCompiler:
 
             elif lname in ("ReLU",):
                 in_desc = ir.tensors[cur_tid]
-                # Y 버퍼는 X와 alias
                 ir.tensors.append(TensorDesc(shape=in_desc.shape, buffer_id=in_desc.buffer_id, offset=in_desc.offset))
                 y_tid = tid; tid += 1
                 node = Node(kind="ReLU", inputs=[cur_tid], outputs=[y_tid], layer_ref=layer)
-                # ★ 캡처 세이프: 마스크 버퍼 사전할당
-                node.attrs["mask"] = cp.empty(tuple(int(s) for s in in_desc.shape), dtype=cp.bool_)
+                # ★ 캡처-세이프: ReLU 마스크를 미리 할당해두고 재사용
+                mask_shape = tuple(int(v) for v in in_desc.shape)
+                node.attrs["relu_mask"] = cp.empty(mask_shape, dtype=cp.bool_)
                 ir.nodes.append(node)
                 cur_tid = y_tid
+
 
             elif lname in ("BatchNorm2D", "BatchNorm"):
                 in_desc = ir.tensors[cur_tid]
@@ -304,43 +308,50 @@ class GraphCompiler:
                     self._use_runtime_graph_api = True
                     self._graph_api_kind = "runtime-pointer"
 
+        
         # (옵션) Backward CUDA Graph 캡처
         if use_cuda_graph_bwd:
-            # fwd 1회로 Z 등 채우기
+            # 1) fwd 한 번 돌려서 Z 등 채우고
             warm_x = cp.empty(input_shape, dtype=cp.float32)
             _ = self._run_impl(warm_x)
 
-            # cuBLAS/Lt 핸들/플랜 초기화 (캡처 바깥, 별도 스트림)
-            self._warmup_gemm_handles()
-
-            # seed grad 준비
+            # 2) gout 워밍업 + 비캡처 한 번 (워크스페이스들 확정)
             out_tid = self.ir.output_ids[0]
-            gout_warm = self._grad_view(out_tid)
-            gout_warm.fill(1.0)  # 임의 값
+            gout_warm = self._grad_view(out_tid); gout_warm.fill(1.0)
+            # 핸들/플랜을 미리 초기화(내부에서 작은 더미 GEMM 실행)
+            self._warmup_gemm_handles()
+            _ = self._backward_impl(None)
+            cp.cuda.get_current_stream().synchronize()
 
+            # 3) 스트림은 try 밖에서 생성!
+            self._bwd_capture_error = None
             self._cap_stream_bwd = cp.cuda.Stream(non_blocking=True)
             try:
+                # 3-a) **같은 캡처 스트림에서** 미리 한 번 더 워밍업(캡처 없이)
+                with self._cap_stream_bwd:
+                    self._in_bwd_capture = False
+                    self._warmup_gemm_handles()   # cuBLAS/cuBLASLt lazy init on this stream
+                    _ = self._backward_impl(None) # Conv/GEMM/ReLU bwd 전부 이 스트림에서 한 번 실행
+                    cp.cuda.get_current_stream().synchronize()
+
+                # 3-b) 이제 캡처 시작
                 with self._cap_stream_bwd:
                     self._in_bwd_capture = True
                     self._cap_stream_bwd.begin_capture()
-                    _ = self._backward_impl(None)  # gout은 grad_buf에 이미 존재
+                    try:
+                        _ = self._backward_impl(None)  # gout은 grad_buf에 이미 있음
+                    except Exception as e:
+                        where = getattr(self, "_last_bwd_node", "?")
+                        self._bwd_capture_error = f"{type(e).__name__} at node {where}: {e}"
+                        raise
                     graph_b = self._cap_stream_bwd.end_capture()
-            except Exception:
-                # 폴백: BWD 캡처 해제 (비캡처 경로로)
-                self._gexec_bwd = None
-                self._cap_stream_bwd = None
-                self._graph_api_kind_bwd = "none"
-            else:
-                self._in_bwd_capture = False
-                # 업로드
-                try:
-                    if hasattr(graph_b, "upload") and hasattr(graph_b, "launch"):
-                        graph_b.upload(self._cap_stream_bwd)
-                        self._gexec_bwd = graph_b
-                        self._graph_api_kind_bwd = "graph-object"
-                    else:
-                        raise AttributeError("no-graph-object-methods")
-                except AttributeError:
+
+                # 업로드/런치 방식 분기 (FWD와 동일 패턴)
+                if hasattr(graph_b, "upload") and hasattr(graph_b, "launch"):
+                    graph_b.upload(self._cap_stream_bwd)
+                    self._gexec_bwd = graph_b
+                    self._graph_api_kind_bwd = "graph-object"
+                else:
                     try:
                         cp.cuda.graph.upload(graph_b, self._cap_stream_bwd)
                         self._gexec_bwd = graph_b
@@ -348,16 +359,21 @@ class GraphCompiler:
                     except Exception:
                         raw = getattr(graph_b, "graph", None) or getattr(graph_b, "ptr", None)
                         if raw is None:
-                            self._gexec_bwd = None
-                            self._cap_stream_bwd = None
-                            self._graph_api_kind_bwd = "none"
-                        else:
-                            gexec = cp.cuda.runtime.graphInstantiate(int(raw))
-                            if isinstance(gexec, tuple):
-                                gexec = gexec[0]
-                            self._gexec_bwd = int(gexec)
-                            cp.cuda.runtime.graphUpload(self._gexec_bwd, self._cap_stream_bwd.ptr)
-                            self._graph_api_kind_bwd = "runtime-pointer"
+                            raise TypeError("This CuPy version exposes neither Graph.launch/upload nor graph/ptr.")
+                        gexec = cp.cuda.runtime.graphInstantiate(int(raw))
+                        if isinstance(gexec, tuple):
+                            gexec = gexec[0]
+                        self._gexec_bwd = int(gexec)
+                        cp.cuda.runtime.graphUpload(self._gexec_bwd, self._cap_stream_bwd.ptr)
+                        self._graph_api_kind_bwd = "runtime-pointer"
+            except Exception as e:
+                self._bwd_capture_error = f"{type(e).__name__}: {e}"
+                # 깨끗하게 폴백 (FWD 캡처는 유지)
+                self._gexec_bwd = None
+                self._cap_stream_bwd = None
+                self._graph_api_kind_bwd = "none"
+            finally:
+                self._in_bwd_capture = False
 
         return self
 
@@ -504,8 +520,12 @@ class GraphCompiler:
         if g_out is not None:
             self._grad_view(out_tid)[...] = g_out  # seed
 
-        # 역순으로 전파
-        for node in reversed(self.ir.nodes):
+        # 역순으로 전파 (+ 어떤 노드에서 깨졌는지 기록)
+        # enumerate를 뒤집어서 인덱스도 함께 기록
+        for idx, node in reversed(list(enumerate(self.ir.nodes))):
+            self._last_bwd_node = f"#{idx}:{node.kind}"
+            cur_stream = cp.cuda.get_current_stream().ptr  # ★ 현재 스트림 포인터 고정 전달
+ 
             kind = node.kind
 
             if kind == "GEMM":
@@ -533,24 +553,29 @@ class GraphCompiler:
                     gBias_out=gBias_out,
                     work_dZ=ws_dZ,
                     lt_workspace=lt_ws,
+                    # ★ 캡처-세이프: 반드시 현재 스트림을 명시
+                    stream=cur_stream,
                 )
                 # 캡처 중에는 파라미터로의 쓰기를 미룸
                 if with_bias and gBias_out is not None and not self._in_bwd_capture:
                     layer.db[...] = gBias_out.reshape(-1)
 
             elif kind == "ReLU":
-                in_tid  = node.inputs[0]
+                in_tid = node.inputs[0]
                 out_tid = node.outputs[0]
-                Y  = self.arena.view(self.ir.tensors[out_tid])
+                Y = self.arena.view(self.ir.tensors[out_tid])
                 gY = self._grad_view(out_tid)
                 gX = self._grad_view(in_tid)
-                mask: cp.ndarray = node.attrs.get("mask", None)
-                if mask is None or mask.shape != Y.shape or mask.dtype != cp.bool_:
+
+                # ★ 임시 배열 금지: 미리 할당한 마스크 사용
+                mask = node.attrs.get("relu_mask", None)
+                if mask is None or mask.shape != Y.shape:
+                    # 안전장치(이상 케이스용). 원래는 compile에서 이미 만들어 둠
                     mask = cp.empty_like(Y, dtype=cp.bool_)
-                    node.attrs["mask"] = mask
-                # 캡처-세이프: 임시 없음
-                cp.greater(Y, 0, out=mask)
-                cp.multiply(gY, mask, out=gX)
+                    node.attrs["relu_mask"] = mask
+
+                cp.greater(Y, 0, out=mask)      # in-place: no alloc
+                cp.multiply(gY, mask, out=gX)   # in-place: no alloc
 
             elif kind == "Flatten":
                 in_tid  = node.inputs[0]
@@ -598,6 +623,8 @@ class GraphCompiler:
                     with_bias=attrs["with_bias"], act=attrs.get("act", "none"),
                     gX_out=gX_out, gW_out=gW_out, gB_out=gB_out,
                     work=node.ws_bwd,
+                    # ★ 캡처-세이프: 반드시 현재 스트림을 명시(바인딩이 지원해야 함)
+                    stream=cur_stream,
                 )
             else:
                 raise RuntimeError(f"Unknown node kind in backward: {kind}")

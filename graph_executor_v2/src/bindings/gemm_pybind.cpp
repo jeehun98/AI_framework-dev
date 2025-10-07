@@ -18,12 +18,19 @@
 #include <string>
 #include <stdexcept>
 #include <algorithm>
+#include <cstdint>
+#include <cstddef>
+#include <cstdio>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/gemm/api.hpp"
+
+#ifdef USE_NVTX
+  #include "nvToolsExt.h"
+#endif
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -97,8 +104,9 @@ PYBIND11_MODULE(_ops_gemm, m) {
            const ai::Tensor* Bias,
            ai::Tensor& Y,
            ai::GemmAttrs attrs,
-           ai::Tensor* Z_saved,          // NEW: optional
+           ai::Tensor* Z_saved,          // optional
            void* stream /* = nullptr */) {
+            py::gil_scoped_release release; // 🔓 GIL off
             // If Z_saved is provided but attrs.save_z is false, enable it implicitly
             if (Z_saved && Z_saved->data && !attrs.save_z) {
                 attrs.save_z = true;
@@ -108,7 +116,13 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 throw std::invalid_argument(
                     "[_ops_gemm::forward] save_z=True requires a valid Z_saved Tensor");
             }
+            #ifdef USE_NVTX
+            nvtxRangePushA("gemm.forward");
+            #endif
             auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+            #ifdef USE_NVTX
+            nvtxRangePop();
+            #endif
             raise_if_not_ok(st, "forward");
         },
         py::arg("A"),
@@ -116,14 +130,14 @@ PYBIND11_MODULE(_ops_gemm, m) {
         py::arg("bias") = nullptr,
         py::arg("Y"),
         py::arg("attrs"),
-        py::arg("Z_saved") = nullptr,    // NEW
+        py::arg("Z_saved") = nullptr,
         py::arg("stream") = nullptr,
         "Run fused GEMM(+bias+activation). Optionally saves pre-activation Z into Z_saved."
     );
 
     // backward:
     // Inputs : A:[M,K], B:[K,N], C:[M,N]|None, gY:[M,N], Z:[M,N]
-    // Outputs: gA:[M,K]|None, gB:[K,N]|None, gC:[M,N]|None, gBias:[1|M|N]|None
+    // Outputs: gA:[M,K]|None, gB:[K,N]|None, gC:[M,N]|None, gBias:[1|N]|None
     m.def(
         "backward",
         [](const ai::Tensor& A,
@@ -137,6 +151,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            ai::Tensor* gBias,        // optional
            const ai::GemmAttrs& attrs,
            void* stream /* = nullptr */) {
+            py::gil_scoped_release release; // 🔓 GIL off
             // ---- PerN 강제 세이프가드 ----
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
@@ -151,9 +166,15 @@ PYBIND11_MODULE(_ops_gemm, m) {
                         "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
                 }
             }
+            #ifdef USE_NVTX
+            nvtxRangePushA("gemm.backward");
+            #endif
             auto st = ai::GemmCudaBackward(
                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
             );
+            #ifdef USE_NVTX
+            nvtxRangePop();
+            #endif
             raise_if_not_ok(st, "backward");
         },
         py::arg("A"),
@@ -187,6 +208,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            bool save_z,               // NEW
            ai::Tensor* Z_saved,       // NEW
            void* stream /*=nullptr*/) {
+            py::gil_scoped_release release; // 🔓 GIL off
             ai::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
             attrs.trans_b     = trans_b;
@@ -207,7 +229,13 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 attrs.save_z = true;
             }
 
+            #ifdef USE_NVTX
+            nvtxRangePushA("gemm.forward_ex");
+            #endif
             auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+            #ifdef USE_NVTX
+            nvtxRangePop();
+            #endif
             raise_if_not_ok(st, "forward_ex");
         },
         py::arg("A"),
@@ -219,8 +247,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
         py::arg("act") = "none",
         py::arg("with_bias") = false,
         py::arg("leaky_slope") = 0.01f,
-        py::arg("save_z") = false,       // NEW
-        py::arg("Z_saved") = nullptr,    // NEW
+        py::arg("save_z") = false,
+        py::arg("Z_saved") = nullptr,
         py::arg("stream") = nullptr,
         "Run fused GEMM with epilogue params provided as Python primitives. "
         "Optionally save pre-activation into Z_saved when save_z=True."
@@ -243,6 +271,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            bool with_bias,
            float leaky_slope,
            void* stream /*=nullptr*/) {
+            py::gil_scoped_release release; // 🔓 GIL off
             ai::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
             attrs.trans_b     = trans_b;
@@ -264,7 +293,14 @@ PYBIND11_MODULE(_ops_gemm, m) {
                         "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
                 }
             }
+
+            #ifdef USE_NVTX
+            nvtxRangePushA("gemm.backward_ex");
+            #endif
             auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
+            #ifdef USE_NVTX
+            nvtxRangePop();
+            #endif
             raise_if_not_ok(st, "backward_ex");
         },
         py::arg("A"),
@@ -295,6 +331,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            py::object bias, // None or 1D float array
            std::string act,
            float leaky_slope) {
+            py::gil_scoped_release release; // 🔓 GIL off (import는 이미 됐다고 가정)
             py::module_ core = py::module_::import("graph_executor_v2._core");
             py::object fn = core.attr("gemm_bias_act");
             py::object bias_arg = bias.is_none() ? py::none() : bias;
@@ -318,6 +355,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            std::string act,
            std::string bias_kind,
            float leaky_slope) {
+            py::gil_scoped_release release; // 🔓 GIL off
             py::module_ core = py::module_::import("graph_executor_v2._core");
             py::object fn = core.attr("gemm_bias_act_bwd");
             py::dict out = fn(A, B, gY, Z,
@@ -336,23 +374,27 @@ PYBIND11_MODULE(_ops_gemm, m) {
         R"(Convenience wrapper that accepts NumPy arrays and delegates to graph_executor_v2._core.gemm_bias_act_bwd.)"
     );
 
+    // ===========================================
+    // 3) Capture-safe backward_into (NO allocations)
+    // ===========================================
     m.def(
         "backward_into",
         [](const ai::Tensor& A,
-        const ai::Tensor& B,
-        const ai::Tensor* C,      // optional
-        const ai::Tensor& gY,
-        const ai::Tensor& Z,
-        ai::Tensor* gA,           // optional
-        ai::Tensor* gB,           // optional
-        ai::Tensor* gC,           // optional
-        ai::Tensor* gBias,        // optional (PerN: (1,N) 권장)
-        const ai::GemmAttrs& attrs,
-        void* stream,
-        // --- workspaces ---
-        uintptr_t dZ_ptr,         // required: float[M*N]
-        uintptr_t lt_ws_ptr,      // optional: cublasLt workspace
-        size_t    lt_ws_bytes) {
+           const ai::Tensor& B,
+           const ai::Tensor* C,      // optional
+           const ai::Tensor& gY,
+           const ai::Tensor& Z,
+           ai::Tensor* gA,           // optional
+           ai::Tensor* gB,           // optional
+           ai::Tensor* gC,           // optional
+           ai::Tensor* gBias,        // optional (PerN: (1,N) 권장)
+           const ai::GemmAttrs& attrs,
+           void* stream,
+           // --- workspaces ---
+           uintptr_t dZ_ptr,         // required: float[M*N]
+           uintptr_t lt_ws_ptr,      // optional: cublasLt workspace
+           size_t    lt_ws_bytes) {
+            py::gil_scoped_release release; // 🔓 GIL off
 
             // PerN shape 가드 (그대로 유지)
             const int64_t M = A.desc.shape.at(0);
@@ -371,17 +413,32 @@ PYBIND11_MODULE(_ops_gemm, m) {
                     "[_ops_gemm::backward_into] dZ_ptr is required for capture-safe path");
             }
 
+            // lt workspace ptr/bytes 짝 검증
+            if ((lt_ws_ptr == 0) != (lt_ws_bytes == 0)) {
+                throw std::invalid_argument(
+                    "[_ops_gemm::backward_into] lt_workspace ptr/bytes must be both zero or both non-zero");
+            }
+            // (선택) 최소 크기 가드
+            // if (lt_ws_ptr && lt_ws_bytes < (1u << 20)) {
+            //     throw std::invalid_argument("[_ops_gemm::backward_into] lt_workspace too small (<1MB)");
+            // }
+
             // 통합 워크스페이스 사용
             ai::GemmWorkspace ws{};
             ws.scratch            = reinterpret_cast<void*>(dZ_ptr);     // dZ buffer
-            ws.scratch_bytes      = 0;                                   // 크기는 내부에서 M*N*sizeof(float)로 검증
+            ws.scratch_bytes      = static_cast<size_t>(M * N * sizeof(float)); // ★ 정확히 채움
             ws.lt_workspace       = reinterpret_cast<void*>(lt_ws_ptr);
             ws.lt_workspace_bytes = lt_ws_bytes;
 
-            // Into 전용 API 대신 공용 Backward + ws 전달
+            #ifdef USE_NVTX
+            nvtxRangePushA("gemm.backward_into");
+            #endif
             auto st = ai::GemmCudaBackward(
                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream, &ws
             );
+            #ifdef USE_NVTX
+            nvtxRangePop();
+            #endif
             raise_if_not_ok(st, "backward_into");
         },
         py::arg("A"), py::arg("B"),
@@ -396,7 +453,6 @@ PYBIND11_MODULE(_ops_gemm, m) {
         "Capture-safe GEMM backward that uses preallocated workspaces (no malloc during capture)."
     );
 
-
     // 메타
     m.attr("__package__") = "graph_executor_v2.ops";
     m.attr("__all__") = py::make_tuple(
@@ -406,6 +462,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
         // 바인딩 함수들
         "forward", "backward",
         "forward_ex", "backward_ex",
-        "forward_numpy", "backward_numpy"
+        "forward_numpy", "backward_numpy",
+        "backward_into" // ★ 공개 API에 포함
     );
 }
