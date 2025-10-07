@@ -346,6 +346,8 @@ class GraphCompiler:
                         int(ws["Y_tmp"].data.ptr),
                         int(ws["Z_rows"].data.ptr),
                     )
+
+                    print(a,"이게 뭔데")
                 else:
                     # fallback: 그룹 conv은 고수준 헬퍼 사용
                     y = conv_ops.forward(
