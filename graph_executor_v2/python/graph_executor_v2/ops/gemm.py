@@ -211,3 +211,142 @@ def backward(
     if gC_arr is not None:    out["gC"]    = gC_arr
     if gBias_arr is not None: out["gBias"] = gBias_arr
     return out
+
+# --- ADD: capture-safe forward that never allocates ---
+def forward_into(
+    A: cp.ndarray,
+    B: cp.ndarray,
+    *,
+    out: cp.ndarray,                   # (M,N) preallocated
+    bias: Optional[cp.ndarray] = None,
+    act: str = "none",
+    with_bias: bool = False,
+    leaky_slope: float = 0.01,
+    save_z: bool = False,
+    z_out: Optional[cp.ndarray] = None,   # (M,N) preallocated if save_z
+    stream: Optional[int] = None,
+) -> None:
+    M, K = assert_f32_2d(A, "A")
+    K2, N = assert_f32_2d(B, "B")
+    if K != K2:
+        raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
+
+    # --- STRICT no-allocation path ---
+    if out is None or out.dtype != cp.float32 or out.shape != (M, N):
+        raise ValueError(f"[capture] out must be preallocated float32[{M},{N}]")
+
+    tBias = None
+    if with_bias:
+        if bias is None:
+            raise ValueError("[capture] with_bias=True but bias is None")
+        if not isinstance(bias, cp.ndarray):
+            raise TypeError("[capture] bias must be CuPy ndarray")
+        if bias.dtype != cp.float32:
+            raise ValueError("[capture] bias must be float32 (no astype during capture)")
+        if bias.ndim == 1:
+            if bias.size != N:
+                raise ValueError(f"[capture] bias length must be N={N}")
+            # reshape는 view이므로 OK (메모리 할당 없음)
+            bias = bias.reshape(1, N)
+        elif bias.ndim == 2:
+            bm, bn = bias.shape
+            if not ((bm == 1 and bn == N) or (bm == M and bn == 1) or (bm == M and bn == N)):
+                raise ValueError(f"[capture] unsupported bias shape {bias.shape}")
+        else:
+            raise ValueError(f"[capture] unsupported bias ndim={bias.ndim}")
+        tBias = as_tensor_2d(bias)
+
+    if save_z:
+        if z_out is None or z_out.dtype != cp.float32 or z_out.shape != (M, N):
+            raise ValueError(f"[capture] z_out must be preallocated float32[{M},{N}] when save_z=True")
+    else:
+        if z_out is not None:
+            raise ValueError("[capture] z_out must be None when save_z=False")
+
+    tA = as_tensor_2d(A)
+    tB = as_tensor_2d(B)
+    tY = as_tensor_2d(out)
+    tZ = as_tensor_2d(z_out) if z_out is not None else None
+
+    stream_ptr = get_stream_ptr(stream)
+
+    g.forward_ex(
+        tA, tB, tBias, tY,
+        False, False,
+        act, bool(with_bias), float(leaky_slope),
+        bool(save_z),
+        tZ,
+        to_voidp_capsule(stream_ptr),
+    )
+    # return 없음 (in-place into out/z_out)
+
+# --- ADD: capture-safe backward that never allocates ---
+def backward_into(
+    A: cp.ndarray,
+    B: cp.ndarray,
+    gY: cp.ndarray,
+    Z: cp.ndarray,
+    *,
+    act: str = "none",
+    with_bias: bool = False,
+    leaky_slope: float = 0.01,
+    C: Optional[cp.ndarray] = None,      # if forward epilogue used C
+    gA_out: Optional[cp.ndarray] = None, # (M,K) or None
+    gB_out: Optional[cp.ndarray] = None, # (K,N) or None
+    gC_out: Optional[cp.ndarray] = None, # (M,N) or None, only if C is not None
+    gBias_out: Optional[cp.ndarray] = None, # (1,N) or None, only if with_bias=True
+    stream: Optional[int] = None,
+) -> None:
+    M, K = assert_f32_2d(A, "A")
+    K2, N = assert_f32_2d(B, "B")
+    if K != K2:
+        raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
+    Mg, Ng = assert_f32_2d(gY, "gY")
+    Mz, Nz = assert_f32_2d(Z, "Z")
+    if Mg != M or Ng != N or Mz != M or Nz != N:
+        raise ValueError(f"[capture] gY/Z must be (M={M},N={N})")
+
+    if C is None:
+        if gC_out is not None:
+            raise ValueError("[capture] gC_out must be None when C is None")
+    else:
+        Mc, Nc = assert_f32_2d(C, "C")
+        if Mc != M or Nc != N:
+            raise ValueError(f"[capture] C must be (M={M},N={N})")
+        if gC_out is None or gC_out.dtype != cp.float32 or gC_out.shape != (M, N):
+            raise ValueError(f"[capture] gC_out must be preallocated float32[{M},{N}] when C is provided")
+
+    if with_bias:
+        if gBias_out is None or gBias_out.dtype != cp.float32 or gBias_out.shape != (1, N):
+            raise ValueError(f"[capture] gBias_out must be preallocated float32[1,{N}] when with_bias=True")
+    else:
+        if gBias_out is not None:
+            raise ValueError("[capture] gBias_out must be None when with_bias=False")
+
+    # gA/gB: 사용 여부는 호출자가 결정 (None이면 계산도 생략)
+    if gA_out is not None and (gA_out.dtype != cp.float32 or gA_out.shape != (M, K)):
+        raise ValueError(f"[capture] gA_out must be float32[{M},{K}]")
+    if gB_out is not None and (gB_out.dtype != cp.float32 or gB_out.shape != (K, N)):
+        raise ValueError(f"[capture] gB_out must be float32[{K},{N}]")
+
+    tA  = as_tensor_2d(A)
+    tB  = as_tensor_2d(B)
+    tgY = as_tensor_2d(gY)
+    tZ  = as_tensor_2d(Z)
+    tC  = as_tensor_2d(C) if C is not None else None
+
+    t_gA    = as_tensor_2d(gA_out)    if gA_out    is not None else None
+    t_gB    = as_tensor_2d(gB_out)    if gB_out    is not None else None
+    t_gC    = as_tensor_2d(gC_out)    if gC_out    is not None else None
+    t_gBias = as_tensor_2d(gBias_out) if gBias_out is not None else None
+
+    stream_ptr = get_stream_ptr(stream)
+
+    g.backward_ex(
+        tA, tB, tC, tgY, tZ,
+        t_gA, t_gB, t_gC, t_gBias,
+        False, False,
+        act, bool(with_bias), float(leaky_slope),
+        to_voidp_capsule(stream_ptr),
+    )
+    # return 없음 (in-place into g*_out)
