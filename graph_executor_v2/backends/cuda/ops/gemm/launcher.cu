@@ -1,4 +1,4 @@
-// backends/cuda/ops/gemm/launcher.cu  (FWD+BWD 통합)
+// backends/cuda/ops/gemm/launcher.cu  (FWD+BWD 통합, workspace 지원)
 #include <cuda_runtime.h>
 #include <cstring>
 #include <stdexcept>
@@ -6,14 +6,14 @@
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/gemm/gemm_common.hpp"
-#include "backends/cuda/ops/gemm/api.hpp"
-#include "regemm/api.h"
+#include "backends/cuda/ops/gemm/api.hpp"       // <- GemmWorkspace, GemmCudaLaunch/Backward
+#include "regemm/api.h"                         // <- regemm params/launchers (Ex 포함)
 
 namespace {
 using namespace ai::gemm_common;
 
 // 기존 infer_bias_kind_1d_lenMN가 너무 보수적일 수 있어
-// (N,), (1,N), (M,), (M,1), (1,1) 모두를 관대히 매칭하는 fallback 버전 추가
+// (N,), (1,N), (M,), (M,1), (1,1) 모두를 관대히 매칭하는 fallback 버전
 inline regemm::BiasKind infer_bias_kind_fallback(const ai::Tensor* Bias, int64_t M, int64_t N) {
   using BK = regemm::BiasKind;
   if (!Bias || !Bias->data) return BK::None;
@@ -46,11 +46,15 @@ inline regemm::BiasKind infer_bias_kind_fallback(const ai::Tensor* Bias, int64_t
 namespace ai {
 
 // =========================
-// Forward (save_z 지원)
+// Forward (save_z + Lt WS 지원)
 // =========================
-ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
-                          Tensor& Y, const GemmAttrs& attrs,
-                          StreamHandle stream, Tensor* Z_saved /*=nullptr*/) {
+ai::Status GemmCudaLaunch(
+    const Tensor& A, const Tensor& B, const Tensor* Bias,
+    Tensor& Y, const GemmAttrs& attrs,
+    StreamHandle stream,
+    Tensor* Z_saved /*=nullptr*/,
+    const GemmWorkspace* ws /*=nullptr*/
+) {
   // 1) 디바이스/형식/레이아웃 체크
   if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) || !is_cuda_f32_rowmajor(Y))
     return ai::Status::DeviceMismatch;
@@ -117,20 +121,18 @@ ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
   p.bias      = (Bias && Bias->data) ? Bias->data : nullptr;
   p.bias_kind = infer_bias_kind_fallback(Bias, M, N);
 
-  // 일부 커널은 명시 플래그를 추가로 요구할 수 있음 (필드가 있을 때만 세팅)
-  // CMake 등에서 -DREGE_MM_PARAMS_HAS_WITH_BIAS 정의 시 활성화
-  #ifdef REGE_MM_PARAMS_HAS_WITH_BIAS
-  p.with_bias = (p.bias != nullptr && p.bias_kind != regemm::BiasKind::None) ? 1 : 0;
-  #endif
-
   // ---- activation / leaky slope ----
-  p.act         = to_regemm_act(attrs.act);
+  p.act         = static_cast<regemm::ActKind>(attrs.act);
   p.leaky_slope = attrs.leaky_slope;
 
   // ---- Z 저장: pre-activation을 단일 패스로 저장 ----
   p.Z           = want_save_z ? Z_ptr : nullptr;
-  p.ldZ         = want_save_z ? ldZ_i : 0;
+  p.ldZ         = want_save_z ? ldZ_i : 0;   // 0이면 내부에서 ldd로 간주 가능
   p.save_preact = want_save_z ? 1      : 0;
+
+  // ---- Lt workspace (있으면 전달) ----
+  p.lt_workspace       = ws ? ws->lt_workspace       : nullptr;
+  p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
 
   // 7) 실행
   regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
@@ -138,13 +140,29 @@ ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
 }
 
 // =========================
-// Backward
+/* Backward (dZ scratch + Lt WS 지원)
+
+수식:
+  Z = alpha*(A@B) + beta*C + bias,    Y = act(Z)
+  gZ = dAct(Z, gY)
+  gA = gZ @ B^T
+  gB = A^T @ gZ
+  gC = beta * gZ  (C 사용 시)
+  gBias: Scalar -> sum(gZ), PerM -> sum(gZ, axis=1), PerN -> sum(gZ, axis=0)
+
+캡처-세이프:
+  ws && ws->scratch != nullptr 일 때, 해당 버퍼를 gZ로 사용(크기 >= M*N)
+  내부에서 malloc/free 금지 경로로 실행
+*/
 // =========================
-ai::Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
-                            const Tensor& gY, const Tensor& Z,
-                            Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
-                            const GemmAttrs& attrs, StreamHandle stream)
-{
+ai::Status GemmCudaBackward(
+    const Tensor& A, const Tensor& B, const Tensor* C,
+    const Tensor& gY, const Tensor& Z,
+    Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
+    const GemmAttrs& attrs,
+    StreamHandle stream,
+    const GemmWorkspace* ws /*=nullptr*/
+) {
   // 1) 디바이스/타입/레이아웃/transpose
   if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) ||
       !is_cuda_f32_rowmajor(gY) || !is_cuda_f32_rowmajor(Z))
@@ -202,6 +220,15 @@ ai::Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
     bk = infer_bias_kind_fallback(gBias, M, N);
   }
 
+  // 4.5) (선택) 캡처-세이프 dZ scratch 준비
+  float* dZ = nullptr;
+  if (ws && ws->scratch) {
+    dZ = reinterpret_cast<float*>(ws->scratch);
+    // 필요 시 크기 점검: (M*N*sizeof(float)) 이상 — 내부(regemm)에서도 shape로 재검증 권장
+    // size_t need = static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(float);
+    // if (ws->scratch_bytes && ws->scratch_bytes < need) return ai::Status::Invalid;
+  }
+
   // 5) 파라미터
   regemm::GemmBiasActBwdParams p{};
   p.M = static_cast<int>(M);
@@ -226,10 +253,16 @@ ai::Status GemmCudaBackward(const Tensor& A, const Tensor& B, const Tensor* C,
   p.beta  = (C && gC) ? 1.0f : 0.0f;
 
   p.bias_kind   = bk;
-  p.act         = to_regemm_act(attrs.act);
+  p.act         = static_cast<regemm::ActKind>(attrs.act);
   p.leaky_slope = attrs.leaky_slope;
 
-  // 7) 실행
+  // 6.5) dZ scratch + Lt WS 전달
+  p.gZ_scratch       = dZ;                                  // 외부 제공 시 malloc-free 없음
+  p.ldgZ             = (dZ ? static_cast<int>(N) : 0);      // 제공 시 반드시 N
+  p.lt_workspace     = ws ? ws->lt_workspace       : nullptr;
+  p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
+
+  // 7) 실행 (확장 버전, 이름은 호환 유지)
   regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
   return ai::Status::Ok;
 }
