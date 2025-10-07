@@ -1,5 +1,6 @@
 # python/test/graph/test_graph_exec_forward.py
 import os, sys, time
+
 THIS = os.path.abspath(os.path.dirname(__file__))
 ROOT = os.path.abspath(os.path.join(THIS, "..", ".."))
 if ROOT not in sys.path:
@@ -165,6 +166,17 @@ def _env_info():
     except Exception as e:
         return f"(env info failed: {e})"
 
+def _time_gpu(fn, iters=30):
+    s = cp.cuda.Event(); e = cp.cuda.Event()
+    for _ in range(5):
+        fn()
+    cp.cuda.get_current_stream().synchronize()
+    s.record()
+    for _ in range(iters):
+        fn()
+    e.record(); e.synchronize()
+    return cp.cuda.get_elapsed_time(s, e) / iters  # ms
+
 
 # -----------------------------
 # Main
@@ -181,7 +193,7 @@ if __name__ == "__main__":
     model = MiniModel()
     model.build(x.shape)
 
-    # ----- Compile with CUDA Graph capture (FWD+BWD) -----
+    # ----- Compile with CUDA Graph capture (FWD+BWD, BWD는 실패 시 자동 폴백) -----
     ge_cap = GraphCompiler(model).compile(
         input_shape=x.shape,
         use_cuda_graph=True,
@@ -216,21 +228,10 @@ if __name__ == "__main__":
     print(f"[CHECK] captured vs non-captured (BWD) max_abs_diff = {gdiff:.6e}")
 
     # ----- Timing -----
-    def time_gpu(fn, iters=30):
-        s = cp.cuda.Event(); e = cp.cuda.Event()
-        for _ in range(5):
-            fn()
-        cp.cuda.get_current_stream().synchronize()
-        s.record()
-        for _ in range(iters):
-            fn()
-        e.record(); e.synchronize()
-        return cp.cuda.get_elapsed_time(s, e) / iters  # ms
-
-    t_f_cap = time_gpu(lambda: ge_cap.run(x), iters=30)
-    t_f_nc  = time_gpu(lambda: ge_nocap.run(x), iters=30)
-    t_b_cap = time_gpu(lambda: ge_cap.backward(gout), iters=30)
-    t_b_nc  = time_gpu(lambda: ge_nocap.backward(gout), iters=30)
+    t_f_cap = _time_gpu(lambda: ge_cap.run(x), iters=30)
+    t_f_nc  = _time_gpu(lambda: ge_nocap.run(x), iters=30)
+    t_b_cap = _time_gpu(lambda: ge_cap.backward(gout), iters=30)
+    t_b_nc  = _time_gpu(lambda: ge_nocap.backward(gout), iters=30)
 
     print(f"[TIME] FWD  captured: {t_f_cap:.3f} ms | non-cap: {t_f_nc:.3f} ms")
     print(f"[TIME] BWD  captured: {t_b_cap:.3f} ms | non-cap: {t_b_nc:.3f} ms")
@@ -240,3 +241,11 @@ if __name__ == "__main__":
         print("[WARN] Non-finite values detected in output!")
 
     print("[OK] forward+backward-capture test completed.")
+
+    # BWD capture status/error line (항상 마지막에 표기)
+    err = getattr(ge_cap, "_bwd_capture_error", None)
+    print("[DEBUG] Backward Capture Info:",
+          f"capture_enabled: {ge_cap._gexec_bwd is not None} |",
+          f"graph_api_kind_bwd: {getattr(ge_cap, '_graph_api_kind_bwd', 'none')}")
+    if err:
+        print("[DEBUG] BWD capture error:", err)

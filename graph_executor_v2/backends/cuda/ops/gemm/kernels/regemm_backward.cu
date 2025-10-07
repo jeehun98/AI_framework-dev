@@ -3,6 +3,8 @@
 #include <cublas_v2.h>
 #include <cstdint>
 #include <stdexcept>
+#include <mutex>
+#include <unordered_map>
 
 #include <regemm/config.h>
 #include <regemm/bias.h>
@@ -30,6 +32,29 @@ namespace regemm {
 } while(0)
 #endif
 
+// ======= cublas 핸들: 디바이스별 캐시 (capture-safe) =======
+static cublasHandle_t acquire_cublas_handle()
+{
+  static std::mutex mtx;
+  static std::unordered_map<int, cublasHandle_t> handles;
+
+  int dev = -1;
+  REGEMM_CHECK(cudaGetDevice(&dev));
+
+  {
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = handles.find(dev);
+    if (it != handles.end() && it->second) {
+      return it->second;
+    }
+    // 최초 1회 생성: 반드시 캡처 밖(워밍업)에서 한 번 호출되도록 상위에서 보장
+    cublasHandle_t h = nullptr;
+    CUBLAS_CHECK(cublasCreate(&h));
+    handles[dev] = h;
+    return h;
+  }
+}
+
 // row-major 편의 SGEMM 래퍼
 static inline cublasStatus_t sgemm_rm(
     cublasHandle_t h,
@@ -41,7 +66,7 @@ static inline cublasStatus_t sgemm_rm(
     const float* beta,
     float* C, int ldc_rm)
 {
-  // row-major를 col-major로 뒤집어 부르는 트릭
+  // row-major를 col-major로 부르는 트릭
   const cublasOperation_t opA_cm = transB ? CUBLAS_OP_T : CUBLAS_OP_N; // B op
   const cublasOperation_t opB_cm = transA ? CUBLAS_OP_T : CUBLAS_OP_N; // A op
   return cublasSgemm(
@@ -119,7 +144,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     }
     gZ = p.gZ_scratch;
   } else {
-    // 내부 임시 할당 (비-캡처 경로)
+    // 내부 임시 할당 (비-캡처 경로 전용)
 #if CUDART_VERSION >= 11020
     REGEMM_CHECK(cudaMallocAsync(&gZ, sizeof(float) * static_cast<size_t>(M) * N, s));
 #else
@@ -140,7 +165,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       if (p.bias_kind == BiasKind::Scalar)      bytes = sizeof(float);
       else if (p.bias_kind == BiasKind::PerM)   bytes = sizeof(float) * static_cast<size_t>(p.M);
       else if (p.bias_kind == BiasKind::PerN)   bytes = sizeof(float) * static_cast<size_t>(p.N);
-      if (bytes) REGEMM_CHECK(cudaMemsetAsync(p.gBias, 0, bytes, s));
+      if (bytes) REGEMM_CHECK(cudaMemsetAsync(p.gBias, 0, bytes, s)); // capture-safe
     }
 
     switch (p.act) {
@@ -214,8 +239,9 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   }
 
   // -------- GEMMs (cuBLAS) --------
-  cublasHandle_t h = nullptr;
-  CUBLAS_CHECK(cublasCreate(&h));
+  // 🔴 기존: 매 호출 cublasCreate / Destroy → 캡처 무효화
+  // ✅ 수정: 디바이스별 캐시 핸들 획득 + 스트림만 설정
+  cublasHandle_t h = acquire_cublas_handle();
   CUBLAS_CHECK(cublasSetStream(h, s));
 
   const float zero  = 0.f;
@@ -243,7 +269,8 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       /*C=*/(float*)p.gB, /*ldc=*/p.ldgB));
   }
 
-  CUBLAS_CHECK(cublasDestroy(h));
+  // 🔵 핸들 파괴 금지 (프로세스 종료시 정리하거나 별도 shutdown API에서)
+  // CUBLAS_CHECK(cublasDestroy(h)); // 제거
 
   // -------- gZ 해제 (내부 할당시에만) --------
   if (need_free) {
