@@ -263,3 +263,238 @@ def backward(
     if gW is not None: out["gW"] = gW
     if gB is not None: out["gB"] = gB
     return out
+
+class Conv2DWorkspaces:
+    """
+    캡처-세이프 워크스페이스 묶음.
+    forward에 필요한: dCol, W_KC, Y_tmp, (옵션) Z_rows
+    backward에 필요한: dCol, dTmp, gy_rows, Z_rows, (옵션) W_CK, dWpack, dY_HT
+    """
+    def __init__(self):
+        # fwd
+        self.dCol   = None  # [HWo, K]
+        self.W_KC   = None  # [K, Cout]
+        self.Y_tmp  = None  # [HWo, Cout]
+        self.Z_rows = None  # [HWo, Cout] if save_z
+
+        # bwd (공통/필수)
+        self.dCol_b = None  # [HWo, K]
+        self.dTmp   = None  # [max(Cout*K, HWo*K)]
+        self.gy_rows= None  # [Cout, HWo]
+        self.Z_rows_b=None  # [Cout, HWo]
+
+        # bwd (옵션)
+        self.W_CK   = None  # [Cout, K]    if want_gX
+        self.dWpack = None  # [Cout, K]    if want_gW
+        self.dY_HT  = None  # [HWo, Cout]  if want_gX
+
+    def ensure_forward(self, *, HWo: int, K: int, Cout: int, save_z: bool):
+        # 아래는 shape만 체크 → 없거나 shape 다르면 ValueError로 막고,
+        # "캡처 전"에 호출자가 직접 할당하도록 강제.
+        def _chk(arr, shape, name):
+            if arr is None or arr.shape != shape or arr.dtype != cp.float32:
+                raise ValueError(f"[capture] workspace `{name}` must be preallocated float32{shape}, "
+                                 f"got {None if arr is None else (arr.shape, arr.dtype)}")
+
+        _chk(self.dCol,  (HWo, K),     "dCol")
+        _chk(self.W_KC,  (K,   Cout),  "W_KC")
+        _chk(self.Y_tmp, (HWo, Cout),  "Y_tmp")
+        if save_z:
+            _chk(self.Z_rows, (HWo, Cout), "Z_rows")
+        else:
+            if self.Z_rows is not None:
+                raise ValueError("[capture] Z_rows must be None when save_z=False")
+
+    def ensure_backward(self, *, HWo: int, K: int, Cout: int,
+                        want_gX: bool, want_gW: bool):
+        def _chk(arr, shape, name):
+            if arr is None or arr.shape != shape or arr.dtype != cp.float32:
+                raise ValueError(f"[capture] workspace `{name}` must be preallocated float32{shape}, "
+                                 f"got {None if arr is None else (arr.shape, arr.dtype)}")
+
+        _chk(self.dCol_b, (HWo, K), "dCol_b")
+        _chk(self.dTmp,   (max(Cout*K, HWo*K),), "dTmp")
+        _chk(self.gy_rows,(Cout, HWo), "gy_rows")
+        _chk(self.Z_rows_b,(Cout, HWo), "Z_rows_b")
+
+        if want_gX:
+            _chk(self.W_CK,  (Cout, K),   "W_CK")
+            _chk(self.dY_HT, (HWo,  Cout),"dY_HT")
+        else:
+            if self.W_CK is not None or self.dY_HT is not None:
+                raise ValueError("[capture] W_CK/dY_HT must be None when want_gX=False")
+
+        if want_gW:
+            _chk(self.dWpack, (Cout, K), "dWpack")
+        else:
+            if self.dWpack is not None:
+                raise ValueError("[capture] dWpack must be None when want_gW=False")
+
+
+def _out_hw(H: int, W: int, KH: int, KW: int,
+            stride: Tuple[int, int],
+            padding: Tuple[int, int],
+            dilation: Tuple[int, int]) -> Tuple[int, int]:
+    sH, sW = map(int, stride)
+    pH, pW = map(int, padding)
+    dH, dW = map(int, dilation)
+    H_out = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
+    W_out = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
+    return H_out, W_out
+
+
+def forward_into(
+    X: cp.ndarray,          # (N,Cin,H,W)
+    W: cp.ndarray,          # (Cout,Cin,KH,KW) (groups>1 -> Cin/groups)
+    *,
+    out: cp.ndarray,        # (N,Cout,H_out,W_out) preallocated
+    B: Optional[cp.ndarray] = None,  # (Cout,)
+    stride: Tuple[int, int] = (1, 1),
+    padding: Tuple[int, int] = (0, 0),
+    dilation: Tuple[int, int] = (1, 1),
+    groups: int = 1,
+    with_bias: bool = False,
+    act: str | "_g.ActKind" = "none",
+    leaky_slope: float = 0.01,
+    save_z: bool = False,
+    Z_saved: Optional[cp.ndarray] = None,  # (N,Cout,H_out,W_out) preallocated if save_z
+    stream: Optional[int] = None,
+    work: Optional[Conv2DWorkspaces] = None,
+) -> None:
+    _assert_f32_4d(X, "X")
+    _assert_f32_4d(W, "W")
+    if out is None or out.dtype != cp.float32 or out.ndim != 4:
+        raise ValueError("[capture] `out` must be preallocated float32 4D")
+
+    N, Cin, H, W_in = map(int, X.shape)
+    Cout, CinW, KH, KW = map(int, W.shape)
+    H_out, W_out = _out_hw(H, W_in, KH, KW, stride, padding, dilation)
+
+    if tuple(out.shape) != (N, Cout, H_out, W_out):
+        raise ValueError(f"[capture] out shape must be (N,Cout,H_out,W_out)={(N,Cout,H_out,W_out)}, "
+                         f"got {tuple(out.shape)}")
+
+    act_kind = _parse_act_kind(act)
+    if save_z:
+        if Z_saved is None or Z_saved.dtype != cp.float32 or tuple(Z_saved.shape)!=(N,Cout,H_out,W_out):
+            raise ValueError(f"[capture] Z_saved must be preallocated float32[{(N,Cout,H_out,W_out)}] when save_z=True")
+    else:
+        if Z_saved is not None:
+            raise ValueError("[capture] Z_saved must be None when save_z=False")
+
+    if with_bias:
+        if B is None or B.dtype != cp.float32 or B.ndim != 1 or int(B.size) != Cout:
+            raise ValueError(f"[capture] B must be float32 1D length {Cout}")
+        bias_ptr = int(B.data.ptr)
+    else:
+        bias_ptr = None
+
+    attrs = _attrs_from_args(
+        stride, padding, dilation, groups,
+        with_bias=with_bias, act_kind=act_kind,
+        leaky_slope=leaky_slope, save_z=save_z
+    )
+    sptr = int(get_stream_ptr(stream))
+
+    # 내부 행렬 크기
+    K   = (CinW * KH * KW)
+    HWo = (H_out * W_out)
+
+    if work is None:
+        raise ValueError("[capture] provide `work: Conv2DWorkspaces` with preallocated buffers")
+    work.ensure_forward(HWo=HWo, K=K, Cout=Cout, save_z=save_z)
+
+    _g.forward(
+        int(X.data.ptr), [N, Cin, H, W_in],
+        int(W.data.ptr), [Cout, CinW, KH, KW],
+        int(out.data.ptr), [N, Cout, H_out, W_out],
+        bias_ptr,
+        int(Z_saved.data.ptr) if Z_saved is not None else None,
+        attrs, sptr,
+        int(work.dCol.data.ptr),
+        int(work.W_KC.data.ptr),
+        int(work.Y_tmp.data.ptr),
+        int(work.Z_rows.data.ptr) if save_z else 0,
+    )
+    # 반환 없음 (out/Z_saved에 in-place)
+
+
+def backward_into(
+    X: cp.ndarray,          # (N,Cin,H,W)
+    W: cp.ndarray,          # (Cout,Cin,KH,KW)
+    gY: cp.ndarray,         # (N,Cout,H_out,W_out)
+    Z:  cp.ndarray,         # (N,Cout,H_out,W_out)
+    *,
+    stride: Tuple[int, int] = (1, 1),
+    padding: Tuple[int, int] = (0, 0),
+    dilation: Tuple[int, int] = (1, 1),
+    groups: int = 1,
+    with_bias: bool = False,
+    act: str | "_g.ActKind" = "none",
+    leaky_slope: float = 0.01,
+    # 결과 버퍼들 (필요한 것만 제공; None이면 해당 그래디언트 스킵)
+    gX_out: Optional[cp.ndarray] = None,     # (N,Cin,H,W)
+    gW_out: Optional[cp.ndarray] = None,     # (Cout,Cin,KH,KW)
+    gB_out: Optional[cp.ndarray] = None,     # (Cout,)
+    stream: Optional[int] = None,
+    work: Optional[Conv2DWorkspaces] = None,
+) -> None:
+    _assert_f32_4d(X, "X")
+    _assert_f32_4d(W, "W")
+    _assert_f32_4d(gY, "gY")
+    _assert_f32_4d(Z,  "Z")
+
+    N, Cin, H, W_in = map(int, X.shape)
+    Cout, CinW, KH, KW = map(int, W.shape)
+    Ny, Coy, Hy, Wy = map(int, gY.shape)
+    Nz, Coz, Hz, Wz = map(int, Z.shape)
+
+    if (Ny, Coy, Hy, Wy) != (N, Cout, Hz, Wz) or Nz != N or Coz != Cout:
+        raise ValueError("[capture] gY/Z shapes must match (N,Cout,H_out,W_out) derived from X/W")
+
+    if gX_out is not None and (gX_out.dtype != cp.float32 or tuple(gX_out.shape) != (N, Cin, H, W_in)):
+        raise ValueError(f"[capture] gX_out must be float32[{(N,Cin,H,W_in)}]")
+    if gW_out is not None and (gW_out.dtype != cp.float32 or tuple(gW_out.shape) != (Cout, CinW, KH, KW)):
+        raise ValueError(f"[capture] gW_out must be float32[{(Cout,CinW,KH,KW)}]")
+    if with_bias:
+        if gB_out is None or gB_out.dtype != cp.float32 or gB_out.ndim != 1 or int(gB_out.size) != Cout:
+            raise ValueError(f"[capture] gB_out must be float32 1D length {Cout} when with_bias=True")
+    else:
+        if gB_out is not None:
+            raise ValueError("[capture] gB_out must be None when with_bias=False")
+
+    act_kind = _parse_act_kind(act)
+    attrs = _attrs_from_args(
+        stride, padding, dilation, groups,
+        with_bias=with_bias, act_kind=act_kind,
+        leaky_slope=leaky_slope, save_z=False
+    )
+    sptr = int(get_stream_ptr(stream))
+
+    H_out, W_out = Hz, Wz
+    HWo = (H_out * W_out)
+    K   = (CinW * KH * KW)
+
+    if work is None:
+        raise ValueError("[capture] provide `work: Conv2DWorkspaces` with preallocated buffers")
+    want_gX = gX_out is not None
+    want_gW = gW_out is not None
+    work.ensure_backward(HWo=HWo, K=K, Cout=Cout, want_gX=want_gX, want_gW=want_gW)
+
+    _g.backward(
+        int(X.data.ptr),  [N, Cin, H, W_in],
+        int(W.data.ptr),  [Cout, CinW, KH, KW],
+        int(gY.data.ptr), [Ny, Coy, Hy, Wy],
+        int(Z.data.ptr),  [Nz, Coz, Hz, Wz],
+        int(gW_out.data.ptr) if gW_out is not None else None,
+        int(gB_out.data.ptr) if gB_out is not None else None,
+        int(gX_out.data.ptr) if gX_out is not None else None,
+        attrs, sptr,
+        int(work.dCol_b.data.ptr),
+        int(work.dTmp.data.ptr),
+        int(work.W_CK.data.ptr)   if want_gX else 0,
+        int(work.dWpack.data.ptr) if want_gW else 0,
+        int(work.dY_HT.data.ptr)  if want_gX else 0,
+        int(work.gy_rows.data.ptr),
+        int(work.Z_rows_b.data.ptr),
+    )
