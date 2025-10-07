@@ -336,6 +336,67 @@ PYBIND11_MODULE(_ops_gemm, m) {
         R"(Convenience wrapper that accepts NumPy arrays and delegates to graph_executor_v2._core.gemm_bias_act_bwd.)"
     );
 
+    m.def(
+        "backward_into",
+        [](const ai::Tensor& A,
+        const ai::Tensor& B,
+        const ai::Tensor* C,      // optional
+        const ai::Tensor& gY,
+        const ai::Tensor& Z,
+        ai::Tensor* gA,           // optional
+        ai::Tensor* gB,           // optional
+        ai::Tensor* gC,           // optional
+        ai::Tensor* gBias,        // optional (PerN: (1,N) 권장)
+        const ai::GemmAttrs& attrs,
+        void* stream,
+        // --- workspaces ---
+        uintptr_t dZ_ptr,         // required: float[M*N]
+        uintptr_t lt_ws_ptr,      // optional: cublasLt workspace
+        size_t    lt_ws_bytes) {
+
+            // PerN shape 가드 (그대로 유지)
+            const int64_t M = A.desc.shape.at(0);
+            const int64_t N = B.desc.shape.at(1);
+            if (gBias && gBias->data) {
+                const auto& s = gBias->desc.shape;
+                const bool bad_perm = (s.size()==1 && s[0]==M) || (s.size()==2 && s[0]==M && s[1]==1);
+                if (bad_perm) {
+                    throw std::invalid_argument(
+                        "[_ops_gemm::backward_into] gBias must be PerN (shape (1,N) or (N,))");
+                }
+            }
+
+            if (!dZ_ptr) {
+                throw std::invalid_argument(
+                    "[_ops_gemm::backward_into] dZ_ptr is required for capture-safe path");
+            }
+
+            // 통합 워크스페이스 사용
+            ai::GemmWorkspace ws{};
+            ws.scratch            = reinterpret_cast<void*>(dZ_ptr);     // dZ buffer
+            ws.scratch_bytes      = 0;                                   // 크기는 내부에서 M*N*sizeof(float)로 검증
+            ws.lt_workspace       = reinterpret_cast<void*>(lt_ws_ptr);
+            ws.lt_workspace_bytes = lt_ws_bytes;
+
+            // Into 전용 API 대신 공용 Backward + ws 전달
+            auto st = ai::GemmCudaBackward(
+                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream, &ws
+            );
+            raise_if_not_ok(st, "backward_into");
+        },
+        py::arg("A"), py::arg("B"),
+        py::arg("C") = nullptr,
+        py::arg("gY"), py::arg("Z"),
+        py::arg("gA") = nullptr, py::arg("gB") = nullptr, py::arg("gC") = nullptr, py::arg("gBias") = nullptr,
+        py::arg("attrs"),
+        py::arg("stream") = nullptr,
+        py::arg("dZ_ptr"),
+        py::arg("lt_ws_ptr") = static_cast<uintptr_t>(0),
+        py::arg("lt_ws_bytes") = static_cast<size_t>(0),
+        "Capture-safe GEMM backward that uses preallocated workspaces (no malloc during capture)."
+    );
+
+
     // 메타
     m.attr("__package__") = "graph_executor_v2.ops";
     m.attr("__all__") = py::make_tuple(

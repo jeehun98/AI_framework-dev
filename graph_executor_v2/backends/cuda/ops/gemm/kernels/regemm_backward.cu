@@ -41,6 +41,7 @@ static inline cublasStatus_t sgemm_rm(
     const float* beta,
     float* C, int ldc_rm)
 {
+  // row-major를 col-major로 뒤집어 부르는 트릭
   const cublasOperation_t opA_cm = transB ? CUBLAS_OP_T : CUBLAS_OP_N; // B op
   const cublasOperation_t opB_cm = transA ? CUBLAS_OP_T : CUBLAS_OP_N; // A op
   return cublasSgemm(
@@ -63,8 +64,8 @@ __global__ void bwd_epilogue_kernel(
     const float* __restrict__ Z,  int ldZ,
     float* __restrict__ gZ,       // contiguous, ld = N
     int M, int N,
-    float beta,                   // for gC
-    float* __restrict__ gC, int ldgC, // nullable
+    float beta,                        // for gC
+    float* __restrict__ gC, int ldgC,  // nullable
     float* __restrict__ gBias,         // nullable
     BiasKind bk, float leaky_slope)
 {
@@ -102,15 +103,32 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   const int ldgY = p.ldgY;
   const int ldZ  = p.ldZ;
 
-  // gZ 임시 버퍼 (contiguous: ld = N)
-  float* gZ = nullptr;
-#if CUDART_VERSION >= 11020
-  REGEMM_CHECK(cudaMallocAsync(&gZ, sizeof(float) * static_cast<size_t>(M) * N, s));
-#else
-  REGEMM_CHECK(cudaMalloc(&gZ, sizeof(float) * static_cast<size_t>(M) * N));
-#endif
+  // 기본 가드
+  if (M <= 0 || N <= 0 || K <= 0) throw std::invalid_argument("invalid dims");
+  if (!p.gY || !p.Z) throw std::invalid_argument("gY/Z is null");
+  if (ldgY < N || ldZ < N) throw std::invalid_argument("ldgY/ldZ < N");
 
-  // 에필로그 실행 (gZ, [옵션]gC, [옵션]gBias)
+  // -------- gZ scratch 준비 (캡처-세이프 우선) --------
+  float* gZ = nullptr;
+  bool need_free = false;
+
+  if (p.gZ_scratch) {
+    // 외부 제공 버퍼 사용 (ld == N 요구)
+    if (p.ldgZ != 0 && p.ldgZ != N) {
+      throw std::invalid_argument("gZ_scratch provided but ldgZ != N");
+    }
+    gZ = p.gZ_scratch;
+  } else {
+    // 내부 임시 할당 (비-캡처 경로)
+#if CUDART_VERSION >= 11020
+    REGEMM_CHECK(cudaMallocAsync(&gZ, sizeof(float) * static_cast<size_t>(M) * N, s));
+#else
+    REGEMM_CHECK(cudaMalloc(&gZ, sizeof(float) * static_cast<size_t>(M) * N));
+#endif
+    need_free = true;
+  }
+
+  // -------- 에필로그 실행 (gZ, [옵션]gC, [옵션]gBias) --------
   {
     dim3 block(16, 16);
     dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
@@ -195,7 +213,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     }
   }
 
-  // cuBLAS
+  // -------- GEMMs (cuBLAS) --------
   cublasHandle_t h = nullptr;
   CUBLAS_CHECK(cublasCreate(&h));
   CUBLAS_CHECK(cublasSetStream(h, s));
@@ -206,7 +224,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   // gA = alpha * gZ @ B^T  (M x K) = (M x N) @ (K x N)^T
   if (p.gA) {
     CUBLAS_CHECK(sgemm_rm(
-      h, false, true, M, K, N,
+      h, /*transA=*/false, /*transB=*/true, M, K, N,
       &alpha,
       /*A=*/gZ, /*lda=*/N,
       /*B=*/(const float*)p.B, /*ldb=*/p.ldb,
@@ -217,7 +235,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   // gB = alpha * A^T @ gZ  (K x N) = (M x K)^T @ (M x N)
   if (p.gB) {
     CUBLAS_CHECK(sgemm_rm(
-      h, true, false, K, N, M,
+      h, /*transA=*/true, /*transB=*/false, K, N, M,
       &alpha,
       /*A=*/(const float*)p.A, /*lda=*/p.lda,
       /*B=*/gZ, /*ldb=*/N,
@@ -227,11 +245,14 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 
   CUBLAS_CHECK(cublasDestroy(h));
 
+  // -------- gZ 해제 (내부 할당시에만) --------
+  if (need_free) {
 #if CUDART_VERSION >= 11020
-  REGEMM_CHECK(cudaFreeAsync(gZ, s));
+    REGEMM_CHECK(cudaFreeAsync(gZ, s));
 #else
-  REGEMM_CHECK(cudaFree(gZ));
+    REGEMM_CHECK(cudaFree(gZ));
 #endif
+  }
 }
 
 } // namespace regemm
