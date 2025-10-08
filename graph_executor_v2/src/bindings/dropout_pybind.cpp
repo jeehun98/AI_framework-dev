@@ -1,163 +1,111 @@
 // src/bindings/dropout_pybind.cpp
-#include <cuda_runtime.h>
-#include <stdexcept>
-#include <memory>
-#include <utility>
-
 #include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
+#include <pybind11/stl.h>
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#include "backends/cuda/ops/dropout/api.hpp"   // DropoutAttrs & ops::dropout_run decl
-
-#include "src/ops/dropout.cpp"
-
+#include "backends/cuda/ops/dropout/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
 
-// ----- small helpers -----
-static inline TensorDesc make_desc_2d_rowmajor(int64_t M, int64_t N, DType dt){
-  TensorDesc d;
-  d.dtype   = dt;
-  d.layout  = Layout::RowMajor;
-  d.shape   = {M, N};
-  d.stride  = {N, 1};      // 요소 단위
-  return d;
+static Tensor make_tensor_nd(uintptr_t ptr_u64,
+                             const std::vector<int64_t>& shape,
+                             DType dtype = DType::F32,
+                             Device dev  = Device::CUDA)
+{
+  Tensor t;
+  t.data = reinterpret_cast<void*>(ptr_u64);
+  t.device = dev;
+  t.device_index = 0;
+  t.desc.dtype  = dtype;
+  t.desc.layout = Layout::RowMajor;
+  t.desc.shape  = shape;
+  const size_t R = shape.size();
+  t.desc.stride.resize(R);
+  if (R) {
+    t.desc.stride[R-1] = 1;
+    for (int i=(int)R-2;i>=0;--i)
+      t.desc.stride[(size_t)i] = t.desc.stride[(size_t)i+1]*shape[(size_t)i+1];
+  }
+  return t;
 }
 
-template <typename T>
-struct CudaDeleter {
-  void operator()(T* p) const noexcept { if (p) cudaFree(p); }
-};
-
-template <typename T>
-using cuda_unique_ptr = std::unique_ptr<T, CudaDeleter<T>>;
-
-// ----- bindings -----
-
-// forward(X, p, return_mask, seed, scale_in_train) -> Y or (Y, mask)
-static py::object dropout(py::array X_in,
-                          double p = 0.1,
-                          py::object return_mask = py::bool_(false),
-                          std::uint64_t seed = 0x1234,
-                          bool scale_in_train = true)
-{
-  // Force float32, C-order
-  auto X = py::array_t<float, py::array::c_style | py::array::forcecast>(X_in);
-  if (X.ndim() != 2) throw std::runtime_error("dropout: X must be 2D");
-  const int64_t M = X.shape(0), N = X.shape(1);
-  const size_t  count = static_cast<size_t>(M) * static_cast<size_t>(N);
-
-  // device alloc
-  float* dX_raw = nullptr;
-  float* dY_raw = nullptr;
-  cudaMalloc(&dX_raw, sizeof(float) * count);
-  cudaMalloc(&dY_raw, sizeof(float) * count);
-  cuda_unique_ptr<float> dX(dX_raw), dY(dY_raw);
-
-  // H2D
-  cudaMemcpy(dX.get(), X.data(), sizeof(float) * count, cudaMemcpyHostToDevice);
-
-  // optional mask
-  int32_t* dM_raw = nullptr;
-  cuda_unique_ptr<int32_t> dM;
-  if (py::cast<bool>(return_mask)) {
-    cudaMalloc(&dM_raw, sizeof(int32_t) * count);
-    dM.reset(dM_raw);
+static void throw_if_bad(Status st, const char* where) {
+  if (st != Status::Ok) {
+    throw std::runtime_error(std::string(where) + " failed with Status=" +
+                             std::to_string(static_cast<int>(st)));
   }
-
-  // wrap tensors
-  Tensor tX{dX.get(), make_desc_2d_rowmajor(M, N, DType::F32), Device::CUDA, 0};
-  Tensor tY{dY.get(), make_desc_2d_rowmajor(M, N, DType::F32), Device::CUDA, 0};
-  Tensor tM{}; Tensor* pM = nullptr;
-  if (dM) { tM = Tensor{dM.get(), make_desc_2d_rowmajor(M, N, DType::I32), Device::CUDA, 0}; pM = &tM; }
-
-  DropoutAttrs attrs{};
-  attrs.p = static_cast<float>(p);
-  attrs.seed = seed;
-  attrs.scale_in_train = scale_in_train;
-
-  // stream = null (default)
-  int rc = ai::ops::dropout_run(tX, tY, pM, attrs, nullptr);
-  cudaDeviceSynchronize();
-  if (rc != 0) throw std::runtime_error("dropout_run failed");
-
-  // D2H
-  auto Y = py::array_t<float>({M, N});
-  cudaMemcpy(Y.mutable_data(), dY.get(), sizeof(float) * count, cudaMemcpyDeviceToHost);
-
-  if (dM) {
-    auto Mhost = py::array_t<int32_t>({M, N});
-    cudaMemcpy(Mhost.mutable_data(), dM.get(), sizeof(int32_t) * count, cudaMemcpyDeviceToHost);
-    return py::make_tuple(std::move(Y), std::move(Mhost));
-  } else {
-    return Y;
-  }
-}
-
-// backward(dY, mask, p, seed, scale_in_train) -> dX
-static py::array dropout_backward(py::array dY_in, py::array mask_in,
-                                  double p = 0.1, std::uint64_t seed = 0x1234,
-                                  bool scale_in_train = true)
-{
-  auto dY = py::array_t<float,   py::array::c_style | py::array::forcecast>(dY_in);
-  auto M  = py::array_t<int32_t, py::array::c_style | py::array::forcecast>(mask_in);
-
-  if (dY.ndim()!=2 || M.ndim()!=2) throw std::runtime_error("dropout_backward: dY and mask must be 2D");
-  if (dY.shape(0)!=M.shape(0) || dY.shape(1)!=M.shape(1)) throw std::runtime_error("shape mismatch");
-
-  const int64_t R = dY.shape(0), C = dY.shape(1);
-  const size_t  count = static_cast<size_t>(R) * static_cast<size_t>(C);
-
-  // device alloc
-  float* ddY_raw = nullptr;
-  float* ddX_raw = nullptr;
-  int32_t* dM_raw = nullptr;
-  cudaMalloc(&ddY_raw, sizeof(float) * count);
-  cudaMalloc(&ddX_raw, sizeof(float) * count);
-  cudaMalloc(&dM_raw,  sizeof(int32_t) * count);
-
-  cuda_unique_ptr<float> ddY(ddY_raw), ddX(ddX_raw);
-  cuda_unique_ptr<int32_t> dM(dM_raw);
-
-  // H2D
-  cudaMemcpy(ddY.get(), dY.data(), sizeof(float) * count, cudaMemcpyHostToDevice);
-  cudaMemcpy(dM.get(),  M.data(),  sizeof(int32_t) * count, cudaMemcpyHostToDevice);
-
-  // wrap tensors
-  Tensor tdY{ddY.get(), make_desc_2d_rowmajor(R, C, DType::F32), Device::CUDA, 0};
-  Tensor tM {dM.get(),  make_desc_2d_rowmajor(R, C, DType::I32), Device::CUDA, 0};
-  Tensor tdX{ddX.get(), make_desc_2d_rowmajor(R, C, DType::F32), Device::CUDA, 0};
-
-  DropoutAttrs attrs{};
-  attrs.p = static_cast<float>(p);
-  attrs.seed = seed;
-  attrs.scale_in_train = scale_in_train;
-
-  int rc = ai::ops::dropout_backward_run(tdY, tM, tdX, attrs, nullptr);
-  cudaDeviceSynchronize();
-  if (rc != 0) throw std::runtime_error("dropout_backward_run failed");
-
-  // D2H
-  auto out = py::array_t<float>({R, C});
-  cudaMemcpy(out.mutable_data(), ddX.get(), sizeof(float) * count, cudaMemcpyDeviceToHost);
-  return out;
 }
 
 PYBIND11_MODULE(_ops_dropout, m) {
-  m.doc() = "Standalone CUDA Dropout ops (forward/backward)";
-  m.def("dropout", &dropout,
-        py::arg("X"),
-        py::arg("p") = 0.1,
-        py::arg("return_mask") = py::bool_(false),
-        py::arg("seed") = 0x1234,
-        py::arg("scale_in_train") = true);
+  m.doc() = "Independent CUDA Dropout (stateless RNG, capture-safe)";
 
-  m.def("dropout_backward", &dropout_backward,
-        py::arg("dY"),
-        py::arg("mask"),
-        py::arg("p") = 0.1,
-        py::arg("seed") = 0x1234,
-        py::arg("scale_in_train") = true);
+  py::class_<DropoutAttrs>(m, "DropoutAttrs")
+    .def(py::init<>())
+    .def_readwrite("p", &DropoutAttrs::p)
+    .def_readwrite("seed", &DropoutAttrs::seed)
+    .def_readwrite("scale_in_train", &DropoutAttrs::scale_in_train)
+    .def_readwrite("counter_base", &DropoutAttrs::counter_base);
+
+  // forward
+  m.def("forward",
+    [](uintptr_t x_ptr, const std::vector<int64_t>& x_shape,
+       uintptr_t y_ptr, const std::vector<int64_t>& y_shape,
+       py::object mask_ptr_or_none, const std::vector<int64_t>& mask_shape,
+       const DropoutAttrs& attrs, uintptr_t stream_ptr) {
+
+        if (x_shape.size()!=2 || y_shape.size()!=2)
+          throw std::invalid_argument("X and Y must be rank-2 [M,N]");
+        if (x_shape != y_shape)
+          throw std::invalid_argument("X and Y shapes must match");
+
+        Tensor X = make_tensor_nd(x_ptr, x_shape, DType::F32);
+        Tensor Y = make_tensor_nd(y_ptr, y_shape, DType::F32);
+
+        Tensor maskT{}; Tensor* mask = nullptr;
+        if (!mask_ptr_or_none.is_none()) {
+          if (mask_shape.size()!=2 || mask_shape!=y_shape)
+            throw std::invalid_argument("mask must be [M,N] (int32) matching Y shape");
+          auto mptr = mask_ptr_or_none.cast<uintptr_t>();
+          maskT = make_tensor_nd(mptr, mask_shape, DType::I32);
+          mask = &maskT;
+        }
+
+        StreamHandle s = reinterpret_cast<StreamHandle>(stream_ptr);
+        auto st = DropoutCudaLaunch(X, Y, mask, attrs, s);
+        throw_if_bad(st, "DropoutCudaLaunch");
+      },
+    py::arg("x_ptr"), py::arg("x_shape"),
+    py::arg("y_ptr"), py::arg("y_shape"),
+    py::arg("mask_ptr") = py::none(), py::arg("mask_shape") = std::vector<int64_t>{},
+    py::arg("attrs"),
+    py::arg("stream") = static_cast<uintptr_t>(0)
+  );
+
+  // backward
+  m.def("backward",
+    [](uintptr_t dy_ptr, const std::vector<int64_t>& dy_shape,
+       uintptr_t mask_ptr, const std::vector<int64_t>& mask_shape,
+       uintptr_t dx_ptr, const std::vector<int64_t>& dx_shape,
+       const DropoutAttrs& attrs, uintptr_t stream_ptr) {
+
+        if (dy_shape.size()!=2 || dx_shape.size()!=2 || mask_shape.size()!=2)
+          throw std::invalid_argument("dY, dX, mask must be rank-2 [M,N]");
+        if (dy_shape!=dx_shape || dy_shape!=mask_shape)
+          throw std::invalid_argument("dY, dX, mask shapes must match [M,N]");
+
+        Tensor dY = make_tensor_nd(dy_ptr,   dy_shape, DType::F32);
+        Tensor M  = make_tensor_nd(mask_ptr, mask_shape, DType::I32);
+        Tensor dX = make_tensor_nd(dx_ptr,   dx_shape, DType::F32);
+
+        StreamHandle s = reinterpret_cast<StreamHandle>(stream_ptr);
+        auto st = DropoutCudaBackwardLaunch(dY, M, dX, attrs, s);
+        throw_if_bad(st, "DropoutCudaBackwardLaunch");
+      },
+    py::arg("dy_ptr"),   py::arg("dy_shape"),
+    py::arg("mask_ptr"), py::arg("mask_shape"),
+    py::arg("dx_ptr"),   py::arg("dx_shape"),
+    py::arg("attrs"),
+    py::arg("stream") = static_cast<uintptr_t>(0)
+  );
 }

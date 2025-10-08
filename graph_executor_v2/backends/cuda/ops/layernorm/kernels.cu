@@ -3,15 +3,21 @@
 #include <cmath>
 #include <cfloat>
 
-namespace {  // ← 커널/헬퍼는 TU-local
+namespace {  // TU-local
 
-// warp 합
+// ----- warp reduction helpers -----
 static __device__ __forceinline__ float warp_sum(float v) {
   for (int offset = 16; offset > 0; offset >>= 1)
     v += __shfl_down_sync(0xffffffff, v, offset);
   return v;
 }
 
+/**
+ * Forward kernel
+ *  - Row-wise LayerNorm over N
+ *  - Optional affine (gamma, beta)
+ *  - No dynamic allocations; capture-safe
+ */
 template<int BLOCK_SIZE>
 __global__ void layernorm_fwd_kernel(const float* __restrict__ X,
                                      const float* __restrict__ gamma,
@@ -25,7 +31,6 @@ __global__ void layernorm_fwd_kernel(const float* __restrict__ X,
   const float* x = X + row * N;
   float*       y = Y + row * N;
 
-  // --- 공유메모리 합 버퍼 ---
   __shared__ float s_sum;
 
   // 1) mean = sum(x) / N
@@ -35,11 +40,12 @@ __global__ void layernorm_fwd_kernel(const float* __restrict__ X,
   float sum = 0.f;
   for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) sum += x[i];
 
+  // reduce within warp then atomically accumulate into shared
   float wsum = warp_sum(sum);
   if ((threadIdx.x & 31) == 0) atomicAdd(&s_sum, wsum);
   __syncthreads();
 
-  float mean = s_sum / N;
+  const float mean = s_sum / (float)N;
 
   // 2) var = E[(x-mean)^2]
   if (threadIdx.x == 0) s_sum = 0.0f;
@@ -47,7 +53,7 @@ __global__ void layernorm_fwd_kernel(const float* __restrict__ X,
 
   float vsum = 0.f;
   for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) {
-    float d = x[i] - mean;
+    const float d = x[i] - mean;
     vsum += d * d;
   }
 
@@ -55,18 +61,32 @@ __global__ void layernorm_fwd_kernel(const float* __restrict__ X,
   if ((threadIdx.x & 31) == 0) atomicAdd(&s_sum, wvsum);
   __syncthreads();
 
-  float var = s_sum / N;
-  float inv_std = rsqrtf(var + eps);
+  const float var     = s_sum / (float)N;
+  const float inv_std = rsqrtf(var + eps);
 
-  // 3) normalize + affine
+  // 3) normalize + optional affine
   for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) {
-    float norm = (x[i] - mean) * inv_std;
-    if (gamma) norm *= gamma[i];
-    if (beta)  norm += beta[i];
-    y[i] = norm;
+    float out = (x[i] - mean) * inv_std;
+    if (gamma) out *= gamma[i];
+    if (beta)  out += beta[i];
+    y[i] = out;
   }
 }
 
+/**
+ * Backward kernel
+ *  - Computes dX, and optionally dgamma/dbeta (atomic accumulation)
+ *  - gamma may be null (scale-free LN)
+ *  - dgamma/dbeta pointers may be null (skip those paths)
+ *  - No dynamic allocations; capture-safe
+ *
+ * dX formula (row-wise):
+ *   let xhat = (x - mean) * inv_std
+ *   let gyi  = dY * gamma (or dY if gamma is null)
+ *   sum_dy    = Σ_j gyi
+ *   sum_dy_xh = Σ_j gyi * xhat
+ *   dX_i = (1/N) * inv_std * [ N*gyi - sum_dy - xhat_i * sum_dy_xh ]
+ */
 template<int BLOCK_SIZE>
 __global__ void layernorm_bwd_kernel(const float* __restrict__ X,
                                      const float* __restrict__ gamma,
@@ -88,11 +108,11 @@ __global__ void layernorm_bwd_kernel(const float* __restrict__ X,
   if (threadIdx.x < 4) s_acc[threadIdx.x] = 0.f;
   __syncthreads();
 
-  // 1) sum_x, sum_x2
+  // 1) sum_x, sum_x2 (for mean/var)
   float sum_x  = 0.f;
   float sum_x2 = 0.f;
   for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) {
-    float xv = x[i];
+    const float xv = x[i];
     sum_x  += xv;
     sum_x2 += xv * xv;
   }
@@ -104,16 +124,16 @@ __global__ void layernorm_bwd_kernel(const float* __restrict__ X,
   }
   __syncthreads();
 
-  float mean    = s_acc[0] / N;
-  float var     = s_acc[1] / N - mean * mean;
-  float inv_std = rsqrtf(var + eps);
+  const float mean    = s_acc[0] / (float)N;
+  const float var     = s_acc[1] / (float)N - mean * mean;
+  const float inv_std = rsqrtf(var + eps);
 
-  // 2) sum_dy, sum_dy_xhat  (gy는 gamma 적용 후의 유효 그라드)
+  // 2) sum_dy, sum_dy_xhat  (gy is already scaled by gamma if present)
   float local_sum_dy    = 0.f;
   float local_sum_dy_xh = 0.f;
 
   for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) {
-    float xhat = (x[i] - mean) * inv_std;
+    const float xhat = (x[i] - mean) * inv_std;
     float gyi  = gy[i];
     if (gamma) gyi *= gamma[i];
     local_sum_dy    += gyi;
@@ -127,23 +147,25 @@ __global__ void layernorm_bwd_kernel(const float* __restrict__ X,
   }
   __syncthreads();
 
-  float sum_dy    = s_acc[2];
-  float sum_dy_xh = s_acc[3];
+  const float sum_dy    = s_acc[2];
+  const float sum_dy_xh = s_acc[3];
 
-  // 3) dX = (1/N) * inv_std * [ N*gy - sum(gy) - xhat*sum(gy*xhat) ]
+  // 3) dX
+  const float invN = 1.0f / (float)N;
   for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) {
-    float xhat = (x[i] - mean) * inv_std;
+    const float xhat = (x[i] - mean) * inv_std;
     float gyi  = gy[i];
     if (gamma) gyi *= gamma[i];
-    float t = (float)N * gyi - sum_dy - xhat * sum_dy_xh;
-    dx[i] = t * (inv_std / N);
+    const float t = (float)N * gyi - sum_dy - xhat * sum_dy_xh;
+    dx[i] = t * (inv_std * invN);
   }
 
-  // 4) dgamma/dbeta: 열 방향 합 (전역 누적)
+  // 4) dgamma/dbeta: accumulate over rows (global atomics into [N])
+  //    NOTE: caller (launcher) must zero-initialize dgamma/dbeta before invoking this kernel.
   if (dgamma || dbeta) {
     for (int i = threadIdx.x; i < N; i += BLOCK_SIZE) {
-      float xhat = (x[i] - mean) * inv_std;
-      float gy0  = gy[i]; // 원래 dY (gamma 미적용)
+      const float xhat = (x[i] - mean) * inv_std;
+      const float gy0  = gy[i]; // raw dY (no gamma scaling)
       if (dgamma) atomicAdd(&dgamma[i], gy0 * xhat);
       if (dbeta)  atomicAdd(&dbeta[i],  gy0);
     }
@@ -152,7 +174,7 @@ __global__ void layernorm_bwd_kernel(const float* __restrict__ X,
 
 } // anonymous namespace
 
-// 퍼블릭 런처만 노출
+// Public launchers
 namespace ai {
 
 void layernorm_forward_kernel_launcher(const float* X,
@@ -163,9 +185,8 @@ void layernorm_forward_kernel_launcher(const float* X,
                                        float eps,
                                        cudaStream_t stream)
 {
-  const int BS = 256;
-  dim3 grid(M);
-  dim3 block(BS);
+  constexpr int BS = 256;
+  dim3 grid(M), block(BS);
   layernorm_fwd_kernel<BS><<<grid, block, 0, stream>>>(X, gamma, beta, Y, M, N, eps);
 }
 
@@ -179,13 +200,12 @@ void layernorm_backward_kernel_launcher(const float* X,
                                         float eps,
                                         cudaStream_t stream)
 {
-  const int BS = 256;
-  dim3 grid(M);
-  dim3 block(BS);
+  constexpr int BS = 256;
+  dim3 grid(M), block(BS);
 
-  // dgamma/dbeta는 호출 전에 0으로 클리어 필요
-  if (dgamma) cudaMemsetAsync(dgamma, 0, sizeof(float) * N, stream);
-  if (dbeta)  cudaMemsetAsync(dbeta,  0, sizeof(float) * N, stream);
+  // If dgamma/dbeta are requested, they must be zeroed before atomic accumulation.
+  if (dgamma) cudaMemsetAsync(dgamma, 0, sizeof(float) * (size_t)N, stream);
+  if (dbeta)  cudaMemsetAsync(dbeta,  0, sizeof(float) * (size_t)N, stream);
 
   layernorm_bwd_kernel<BS><<<grid, block, 0, stream>>>(X, gamma, dY, dX, dgamma, dbeta, M, N, eps);
 }

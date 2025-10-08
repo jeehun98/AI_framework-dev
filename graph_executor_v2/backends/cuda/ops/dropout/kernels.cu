@@ -1,104 +1,97 @@
-// kernels.cu
+// backends/cuda/ops/dropout/kernels.cu
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <math_constants.h>
 
-namespace {
-
-__device__ inline uint64_t splitmix64(uint64_t x){
-  x += 0x9E3779B97F4A7C15ull;
-  x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
-  x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
-  return x ^ (x >> 31);
+// Stateless RNG: splitmix64 -> xorshift32 변형으로 U(0,1)
+static __device__ __forceinline__ uint64_t splitmix64(uint64_t x){
+  x += 0x9e3779b97f4a7c15ull;
+  uint64_t z = x;
+  z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+  z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+  return z ^ (z >> 31);
 }
-
-__device__ inline float u01_from_u64(uint64_t s){
-  const uint32_t r = static_cast<uint32_t>(s >> 40); // 상위 24비트
-  return (r + 0.5f) / 16777216.0f; // [0,1)
+static __device__ __forceinline__ float u01_from_u64(uint64_t u){
+  // take high 23 bits to mantissa (0,1)
+  const uint32_t mant = (uint32_t)((u >> 41) | 1); // avoid exact 0
+  // scale to (0,1): mant / 2^23
+  return (float)mant * (1.0f / 8388608.0f);
 }
 
 template<int BS>
 __global__ void dropout_fwd_kernel(const float* __restrict__ X,
                                    float* __restrict__ Y,
-                                   int32_t* __restrict__ M,  // may be null
-                                   int Mrows, int Ncols,
-                                   float p, float scale,
-                                   uint64_t seed,
-                                   uint64_t counter_base)     // NEW
+                                   int32_t* __restrict__ Mask,
+                                   int M, int N,
+                                   float p, bool scale_in_train,
+                                   uint64_t seed, uint64_t counter_base)
 {
   const int row = blockIdx.x;
-  if (row >= Mrows) return;
-  const int stride = BS;
-  const int base = row * Ncols;
+  if (row >= M) return;
 
-  for (int j = threadIdx.x; j < Ncols; j += stride) {
-    const int idx = base + j;
-    // stateless RNG: seed ^ (counter_base + idx)
-    const uint64_t gidx = counter_base + static_cast<uint64_t>(idx);
-    const float u = u01_from_u64(splitmix64(seed ^ gidx));
+  const int64_t base = (int64_t)row * N;
+  const float scale = (scale_in_train && p < 1.0f) ? (1.0f / (1.0f - p)) : 1.0f;
 
-    const int32_t m = (u >= p) ? 1 : 0;
-    float y = static_cast<float>(m) * X[idx];
-    if (scale) y *= scale;   // scale_in_train ? 1/(1-p) : 1
+  for (int col = threadIdx.x; col < N; col += BS) {
+    const int64_t idx = base + col;
+
+    // Stateless RNG: per-element counter = counter_base + idx
+    const uint64_t ctr = counter_base + (uint64_t)idx;
+    const uint64_t rnd = splitmix64(seed ^ ctr);
+    const float r = u01_from_u64(rnd); // (0,1)
+
+    const bool keep = (r >= p);
+    const float x = X[idx];
+    const float y = keep ? (x * scale) : 0.0f;
+
     Y[idx] = y;
-    if (M) M[idx] = m;
+    if (Mask) Mask[idx] = keep ? 1 : 0;
   }
 }
 
 template<int BS>
 __global__ void dropout_bwd_kernel(const float* __restrict__ dY,
-                                   const int32_t* __restrict__ M,
+                                   const int32_t* __restrict__ Mask,
                                    float* __restrict__ dX,
-                                   int Mrows, int Ncols,
-                                   float scale)
+                                   int M, int N,
+                                   float p, bool scale_in_train)
 {
+  (void)p; // not needed
   const int row = blockIdx.x;
-  if (row >= Mrows) return;
-  const int stride = BS;
-  const int base = row * Ncols;
+  if (row >= M) return;
 
-  for (int j = threadIdx.x; j < Ncols; j += stride) {
-    const int idx = base + j;
-    dX[idx] = static_cast<float>(M[idx]) * dY[idx] * scale;
+  const int64_t base = (int64_t)row * N;
+  const float scale = (scale_in_train && p < 1.0f) ? (1.0f / (1.0f - p)) : 1.0f;
+
+  for (int col = threadIdx.x; col < N; col += BS) {
+    const int64_t idx = base + col;
+    dX[idx] = (Mask[idx] != 0) ? (dY[idx] * scale) : 0.0f;
   }
 }
 
-} // anonymous
-
 namespace ai {
 
-// Forward launcher: counter_base 파라미터 추가 (필수)
-void dropout_forward_kernel_launcher(const float* X,
-                                     float* Y,
-                                     int32_t* mask,
-                                     int M_rows,
-                                     int N_cols,
-                                     float p,
-                                     bool scale_in_train,
-                                     uint64_t seed,
-                                     uint64_t counter_base,   // NEW
-                                     cudaStream_t s)
+void dropout_fwd_kernel_launcher(const float* x, float* y, int32_t* mask,
+                                 int M, int N,
+                                 float p, bool scale_in_train,
+                                 uint64_t seed, uint64_t counter_base,
+                                 cudaStream_t s)
 {
   constexpr int BS = 256;
-  const float scale = scale_in_train ? ((p < 1.f) ? (1.f / (1.f - p)) : 0.f) : 1.f;
-  dim3 grid(M_rows), block(BS);
+  dim3 grid(M), block(BS);
   dropout_fwd_kernel<BS><<<grid, block, 0, s>>>(
-      X, Y, mask, M_rows, N_cols, p, scale, seed, counter_base);
+      x, y, mask, M, N, p, scale_in_train, seed, counter_base);
 }
 
-void dropout_backward_kernel_launcher(const float* dY,
-                                      const int32_t* mask,
-                                      float* dX,
-                                      int M_rows,
-                                      int N_cols,
-                                      float p,
-                                      bool scale_in_train,
-                                      cudaStream_t s)
+void dropout_bwd_kernel_launcher(const float* dy, const int32_t* mask, float* dx,
+                                 int M, int N,
+                                 float p, bool scale_in_train,
+                                 cudaStream_t s)
 {
   constexpr int BS = 256;
-  const float scale = scale_in_train ? ((p < 1.f) ? (1.f / (1.f - p)) : 0.f) : 1.f;
-  dim3 grid(M_rows), block(BS);
+  dim3 grid(M), block(BS);
   dropout_bwd_kernel<BS><<<grid, block, 0, s>>>(
-      dY, mask, dX, M_rows, N_cols, scale);
+      dy, mask, dx, M, N, p, scale_in_train);
 }
 
 } // namespace ai
