@@ -28,16 +28,28 @@ def _assert_f32_2d(x: cp.ndarray, name: str) -> Tuple[int, int]:
     return int(x.shape[0]), int(x.shape[1])
 
 
+def _ensure_contig(a: cp.ndarray, name: str) -> cp.ndarray:
+    """C-연속이 아니면 연속 버퍼로 변환(캡처-세이프·커널 가정 일치)."""
+    if not a.flags.c_contiguous:
+        a = cp.ascontiguousarray(a)
+        if a.dtype != cp.float32:
+            a = a.astype(cp.float32, copy=False)
+    return a
+
+
 def _pack_mask(mask: Optional[cp.ndarray]) -> Optional[tuple[int, list[int]]]:
     """
-    바인딩이 요구하는 mask 인자 형태: (uintptr_t, [M,N] or [1,N] or [M,1])
-    - None 이면 None 전달
-    - dtype=float32, ndim=2만 허용
+    바인딩이 요구하는 mask 인자 형태: (uintptr_t, shape)
+      허용 shape: [M,N], [1,N], [M,1], [N]
+      dtype=float32, ndim in {1,2}
     """
     if mask is None:
         return None
-    if not isinstance(mask, cp.ndarray) or mask.dtype != cp.float32 or mask.ndim != 2:
-        raise TypeError("mask must be a CuPy float32 2D array or None")
+    if not isinstance(mask, cp.ndarray) or mask.dtype != cp.float32:
+        raise TypeError("mask must be a CuPy float32 array or None")
+    if mask.ndim not in (1, 2):
+        raise TypeError("mask.ndim must be 1 or 2 (allowed: [N], [M,N], [1,N], [M,1])")
+    mask = _ensure_contig(mask, "mask")
     return (int(mask.data.ptr), [int(d) for d in mask.shape])
 
 
@@ -52,7 +64,7 @@ def _attrs(scale: float, log: bool):
 def forward(
     X: cp.ndarray,                  # (M,N) logits or scores
     *,
-    mask: Optional[cp.ndarray] = None,  # (M,N) or (1,N) or (M,1), float32
+    mask: Optional[cp.ndarray] = None,  # [M,N] / [1,N] / [M,1] / [N], float32
     scale: float = 1.0,
     log: bool = False,              # True면 LogSoftmax
     stream: Optional[int] = None,
@@ -60,25 +72,29 @@ def forward(
 ) -> cp.ndarray:
     """
     Softmax / LogSoftmax (forward)
-      - 입력/출력: float32 (M,N)
-      - mask(선택): (M,N) 또는 브로드캐스트 호환 (1,N)/(M,1), float32
-      - scale: 입력 로그릿에 곱할 스케일(예: 1/sqrt(d_k) 같은 SDPA 스케일)
+      - 입력/출력: float32 (M,N), C-연속 필요(비연속이면 내부에서 연속화)
+      - mask(선택): [M,N] / [1,N] / [M,1] / [N], float32
+      - scale: 입력에 곱할 스케일(예: 1/sqrt(d_k))
       - log=True 이면 LogSoftmax
     """
     M, N = _assert_f32_2d(X, "X")
+
+    Xc = _ensure_contig(X, "X")
+
     if out is None:
-        out = cp.empty_like(X)
+        out = cp.empty_like(Xc)
     else:
         _assert_f32_2d(out, "out")
         if out.shape != X.shape:
             raise ValueError(f"out shape {out.shape} must equal X shape {X.shape}")
+        out = _ensure_contig(out, "out")
 
     mask_arg = _pack_mask(mask)
     attrs = _attrs(scale, log)
     sptr = int(get_stream_ptr(stream))
 
     _g.softmax_forward(
-        int(X.data.ptr), [M, N],
+        int(Xc.data.ptr), [M, N],
         int(out.data.ptr), [M, N],
         mask_arg, attrs, sptr
     )
@@ -98,10 +114,10 @@ def logsoftmax(
 
 
 def backward(
-    Y_or_X: cp.ndarray,             # (M,N) : y_provided=True -> Y, False -> X
+    Y_or_X: cp.ndarray,             # (M,N) : 현재 커널은 Y만 지원(y_provided=True)
     dY: cp.ndarray,                 # (M,N)
     *,
-    mask: Optional[cp.ndarray] = None,
+    mask: Optional[cp.ndarray] = None,  # 현재 커널에서 무시되지만 형태 검증 용도로 허용
     scale: float = 1.0,
     log: bool = False,
     y_provided: bool = True,
@@ -110,30 +126,38 @@ def backward(
 ) -> cp.ndarray:
     """
     Softmax / LogSoftmax (backward)
-      - y_provided=True  : 첫 인자는 forward 출력 Y
-      - y_provided=False : 첫 인자는 forward 입력 X (내부에서 forward 재계산)
+      - 현재 커널은 y_provided=True만 지원(Y=forward 출력 필요)
       - 반환: dX (M,N)
     """
+    if not y_provided:
+        raise ValueError("softmax.backward: y_provided=False (재계산 경로)는 현재 미지원입니다. "
+                         "forward 출력 Y를 전달하고 y_provided=True로 호출하세요.")
+
     M, N = _assert_f32_2d(Y_or_X, "Y_or_X")
     M2, N2 = _assert_f32_2d(dY, "dY")
     if (M2, N2) != (M, N):
         raise ValueError("dY shape must match Y_or_X shape")
 
+    Yc = _ensure_contig(Y_or_X, "Y_or_X")
+    dYc = _ensure_contig(dY, "dY")
+
     if out is None:
-        out = cp.empty_like(Y_or_X)
+        out = cp.empty_like(Yc)
     else:
         _assert_f32_2d(out, "out")
         if out.shape != Y_or_X.shape:
             raise ValueError(f"out shape {out.shape} must equal Y_or_X shape {Y_or_X.shape}")
+        out = _ensure_contig(out, "out")
 
+    # mask는 bwd에서 무시되지만, 바인딩은 검증을 수행하므로 포맷만 맞춰 전달
     mask_arg = _pack_mask(mask)
     attrs = _attrs(scale, log)
     sptr = int(get_stream_ptr(stream))
 
     _g.softmax_backward(
-        int(Y_or_X.data.ptr), [M, N],
-        int(dY.data.ptr),     [M, N],
-        int(out.data.ptr),    [M, N],
-        mask_arg, attrs, bool(y_provided), sptr
+        int(Yc.data.ptr), [M, N],
+        int(dYc.data.ptr), [M, N],
+        int(out.data.ptr), [M, N],
+        mask_arg, attrs, True, sptr
     )
     return out

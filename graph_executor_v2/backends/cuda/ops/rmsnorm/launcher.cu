@@ -1,61 +1,72 @@
-#include "api.hpp"
+// backends/cuda/ops/rmsnorm/launcher.cu
 #include <cuda_runtime.h>
-#include <cassert>
-
-// 통합 빌드(코어) vs 독립 빌드(shim) 동시 지원
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/dispatch.hpp" // Status, StreamHandle
-#endif
-
+#include "backends/cuda/ops/rmsnorm/api.hpp"
 
 namespace ai {
 
-// 커널 선언
-void rmsnorm_forward_kernel_launcher(const float* X, const float* gamma, const float* beta,
-                                     float* Y, int M, int N, float eps, cudaStream_t stream);
-void rmsnorm_backward_kernel_launcher(const float* X, const float* gamma, const float* dY,
-                                      float* dX, float* dgamma, float* dbeta,
-                                      int M, int N, float eps, cudaStream_t stream);
-
-static inline bool is_row_major_2d_f32(const Tensor& T) {
-  return T.desc.dtype==DType::F32 && T.desc.layout==Layout::RowMajor && T.desc.shape.size()==2;
+static inline bool is_rm2d_f32_cuda(const Tensor& t){
+  return t.device==Device::CUDA &&
+         t.desc.dtype==DType::F32 &&
+         t.desc.layout==Layout::RowMajor &&
+         t.desc.shape.size()==2;
 }
+static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
 
-ai::Status RMSNormCudaLaunch(const Tensor& X,
+// --- kernels (raw) ---
+void rmsnorm_forward_kernel_launcher(const float* X,
+                                     const float* gamma,
+                                     const float* beta,
+                                     float* Y,
+                                     int M, int N,
+                                     float eps,
+                                     cudaStream_t s);
+
+void rmsnorm_backward_kernel_launcher(const float* X,
+                                      const float* gamma,
+                                      const float* dY,
+                                      float* dX,
+                                      float* dgamma,
+                                      float* dbeta,
+                                      int M, int N,
+                                      float eps,
+                                      cudaStream_t s);
+
+// ----------------- Forward -----------------
+Status RMSNormCudaLaunch(const Tensor& X,
                          const Tensor* gamma,
                          const Tensor* beta,
                          Tensor& Y,
                          const RMSNormAttrs& attrs,
                          StreamHandle stream)
 {
-  if (!is_row_major_2d_f32(X) || !is_row_major_2d_f32(Y)) return ai::Status::Invalid;
-  if (X.device!=Device::CUDA || Y.device!=Device::CUDA)    return ai::Status::Invalid;
-  if (X.desc.shape!=Y.desc.shape)                          return ai::Status::Invalid;
-  const int M = static_cast<int>(X.desc.shape[0]);
-  const int N = static_cast<int>(X.desc.shape[1]);
+  if (!is_rm2d_f32_cuda(X) || !is_rm2d_f32_cuda(Y)) return Status::Invalid;
+  if (X.desc.shape != Y.desc.shape) return Status::ShapeMismatch;
 
-  const float* gptr = nullptr;
-  const float* bptr = nullptr;
-  if (gamma && gamma->data) {
-    if (!(gamma->desc.dtype==DType::F32 && gamma->desc.shape.size()==1 && gamma->desc.shape[0]==N)) return Status::Invalid;
+  const int M = (int)X.desc.shape[0];
+  const int N = (int)X.desc.shape[1];
+
+  const float* gptr=nullptr; const float* bptr=nullptr;
+  if (gamma && gamma->data){
+    if (!(gamma->desc.dtype==DType::F32 && gamma->desc.shape.size()==1 && gamma->desc.shape[0]==N))
+      return Status::Invalid;
     gptr = static_cast<const float*>(gamma->data);
   }
-  if (beta && beta->data) {
-    if (!(beta->desc.dtype==DType::F32 && beta->desc.shape.size()==1 && beta->desc.shape[0]==N)) return Status::Invalid;
+  if (beta && beta->data){
+    if (!(beta->desc.dtype==DType::F32 && beta->desc.shape.size()==1 && beta->desc.shape[0]==N))
+      return Status::Invalid;
     bptr = static_cast<const float*>(beta->data);
   }
 
-  auto* xptr = static_cast<const float*>(X.data);
-  auto* yptr = static_cast<float*>(Y.data);
-  cudaStream_t s = reinterpret_cast<cudaStream_t>(stream);
-
-  rmsnorm_forward_kernel_launcher(xptr, gptr, bptr, yptr, M, N, attrs.eps, s);
-  return ai::Status::Ok;
+  rmsnorm_forward_kernel_launcher(
+      static_cast<const float*>(X.data), gptr, bptr, static_cast<float*>(Y.data),
+      M, N, attrs.eps, to_cuda(stream)
+  );
+  auto e=cudaPeekAtLastError();
+  return (e==cudaSuccess)?Status::Ok:Status::RuntimeError;
 }
 
-ai::Status RMSNormCudaBackwardLaunch(const Tensor& X,
+// ----------------- Backward -----------------
+Status RMSNormCudaBackwardLaunch(const Tensor& X,
                                  const Tensor* gamma,
                                  const Tensor& dY,
                                  Tensor& dX,
@@ -64,37 +75,40 @@ ai::Status RMSNormCudaBackwardLaunch(const Tensor& X,
                                  const RMSNormAttrs& attrs,
                                  StreamHandle stream)
 {
-  if (!is_row_major_2d_f32(X) || !is_row_major_2d_f32(dY) || !is_row_major_2d_f32(dX)) return ai::Status::Invalid;
-  if (X.device!=Device::CUDA || dY.device!=Device::CUDA || dX.device!=Device::CUDA)      return ai::Status::Invalid;
-  if (X.desc.shape!=dY.desc.shape || X.desc.shape!=dX.desc.shape)                        return ai::Status::Invalid;
+  if (!is_rm2d_f32_cuda(X) || !is_rm2d_f32_cuda(dY) || !is_rm2d_f32_cuda(dX))
+    return Status::Invalid;
+  if (X.desc.shape != dY.desc.shape || X.desc.shape != dX.desc.shape)
+    return Status::ShapeMismatch;
 
-  const int M = static_cast<int>(X.desc.shape[0]);
-  const int N = static_cast<int>(X.desc.shape[1]);
+  const int N = (int)X.desc.shape[1];
 
-  const float* gptr = nullptr;
-  if (gamma && gamma->data) {
-    if (!(gamma->desc.dtype==DType::F32 && gamma->desc.shape.size()==1 && gamma->desc.shape[0]==N)) return ai::Status::Invalid;
+  const float* gptr=nullptr;
+  if (gamma && gamma->data){
+    if (!(gamma->desc.dtype==DType::F32 && gamma->desc.shape.size()==1 && gamma->desc.shape[0]==N))
+      return Status::Invalid;
     gptr = static_cast<const float*>(gamma->data);
   }
 
-  float* dgamma_ptr = nullptr;
-  float* dbeta_ptr  = nullptr;
-  if (dgamma) {
-    if (!(dgamma->desc.dtype==DType::F32 && dgamma->desc.shape.size()==1 && dgamma->desc.shape[0]==N)) return ai::Status::Invalid;
+  float* dgamma_ptr=nullptr;
+  float* dbeta_ptr =nullptr;
+  if (dgamma){
+    if (!(dgamma->desc.dtype==DType::F32 && dgamma->desc.shape.size()==1 && dgamma->desc.shape[0]==N))
+      return Status::Invalid;
     dgamma_ptr = static_cast<float*>(dgamma->data);
   }
-  if (dbeta) {
-    if (!(dbeta->desc.dtype==DType::F32 && dbeta->desc.shape.size()==1 && dbeta->desc.shape[0]==N)) return ai::Status::Invalid;
+  if (dbeta){
+    if (!(dbeta->desc.dtype==DType::F32 && dbeta->desc.shape.size()==1 && dbeta->desc.shape[0]==N))
+      return Status::Invalid;
     dbeta_ptr = static_cast<float*>(dbeta->data);
   }
 
-  auto* xptr  = static_cast<const float*>(X.data);
-  auto* dyptr = static_cast<const float*>(dY.data);
-  auto* dxptr = static_cast<float*>(dX.data);
-  cudaStream_t s = reinterpret_cast<cudaStream_t>(stream);
-
-  rmsnorm_backward_kernel_launcher(xptr, gptr, dyptr, dxptr, dgamma_ptr, dbeta_ptr, M, N, attrs.eps, s);
-  return ai::Status::Ok;
+  rmsnorm_backward_kernel_launcher(
+      static_cast<const float*>(X.data), gptr, static_cast<const float*>(dY.data),
+      static_cast<float*>(dX.data), dgamma_ptr, dbeta_ptr,
+      (int)X.desc.shape[0], N, attrs.eps, to_cuda(stream)
+  );
+  auto e=cudaPeekAtLastError();
+  return (e==cudaSuccess)?Status::Ok:Status::RuntimeError;
 }
 
 } // namespace ai

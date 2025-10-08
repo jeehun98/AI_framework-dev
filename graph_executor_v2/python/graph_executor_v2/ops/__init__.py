@@ -18,6 +18,10 @@ _lazy_submodules = {
     "pool2d",
     "softmax",
     "cross_entropy",
+    "layernorm",
+    "pad",
+    "dropout",
+    "rnn"
 }
 
 def __getattr__(name: str):

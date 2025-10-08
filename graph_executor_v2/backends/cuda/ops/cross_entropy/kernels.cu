@@ -1,10 +1,11 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <math_constants.h>
+#include <cmath>
 
 namespace {
 
-// warp helpers
+// ===== warp helpers =====
 __device__ __forceinline__ float warp_max(float v){
   for (int o=16;o>0;o>>=1) v = fmaxf(v, __shfl_down_sync(0xffffffff, v, o));
   return v;
@@ -14,25 +15,31 @@ __device__ __forceinline__ float warp_sum(float v){
   return v;
 }
 
+// ============================ Forward (from logits) ============================
 template<int BS>
 __global__ void ce_fwd_logits_kernel(const float* __restrict__ X, // [M,N]
                                      const int32_t* __restrict__ T,// [M]
-                                     float* __restrict__ loss_vec, // [M]
+                                     float* __restrict__ loss_out, // [M] (reduction=None) or [1] (Mean/Sum)
                                      int M, int N,
                                      int ignore_index,
-                                     float ls_eps)
+                                     float ls_eps,
+                                     int reduction_kind)           // 0=None, 1=Mean, 2=Sum
 {
   const int row = blockIdx.x;
   if (row >= M) return;
 
   const int t = static_cast<int>(T[row]);
   if (t == ignore_index) {
-    if (threadIdx.x == 0) loss_vec[row] = 0.f;
+    if (reduction_kind == 0) {
+      if (threadIdx.x == 0) loss_out[row] = 0.f;
+    }
+    // Mean/Sum에서는 무시 샘플의 기여 0 → atomicAdd(0) 생략
     return;
   }
+
   const float* x = X + row * N;
 
-  // max
+  // 1) row max
   float local_max = -CUDART_INF_F;
   for (int i = threadIdx.x; i < N; i += BS) local_max = fmaxf(local_max, x[i]);
   float wmax = warp_max(local_max);
@@ -53,6 +60,7 @@ __global__ void ce_fwd_logits_kernel(const float* __restrict__ X, // [M,N]
   __syncthreads();
   row_max = s_max;
 
+  // 2) denom = sum(exp(x - max)), sumx = sum(x)
   float local_e = 0.f, local_sumx = 0.f;
   for (int i = threadIdx.x; i < N; i += BS) {
     local_e    += __expf(x[i] - row_max);
@@ -78,22 +86,35 @@ __global__ void ce_fwd_logits_kernel(const float* __restrict__ X, // [M,N]
   __syncthreads();
   denom = s_den; sumx = s_sumx;
 
+  // 3) row loss
+  float loss_row = 0.f;
   if (threadIdx.x == 0) {
     const float logZ   = row_max + logf(denom);
     const float xt     = x[t];
     const float mean_x = sumx / (float)N;
     const float one_hot_ce = (logZ - xt);
     const float uni_ce     = (logZ - mean_x);
-    loss_vec[row] = (1.f - ls_eps) * one_hot_ce + ls_eps * uni_ce;
+    loss_row = (1.f - ls_eps) * one_hot_ce + ls_eps * uni_ce;
+  }
+
+  // 4) write
+  if (reduction_kind == 0) {
+    // None: per-sample vector
+    if (threadIdx.x == 0) loss_out[row] = loss_row;
+  } else {
+    // Mean/Sum: atomicAdd to scalar
+    float scale = (reduction_kind == 1) ? (1.f / (float)M) : 1.f;
+    if (threadIdx.x == 0) atomicAdd(loss_out, loss_row * scale);
   }
 }
 
+// ============================ Backward (from logits) ============================
 template<int BS>
 __global__ void ce_bwd_logits_kernel(const float* __restrict__ X,
                                      const int32_t* __restrict__ T,
                                      float* __restrict__ dX,
                                      int M, int N,
-                                     float inv_scale,
+                                     float inv_scale,   // None/Sum=1, Mean=1/M
                                      int ignore_index,
                                      float ls_eps)
 {
@@ -109,6 +130,8 @@ __global__ void ce_bwd_logits_kernel(const float* __restrict__ X,
   }
 
   const float* x = X + row * N;
+
+  // softmax(x)
   float local_max = -CUDART_INF_F;
   for (int i = threadIdx.x; i < N; i += BS) local_max = fmaxf(local_max, x[i]);
   float wmax = warp_max(local_max);
@@ -132,7 +155,7 @@ __global__ void ce_bwd_logits_kernel(const float* __restrict__ X,
   float local_e = 0.f;
   for (int i = threadIdx.x; i < N; i += BS) {
     float ez = __expf(x[i] - row_max);
-    dx[i] = ez;  // temp
+    dx[i] = ez;  // temp store
     local_e += ez;
   }
   float we = warp_sum(local_e);
@@ -161,30 +184,32 @@ __global__ void ce_bwd_logits_kernel(const float* __restrict__ X,
   }
 }
 
+// ============================ Forward (from probs) ============================
 template<int BS>
-__global__ void ce_fwd_probs_kernel(const float* __restrict__ P,
+__global__ void ce_fwd_probs_kernel(const float* __restrict__ P, // [M,N]
                                     const int32_t* __restrict__ T,
-                                    float* __restrict__ loss_vec,
+                                    float* __restrict__ loss_out, // [M] or [1]
                                     int M, int N,
                                     int ignore_index,
-                                    float eps, float ls_eps)
+                                    float eps, float ls_eps,
+                                    int reduction_kind)           // 0=None,1=Mean,2=Sum
 {
   const int row = blockIdx.x;
   if (row >= M) return;
 
   const int t = static_cast<int>(T[row]);
   if (t == ignore_index) {
-    if (threadIdx.x == 0) loss_vec[row] = 0.f;
+    if (reduction_kind == 0) {
+      if (threadIdx.x == 0) loss_out[row] = 0.f;
+    }
     return;
   }
 
+  // sum log p, and log p_t
   float local_sum_logp = 0.f;
-
   for (int i = threadIdx.x; i < N; i += BS) {
     float p = fmaxf(P[row * N + i], eps);
-    float lp = logf(p);
-    local_sum_logp += lp;
-    
+    local_sum_logp += logf(p);
   }
   float wsum = warp_sum(local_sum_logp);
   __shared__ float warp_buf[BS/32];
@@ -199,28 +224,37 @@ __global__ void ce_fwd_probs_kernel(const float* __restrict__ P,
     if (threadIdx.x == 0) sum_logp = t;
   }
   __syncthreads();
+
   __shared__ float s_sum_logp, s_logp_t;
   if (threadIdx.x == 0) {
     s_sum_logp = sum_logp;
-    // ★ 정확한 logp_t를 단일 스레드가 직접 읽어서 브로드캐스트
     float pt = fmaxf(P[row * N + t], eps);
     s_logp_t = logf(pt);
   }
   __syncthreads();
 
+  float loss_row = 0.f;
   if (threadIdx.x == 0) {
     const float one_hot_ce = -s_logp_t;
     const float uni_ce     = -(s_sum_logp / (float)N);
-    loss_vec[row] = (1.f - ls_eps) * one_hot_ce + ls_eps * uni_ce;
+    loss_row = (1.f - ls_eps) * one_hot_ce + ls_eps * uni_ce;
+  }
+
+  if (reduction_kind == 0) {
+    if (threadIdx.x == 0) loss_out[row] = loss_row;
+  } else {
+    float scale = (reduction_kind == 1) ? (1.f / (float)M) : 1.f;
+    if (threadIdx.x == 0) atomicAdd(loss_out, loss_row * scale);
   }
 }
 
+// ============================ Backward (from probs) ============================
 template<int BS>
 __global__ void ce_bwd_probs_kernel(const float* __restrict__ P,
                                     const int32_t* __restrict__ T,
                                     float* __restrict__ dX,
                                     int M, int N,
-                                    float inv_scale,
+                                    float inv_scale,  // None/Sum=1, Mean=1/M
                                     int ignore_index,
                                     float eps, float ls_eps)
 {
@@ -246,19 +280,23 @@ __global__ void ce_bwd_probs_kernel(const float* __restrict__ P,
 
 } // anonymous
 
+
+// ============================ Launchers (for .cpp) ============================
 namespace ai {
 
 void ce_forward_logits_kernel_launcher(const float* X,
                                        const int32_t* T,
-                                       float* loss_vec,
+                                       float* loss_out,
                                        int M, int N,
                                        int ignore_index,
                                        float ls_eps,
+                                       int reduction_kind,
                                        cudaStream_t s)
 {
   constexpr int BS = 256;
   dim3 grid(M), block(BS);
-  ce_fwd_logits_kernel<BS><<<grid, block, 0, s>>>(X, T, loss_vec, M, N, ignore_index, ls_eps);
+  ce_fwd_logits_kernel<BS><<<grid, block, 0, s>>>(
+      X, T, loss_out, M, N, ignore_index, ls_eps, reduction_kind);
 }
 
 void ce_backward_logits_kernel_launcher(const float* X,
@@ -272,20 +310,23 @@ void ce_backward_logits_kernel_launcher(const float* X,
 {
   constexpr int BS = 256;
   dim3 grid(M), block(BS);
-  ce_bwd_logits_kernel<BS><<<grid, block, 0, s>>>(X, T, dX, M, N, inv_scale, ignore_index, ls_eps);
+  ce_bwd_logits_kernel<BS><<<grid, block, 0, s>>>(
+      X, T, dX, M, N, inv_scale, ignore_index, ls_eps);
 }
 
 void ce_forward_probs_kernel_launcher(const float* P,
                                       const int32_t* T,
-                                      float* loss_vec,
+                                      float* loss_out,
                                       int M, int N,
                                       int ignore_index,
                                       float eps, float ls_eps,
+                                      int reduction_kind,
                                       cudaStream_t s)
 {
   constexpr int BS = 256;
   dim3 grid(M), block(BS);
-  ce_fwd_probs_kernel<BS><<<grid, block, 0, s>>>(P, T, loss_vec, M, N, ignore_index, eps, ls_eps);
+  ce_fwd_probs_kernel<BS><<<grid, block, 0, s>>>(
+      P, T, loss_out, M, N, ignore_index, eps, ls_eps, reduction_kind);
 }
 
 void ce_backward_probs_kernel_launcher(const float* P,
@@ -299,7 +340,8 @@ void ce_backward_probs_kernel_launcher(const float* P,
 {
   constexpr int BS = 256;
   dim3 grid(M), block(BS);
-  ce_bwd_probs_kernel<BS><<<grid, block, 0, s>>>(P, T, dX, M, N, inv_scale, ignore_index, eps, ls_eps);
+  ce_bwd_probs_kernel<BS><<<grid, block, 0, s>>>(
+      P, T, dX, M, N, inv_scale, ignore_index, eps, ls_eps);
 }
 
 } // namespace ai

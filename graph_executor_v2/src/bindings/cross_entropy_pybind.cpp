@@ -1,6 +1,8 @@
 // src/bindings/cross_entropy_pybind.cpp
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <cstdint>
+
 
 #ifdef BUILD_STANDALONE_OPS
   #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
