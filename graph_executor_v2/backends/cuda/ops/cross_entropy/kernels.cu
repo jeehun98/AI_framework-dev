@@ -7,11 +7,13 @@ namespace {
 
 // ===== warp helpers =====
 __device__ __forceinline__ float warp_max(float v){
-  for (int o=16;o>0;o>>=1) v = fmaxf(v, __shfl_down_sync(0xffffffff, v, o));
+  for (int o=16;o>0;o>>=1) 
+    v = fmaxf(v, __shfl_down_sync(0xffffffff, v, o));
   return v;
 }
 __device__ __forceinline__ float warp_sum(float v){
-  for (int o=16;o>0;o>>=1) v += __shfl_down_sync(0xffffffff, v, o);
+  for (int o=16;o>0;o>>=1) 
+    v += __shfl_down_sync(0xffffffff, v, o);
   return v;
 }
 
@@ -278,6 +280,96 @@ __global__ void ce_bwd_probs_kernel(const float* __restrict__ P,
   }
 }
 
+// ============================ Fused Softmax + CE (from logits) ============================
+//  - 한 번에: 안정 softmax → loss(write) → dlogits(write)
+//  - ignore_index / label_smoothing은 단순 버전(미지원)로 시작: q = one-hot
+template<int BS>
+__global__ void softmax_ce_fused_fwd_bwd_kernel(const float* __restrict__ X,   // [M,C] logits
+                                                const int32_t* __restrict__ T, // [M] labels
+                                                float* __restrict__ dL,        // [M,C] output
+                                                float* __restrict__ loss_out,  // nullptr or [M]/[1]
+                                                int M, int C,
+                                                int reduction_kind,            // 0=None, 1=Mean, 2=Sum
+                                                int stable)                    // 0/1
+{
+  const int row = blockIdx.x;
+  if (row >= M) return;
+
+  const float* x = X + row * C;
+  float* dl = dL + row * C;
+  const int t = static_cast<int>(T[row]);
+
+  // softmax 안정화: stable==1이면 row_max 사용, 아니면 0으로 처리(naive)
+  float row_max = 0.f;
+  if (stable){
+    float local_max = -CUDART_INF_F;
+    for (int i = threadIdx.x; i < C; i += BS) local_max = fmaxf(local_max, x[i]);
+    float wmax = warp_max(local_max);
+    __shared__ float warp_buf_max[BS/32];
+    const int warp_id = threadIdx.x >> 5;
+    if ((threadIdx.x & 31) == 0) warp_buf_max[warp_id] = wmax;
+    __syncthreads();
+    if (warp_id == 0){
+      float tmax = (threadIdx.x < (BS/32)) ? warp_buf_max[threadIdx.x] : -CUDART_INF_F;
+      tmax = warp_max(tmax);
+      if (threadIdx.x == 0) row_max = tmax;
+    }
+    __syncthreads();
+    __shared__ float s_max;
+    if (threadIdx.x == 0) s_max = row_max;
+    __syncthreads();
+    row_max = s_max;
+  } else {
+    row_max = 0.f; // naive
+  }
+
+  // denom 및 exp 저장(임시로 dL에 p분자(e^z) 저장)
+  float local_e = 0.f;
+  for (int i = threadIdx.x; i < C; i += BS) {
+    float ez = __expf(x[i] - row_max);
+    dl[i] = ez;
+    local_e += ez;
+  }
+  float we = warp_sum(local_e);
+  __shared__ float warp_buf_e[BS/32];
+  const int warp_id = threadIdx.x >> 5;
+  if ((threadIdx.x & 31) == 0) warp_buf_e[warp_id] = we;
+  __syncthreads();
+
+  float denom = 0.f;
+  if (warp_id == 0){
+    float te = (threadIdx.x < (BS/32)) ? warp_buf_e[threadIdx.x] : 0.f;
+    te = warp_sum(te);
+    if (threadIdx.x == 0) denom = te;
+  }
+  __syncthreads();
+  __shared__ float s_den;
+  if (threadIdx.x == 0) s_den = denom;
+  __syncthreads();
+  denom = s_den;
+
+  // loss: logZ - x_t  (Z=∑exp, logZ = row_max + log(denom))  — one-hot 기준
+  float loss_row = 0.f;
+  if (threadIdx.x == 0 && loss_out){
+    const float logZ = (stable ? row_max : 0.f) + logf(denom);
+    const float xt   = x[t];
+    loss_row = (logZ - xt);
+    if (reduction_kind == 0) {
+      loss_out[row] = loss_row;
+    } else {
+      float scale = (reduction_kind == 1) ? (1.f / (float)M) : 1.f;
+      atomicAdd(loss_out, loss_row * scale);
+    }
+  }
+
+  // dlogits = p - one_hot(t)
+  for (int i = threadIdx.x; i < C; i += BS){
+    float p = dl[i] / denom;
+    float oh = (i == t) ? 1.f : 0.f;
+    dl[i] = (p - oh);
+  }
+}
+
 } // anonymous
 
 
@@ -342,6 +434,23 @@ void ce_backward_probs_kernel_launcher(const float* P,
   dim3 grid(M), block(BS);
   ce_bwd_probs_kernel<BS><<<grid, block, 0, s>>>(
       P, T, dX, M, N, inv_scale, ignore_index, eps, ls_eps);
+}
+
+// --------- NEW: Fused Softmax + CE (FWD+ BWD from logits) ----------
+void softmax_ce_fused_fwd_bwd_kernel_launcher(
+    const float* logits,      // [M,C]
+    const int32_t* labels,    // [M]
+    float* dlogits,           // [M,C]
+    float* loss_out,          // nullable; [M] if red=None, [1] if red=Mean/Sum
+    int M, int C,
+    int reduction,            // 0:None, 1:Mean, 2:Sum
+    int stable,               // 0/1
+    cudaStream_t s)
+{
+  constexpr int BS = 256;
+  dim3 grid(M), block(BS);
+  softmax_ce_fused_fwd_bwd_kernel<BS><<<grid, block, 0, s>>>(
+      logits, labels, dlogits, loss_out, M, C, reduction, stable);
 }
 
 } // namespace ai

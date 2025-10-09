@@ -21,7 +21,8 @@ _lazy_submodules = {
     "layernorm",
     "pad",
     "dropout",
-    "rnn"
+    "rnn",
+    "optimizer"
 }
 
 def __getattr__(name: str):
