@@ -88,6 +88,24 @@ def _check_finite(x: cp.ndarray, name: str):
     if not cp.isfinite(x).all():
         raise AssertionError(f"{name} contains inf/nan")
 
+def test_fused_logits(M=16, C=19, reduction="mean", stable=True):
+    rs = cp.random.RandomState(7)
+    L = (rs.standard_normal((M, C)).astype(cp.float32) * 0.5)
+    y = rs.randint(0, C, size=(M,), dtype=cp.int32)
+
+    dL = cp.empty_like(L)
+    loss = cp.empty((M,), dtype=cp.float32) if reduction=="none" else cp.empty((1,), dtype=cp.float32)
+
+    def body():
+        dL_out, loss_out = ce_ops.softmax_ce_fused_backward(
+            L, y, reduction=reduction, stable=stable, out_dlogits=dL, out_loss=loss
+        )
+        assert dL_out.data.ptr == dL.data.ptr
+        assert loss_out is loss
+
+    body()
+    try_capture(body, f"FUSED(logits,{reduction})")
+
 
 def test_ce_from_logits(M=8, N=13, reduction="mean", ls_eps=0.1, ignore_index=-1):
     print(f"\n=== CrossEntropy (from_logits=True, reduction={reduction}, ls_eps={ls_eps}, ignore_index={ignore_index}) ===")

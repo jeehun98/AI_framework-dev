@@ -138,36 +138,55 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/rmsnorm/kernels.cu
   backends/cuda/ops/rmsnorm/launcher.cu
+  
   backends/cuda/ops/layernorm/kernels.cu
   backends/cuda/ops/layernorm/launcher.cu
+  
   backends/cuda/ops/softmax/kernels.cu
   backends/cuda/ops/softmax/launcher.cu
+  
   backends/cuda/ops/cross_entropy/kernels.cu
   backends/cuda/ops/cross_entropy/launcher.cu
+  
   backends/cuda/ops/dropout/kernels.cu
   backends/cuda/ops/dropout/launcher.cu
+  
   backends/cuda/ops/conv2d/kernels.cu
   backends/cuda/ops/conv2d/launcher.cu
+  
   backends/cuda/ops/pool2d/kernels.cu
   backends/cuda/ops/pool2d/launcher.cu
+  
   backends/cuda/ops/sdpa/launcher.cu
+  
   backends/cuda/ops/elementwise/kernels.cu
   backends/cuda/ops/elementwise/launcher.cu
+  
   backends/cuda/ops/reduction/kernels.cu
   backends/cuda/ops/reduction/launcher.cu
+  
   backends/cuda/ops/concat/launcher.cu
+  
   backends/cuda/ops/slice/launcher.cu
+  
   backends/cuda/ops/pad/launcher.cu
+  
   backends/cuda/ops/memory/launcher.cu
   backends/cuda/ops/memory/kernels.cu
+  
   backends/cuda/ops/upsample2d/launcher.cu
+  
   backends/cuda/ops/view/launcher.cu
+
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
   # ✅ RNN 통합 (통합 백엔드)
   backends/cuda/ops/rnn/kernels.cu
   backends/cuda/ops/rnn/launcher.cu
+
+  backends/cuda/ops/optimizer/kernels.cu
+  backends/cuda/ops/optimizer/launcher.cu
 
   # ✅ OBJECT 소스는 "sources" 목록에 포함 (올바른 사용)
   $<TARGET_OBJECTS:ge2_regemm_core>
@@ -307,6 +326,45 @@ if (WIN32)
   )
 endif()
 apply_win_warnings(_ops_conv2d)
+
+
+# =========================
+# Python 모듈 (_ops_memory) — 독립 바인딩
+# =========================
+pybind11_add_module(_ops_memory MODULE
+  src/bindings/memory_pybind.cpp
+  backends/cuda/ops/memory/launcher.cu
+  backends/cuda/ops/memory/kernels.cu
+)
+
+target_compile_definitions(_ops_memory PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_memory PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/memory
+)
+
+target_link_libraries(_ops_memory PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_memory PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_memory PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_memory)
+
 
 # =========================
 # Python 모듈 (_ops_dropout) — 독립 바인딩
@@ -490,6 +548,43 @@ target_include_directories(_ops_rnn PRIVATE
 )
 
 # =========================
+# Python 모듈 (_ops_optimizer) — op 전용 독립 바인딩
+# =========================
+pybind11_add_module(_ops_optimizer MODULE
+  src/bindings/optimizer_pybind.cpp
+  backends/cuda/ops/optimizer/launcher.cu
+  backends/cuda/ops/optimizer/kernels.cu
+)
+
+target_compile_definitions(_ops_optimizer PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_optimizer PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/optimizer
+)
+
+target_link_libraries(_ops_optimizer PRIVATE
+  CUDA::cudart
+)
+
+set_target_properties(_ops_optimizer PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_optimizer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_optimizer)
+
+
+# =========================
 # Python 모듈 (_ops_softmax) — op 전용 독립 바인딩
 # =========================
 pybind11_add_module(_ops_softmax MODULE
@@ -598,7 +693,7 @@ endif()
 # =========================
 # _ops_common 선행 의존성 일괄 추가 (안전 가드)
 # =========================
-set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn)
+set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn _ops_optimizer _ops_memory)
 foreach(mod IN LISTS _ops_modules)
   if (TARGET ${mod} AND TARGET _ops_common)
     add_dependencies(${mod} _ops_common)

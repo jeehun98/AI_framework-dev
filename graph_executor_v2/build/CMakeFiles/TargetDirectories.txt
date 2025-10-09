@@ -6,12 +6,14 @@ C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_core
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_common.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_gemm.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_conv2d.dir
+C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_memory.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_dropout.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_rmsnorm.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_cross_entropy.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_pad.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_pool2d.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_rnn.dir
+C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_optimizer.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_softmax.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/_ops_layernorm.dir
 C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/CMakeFiles/edit_cache.dir

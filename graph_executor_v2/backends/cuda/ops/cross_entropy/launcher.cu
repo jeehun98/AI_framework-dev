@@ -1,4 +1,6 @@
+// backends/cuda/ops/cross_entropy/launcher.cu
 #include <cuda_runtime.h>
+#include <cstdint>
 #include "backends/cuda/ops/cross_entropy/api.hpp"
 
 namespace ai {
@@ -14,7 +16,7 @@ static inline bool is_row_major_1d_i32(const Tensor& t){
          t.desc.layout==Layout::RowMajor && t.desc.shape.size()==1;
 }
 
-// 커널 런처 선언 (kernels.cu)
+// ---------------- raw kernel launchers (kernels.cu) ----------------
 void ce_forward_logits_kernel_launcher(const float* X, const int32_t* T, float* loss_out,
                                        int M, int N, int ignore_index, float ls_eps,
                                        int reduction_kind, cudaStream_t s);
@@ -58,16 +60,16 @@ Status CrossEntropyCudaLaunch(const Tensor& X,
       return Status::Invalid;
   }
 
-  const float* Xp = static_cast<const float*>(X.data);
+  const float*   Xp = static_cast<const float*>(X.data);
   const int32_t* Tp = static_cast<const int32_t*>(target.data);
-  float* Lp = static_cast<float*>(loss.data);
-  cudaStream_t s = to_cuda(stream);
+  float*         Lp = static_cast<float*>(loss.data);
+  cudaStream_t   s  = to_cuda(stream);
 
   const int reduction_kind =
       (attrs.reduction==Reduction::None ? 0 :
        (attrs.reduction==Reduction::Mean ? 1 : 2));
 
-  // Sum/Mean의 경우, loss[0]에 atomicAdd 누적 → 반드시 초기값 0 필요
+  // Sum/Mean은 loss[0]에 atomicAdd 누적 → 반드시 초기값 0 필요
   if (reduction_kind != 0) {
     auto e = cudaMemsetAsync(Lp, 0, sizeof(float), s);
     if (e != cudaSuccess) return Status::RuntimeError;
@@ -105,9 +107,9 @@ Status CrossEntropyCudaBackwardLaunch(const Tensor& X,
   if (dX.desc.shape[0] != X.desc.shape[0] || dX.desc.shape[1] != X.desc.shape[1])
     return Status::ShapeMismatch;
 
-  const float* Xp = static_cast<const float*>(X.data);
-  const int32_t* Tp = static_cast<const int32_t*>(target.data);
-  float* dXp = static_cast<float*>(dX.data);
+  const float*   Xp  = static_cast<const float*>(X.data);
+  const int32_t* Tp  = static_cast<const int32_t*>(target.data);
+  float*         dXp = static_cast<float*>(dX.data);
 
   // inv_scale: None/Sum -> 1, Mean -> 1/M (ignore_index는 분모에서 제외하지 않음)
   float inv_scale = 1.0f;
@@ -122,6 +124,101 @@ Status CrossEntropyCudaBackwardLaunch(const Tensor& X,
                                       inv_scale, attrs.ignore_index, attrs.eps, attrs.ls_eps,
                                       to_cuda(stream));
   }
+  auto err = cudaPeekAtLastError();
+  return (err==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+}
+
+} // namespace ai
+
+// ============================ Fused Softmax + CE (FWD loss + BWD dlogits) ============================
+namespace {
+
+// 로컬 체크(의존 최소화)
+static inline bool is_row_major_2d_f32_(const ai::Tensor& t){
+  return t.device==ai::Device::CUDA && t.desc.dtype==ai::DType::F32 &&
+         t.desc.layout==ai::Layout::RowMajor && t.desc.shape.size()==2 && t.data!=nullptr;
+}
+static inline bool is_row_major_1d_i32_(const ai::Tensor& t){
+  return t.device==ai::Device::CUDA && t.desc.dtype==ai::DType::I32 &&
+         t.desc.layout==ai::Layout::RowMajor && t.desc.shape.size()==1 && t.data!=nullptr;
+}
+
+} // anon
+
+
+
+namespace ai {
+
+// raw 커널 런처 선언 (kernels.cu 에서 구현)
+void softmax_ce_fused_fwd_bwd_kernel_launcher(
+    const float* logits,      // [M,C]
+    const int32_t* labels,    // [M]
+    float* dlogits,           // [M,C]
+    float* loss_out,          // nullable; [M] if red=None, [1] if red=Mean/Sum
+    int M, int C,
+    int reduction,            // 0:None, 1:Mean, 2:Sum
+    int stable,               // 0/1
+    cudaStream_t s);
+
+Status SoftmaxCEFusedForwardBackwardCudaLaunch(const Tensor& logits,
+                                               const Tensor& labels,
+                                               Tensor& dlogits,
+                                               Tensor* loss,
+                                               const SCEFuseAttrs& attrs,
+                                               StreamHandle stream)
+{
+  if (!is_row_major_2d_f32_(logits) || !is_row_major_2d_f32_(dlogits))
+    return Status::Invalid;
+  if (!is_row_major_1d_i32_(labels)) return Status::Invalid;
+
+  // shape 체크
+  if (logits.desc.shape != dlogits.desc.shape) return Status::ShapeMismatch;
+  if ((int64_t)labels.desc.shape[0] != (int64_t)logits.desc.shape[0]) return Status::ShapeMismatch;
+
+  const int M = static_cast<int>(logits.desc.shape[0]);
+  const int C = static_cast<int>(logits.desc.shape[1]);
+
+  // loss shape 체크 (옵션)
+  float* loss_ptr = nullptr;
+  if (loss){
+    switch (attrs.reduction) {
+      case SCEFuseAttrs::Reduction::None:
+        if (!(loss->device==Device::CUDA && loss->desc.dtype==DType::F32 &&
+              loss->desc.layout==Layout::RowMajor && loss->desc.shape.size()==1 &&
+              static_cast<int>(loss->desc.shape[0])==M))
+          return Status::ShapeMismatch;
+        break;
+      case SCEFuseAttrs::Reduction::Mean:
+      case SCEFuseAttrs::Reduction::Sum:
+        if (!(loss->device==Device::CUDA && loss->desc.dtype==DType::F32 &&
+              loss->desc.layout==Layout::RowMajor && loss->desc.shape.size()==1 &&
+              static_cast<int>(loss->desc.shape[0])==1))
+          return Status::ShapeMismatch;
+        break;
+      default:
+        return Status::Invalid;
+    }
+    loss_ptr = static_cast<float*>(loss->data);
+
+    // Sum/Mean의 경우, loss[0]에 atomicAdd 누적 → 초기 0
+    if (attrs.reduction!=SCEFuseAttrs::Reduction::None){
+      auto e = cudaMemsetAsync(loss_ptr, 0, sizeof(float), to_cuda(stream));
+      if (e!=cudaSuccess) return Status::RuntimeError;
+    }
+  }
+
+  const float*   L  = static_cast<const float*>(logits.data);
+  const int32_t* T  = static_cast<const int32_t*>(labels.data);
+  float*         dL = static_cast<float*>(dlogits.data);
+
+  const int red =
+      (attrs.reduction==SCEFuseAttrs::Reduction::None ? 0 :
+       (attrs.reduction==SCEFuseAttrs::Reduction::Mean ? 1 : 2));
+
+  softmax_ce_fused_fwd_bwd_kernel_launcher(
+      L, T, dL, loss_ptr, M, C, red, attrs.stable?1:0, to_cuda(stream)
+  );
+
   auto err = cudaPeekAtLastError();
   return (err==cudaSuccess) ? Status::Ok : Status::RuntimeError;
 }

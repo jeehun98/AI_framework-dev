@@ -54,7 +54,7 @@ static void throw_if_bad(Status st, const char* where) {
 
 // ------------------------- module -------------------------
 PYBIND11_MODULE(_ops_cross_entropy, m) {
-  m.doc() = "Independent CUDA Cross-Entropy (forward/backward) — int32 targets only";
+  m.doc() = "CUDA Cross-Entropy: logits/probs fwd/bwd + fused softmax+CE backward (int32 labels)";
 
   py::enum_<Reduction>(m, "Reduction")
     .value("None_", Reduction::None)
@@ -70,6 +70,18 @@ PYBIND11_MODULE(_ops_cross_entropy, m) {
     .def_readwrite("eps",         &CrossEntropyAttrs::eps)
     .def_readwrite("ls_eps",      &CrossEntropyAttrs::ls_eps);
 
+  // === SCEFuseAttrs 노출 ===
+  py::class_<SCEFuseAttrs>(m, "SCEFuseAttrs")
+    .def(py::init<>())
+    .def_readwrite("stable", &SCEFuseAttrs::stable)
+    .def_readwrite("reduction", &SCEFuseAttrs::reduction);
+
+  py::enum_<SCEFuseAttrs::Reduction>(m, "SCEFuseReduction")
+    .value("None", SCEFuseAttrs::Reduction::None)
+    .value("Mean", SCEFuseAttrs::Reduction::Mean)
+    .value("Sum",  SCEFuseAttrs::Reduction::Sum)
+    .export_values();
+  
   // -------- Forward --------
   // X[M,N], target[M](int32) -> loss
   m.def("forward",
@@ -137,5 +149,42 @@ PYBIND11_MODULE(_ops_cross_entropy, m) {
     py::arg("dx_ptr"), py::arg("dx_shape"),
     py::arg("attrs"),
     py::arg("stream") = static_cast<uintptr_t>(0)
+  );
+
+
+  // === fused forward+backward (from logits) ===
+  m.def("fused_forward_backward",
+    [](uintptr_t logits_ptr, const std::vector<int64_t>& logits_shape,
+       uintptr_t labels_ptr, const std::vector<int64_t>& labels_shape,
+       uintptr_t dlogits_ptr, const std::vector<int64_t>& dlogits_shape,
+       py::object loss_ptr_or_none, const std::vector<int64_t>& loss_shape,
+       const SCEFuseAttrs& attrs, uintptr_t stream_ptr)
+    {
+      if (logits_shape.size()!=2) throw std::invalid_argument("logits must be [M,C]");
+      if (dlogits_shape != logits_shape) throw std::invalid_argument("dlogits shape must match logits");
+      if (labels_shape.size()!=1 || labels_shape[0] != logits_shape[0])
+        throw std::invalid_argument("labels must be [M] and match logits M");
+
+      Tensor L  = make_tensor_nd(logits_ptr,  logits_shape,  DType::F32);
+      Tensor T  = make_tensor_nd(labels_ptr,  labels_shape,  DType::I32);
+      Tensor dL = make_tensor_nd(dlogits_ptr, dlogits_shape, DType::F32);
+
+      Tensor lossT{}; Tensor* lossPtr=nullptr;
+      if (!loss_ptr_or_none.is_none()){
+        lossT = make_tensor_nd(loss_ptr_or_none.cast<uintptr_t>(), loss_shape, DType::F32);
+        lossPtr = &lossT;
+      }
+
+      auto st = SoftmaxCEFusedForwardBackwardCudaLaunch(
+        L, T, dL, lossPtr, attrs, reinterpret_cast<StreamHandle>(stream_ptr)
+      );
+      throw_if_bad(st, "SoftmaxCEFusedForwardBackwardCudaLaunch");
+    },
+    py::arg("logits_ptr"), py::arg("logits_shape"),
+    py::arg("labels_ptr"), py::arg("labels_shape"),
+    py::arg("dlogits_ptr"), py::arg("dlogits_shape"),
+    py::arg("loss_ptr")=py::none(), py::arg("loss_shape")=std::vector<int64_t>{},
+    py::arg("attrs"),
+    py::arg("stream")=static_cast<uintptr_t>(0)
   );
 }
