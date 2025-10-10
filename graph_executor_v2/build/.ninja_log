@@ -63,3 +63,6 @@
 19	3141	7816913505750889	CMakeFiles/_ops_cross_entropy.dir/backends/cuda/ops/cross_entropy/launcher.cu.obj	4618950e8f67f14b
 3142	5462	7816913525061507	CMakeFiles/_ops_cross_entropy.dir/cmake_device_link.obj	a6cee63bcf73179e
 5463	6869	7816913542876936	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_cross_entropy.pyd	79d3002b5636c94f
+36	2293	7817679093672076	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	66c1645b38d17ba5
+2294	4721	7817679117769154	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	bca0f40a3587dff1
+4721	5889	7817679129365337	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.pyd	c4f7bb2e124e5274
