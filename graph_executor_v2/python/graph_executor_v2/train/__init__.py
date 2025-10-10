@@ -1,2 +1,4 @@
-from .graph_capture_trainer import CaptureTrainer, alloc_pinned_like, alloc_pinned
-__all__ = ["CaptureTrainer", "alloc_pinned_like", "alloc_pinned"]
+# 새 트레이너만 공개
+from .cuda_graph_trainer import CudaGraphTrainer
+
+__all__ = ["CudaGraphTrainer"]
