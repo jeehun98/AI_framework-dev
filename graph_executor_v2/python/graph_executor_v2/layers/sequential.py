@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import List, Tuple, Any, Iterable, Optional, Dict
 import cupy as cp
 
+from graph_executor_v2.graph.capture_plan import make_plan_for_sequential
+from graph_executor_v2.graph.graph_exec import record_step_graph, TrainGraph
+from graph_executor_v2.optim.rebind import try_rebind_grads
+
 from .base import Layer
 
 # ✅ 추가: 캡처 플랜 기반 grad 재바인딩 유틸
@@ -531,91 +535,34 @@ class Sequential(Layer):
         input_shape,
         *,
         loss,
-        optimizer,                   # AdamWOpt 등: step_into() 보유 (그리고 rebind_grads 지원)
+        optimizer,
         lt_bytes: int = (8 << 20),
         stream: Optional[cp.cuda.Stream] = None,
     ) -> "TrainGraph":
         """
-        전체 학습 1스텝(fwd→loss→bwd→opt)을 CUDA Graph로 캡처하고
-        고정 입출력 버퍼/그래프 실행자를 묶은 TrainGraph를 반환.
-        변경점:
-          - IO 버퍼를 zeros로 초기화(라벨 out-of-range 방지)
-          - 캡처 플랜 생성 직후 optimizer의 grad 포인터를 gW/gB로 재바인딩
+        얇은 래퍼: plan 생성 → optimizer grad rebind → graph 녹화 → TrainGraph 반환
         """
         if not self.built:
             self.build(tuple(map(int, input_shape)))
 
         assert self.supports_capture(), "All layers must implement forward_into/backward_into for capture"
 
-        bs, in_dim = int(input_shape[0]), int(input_shape[1])
-
-        # ✅ 안전하게 zeros로 초기화 (라벨/입력 쓰레기값 방지)
-        X_buf = cp.zeros((bs, in_dim), dtype=cp.float32)
-        y_buf = cp.zeros((bs,),        dtype=cp.int32)   # 클래스 0으로 초기화 → 항상 유효
-
-        # 캡처 플랜
-        plan = self.plan_capture(tuple(map(int, input_shape)), loss_kind="softmax_ce", lt_bytes=lt_bytes)
-
-        # 🔗 옵티마이저 grad 포인터를 캡처 버퍼(gW/gB)로 재바인딩
-        if hasattr(optimizer, "rebind_grads") and collect_params_from_plan is not None:
-            cap_triplets = collect_params_from_plan(self, plan)
-            optimizer.rebind_grads(cap_triplets)
-        else:
-            # (폴백) rebind 불가 시, record_graph_step 내부에서 plan gW/gB → layer.dW/db 복사 필요
-            # 권장: AdamWOpt에 rebind_grads를 구현하고 여기서 재바인딩하세요.
-            pass
-
-        # 캡처용 스트림 고정
         if stream is None:
             stream = cp.cuda.Stream(non_blocking=True)
 
-        # 그래프 녹화 (optimizer.step_into를 콜백으로)
-        gexec = self.record_graph_step(
-            X_buf, y_buf,
-            loss_fn=loss,
-            optimizer_step_fn=optimizer.step_into,
-            capture_plan=plan,
-            stream=stream
+        plan = make_plan_for_sequential(
+            self, tuple(map(int, input_shape)),
+            loss_kind="softmax_ce", lt_bytes=lt_bytes
         )
+        try_rebind_grads(self, optimizer, plan)
 
-        # 마지막 레이어 출력 버퍼를 노출(로깅/검증용)
-        io = {
-            "X": X_buf,
-            "y": y_buf,
-            "logits": plan["buffers"]["fwd"][-1]["y"],
-        }
+        bs, in_dim = int(input_shape[0]), int(input_shape[1])
+        X_buf = cp.zeros((bs, in_dim), dtype=cp.float32)
+        y_buf = cp.zeros((bs,), dtype=cp.int32)
+
+        gexec = record_step_graph(
+            self, loss, optimizer.step_into,
+            plan, stream=stream
+        )
+        io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
         return TrainGraph(gexec, io, stream)
-
-
-class TrainGraph:
-    """
-    CUDA Graph 실행 핸들 + 고정 IO 버퍼를 보관.
-      - set_batch(X, y): 고정된 디바이스 버퍼에 복사(포인터 불변)
-      - launch(): 캡처된 그래프 1스텝 실행
-      - logits: 마지막 레이어 FWD 출력 버퍼(고정 포인터)
-    """
-    def __init__(self, gexec, io, stream):
-        self._gexec = gexec
-        self._io = io
-        self._stream = stream
-
-    @property
-    def logits(self):
-        return self._io["logits"]
-
-    @property
-    def X_buf(self):
-        return self._io["X"]
-
-    @property
-    def y_buf(self):
-        return self._io["y"]
-
-    def set_batch(self, X_dev, y_dev):
-        # CPU → GPU도 허용: cupy.asarray로 복사
-        xb = self._io["X"]; yb = self._io["y"]
-        xb[...] = cp.asarray(X_dev, dtype=xb.dtype)
-        yb[...] = cp.asarray(y_dev, dtype=yb.dtype)
-
-    def launch(self):
-        self._gexec.launch(self._stream.ptr)
