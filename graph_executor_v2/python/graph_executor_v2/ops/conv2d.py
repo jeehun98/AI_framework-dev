@@ -35,10 +35,10 @@ def _act_none():
 def _parse_act_kind(act: str | "_g.ActKind") -> "_g.ActKind":
     if isinstance(act, _g.ActKind):
         return act
-    s = (act or "none").lower()
+    s = (act or "none").lower().replace("_", "")
     if s == "none":    return _act_none()
     if s == "relu":    return _g.ActKind.ReLU
-    if s in ("leakyrelu", "leaky_relu", "lrelu"): return _g.ActKind.LeakyReLU
+    if s in ("leakyrelu", "lrelu"): return _g.ActKind.LeakyReLU
     if s == "gelu":    return _g.ActKind.GELU
     if s == "sigmoid": return _g.ActKind.Sigmoid
     if s == "tanh":    return _g.ActKind.Tanh
@@ -88,7 +88,7 @@ def _out_hw(H: int, W: int, KH: int, KW: int,
 # --------------------------- public (non-capture) ---------------------------
 def forward(
     X: cp.ndarray,          # (N,Cin,H,W)   contiguous
-    W: cp.ndarray,          # (Cout,CinW,KH,KW)  (groups>1이면 CinW=Cin/groups)
+    W: cp.ndarray,          # (Cout,Cin,KH,KW)  (항상 전체 Cin; groups는 attrs로 처리)
     B: Optional[cp.ndarray] = None,  # (Cout,)
     *,
     stride: Tuple[int, int] = (1, 1),
@@ -105,8 +105,12 @@ def forward(
 ) -> cp.ndarray:
     """
     Fused Conv2D(+bias+activation) forward (간편/비캡처 경로).
+    - W는 항상 (Cout, Cin, Kh, Kw)
     - 내부에서 WS를 즉시 할당하므로 캡처용으로는 forward_into() 사용 권장.
     """
+    if (B is not None) and (with_bias is False):
+        raise ValueError("B is provided but with_bias=False; set with_bias=True or pass B=None")
+
     _assert_f32_4d(X, "X"); _assert_f32_4d(W, "W")
     if not X.flags.c_contiguous:  X = cp.ascontiguousarray(X)
     if not W.flags.c_contiguous:  W = cp.ascontiguousarray(W)
@@ -118,8 +122,9 @@ def forward(
     if groups < 1: raise ValueError("groups must be >= 1")
     if Cin % groups != 0:
         raise ValueError(f"Cin={Cin} must be divisible by groups={groups}")
-    if CinW * groups != Cin:
-        raise ValueError(f"W expects Cin/groups; got CinW={CinW}, groups={groups}, but Cin={Cin}")
+    # W는 전체 Cin 채널이어야 함
+    if CinW != Cin:
+        raise ValueError(f"W expects full Cin; got W.shape[1]={CinW} but Cin={Cin}")
     if Cout % groups != 0:
         raise ValueError(f"Cout={Cout} must be divisible by groups={groups}")
 
@@ -131,10 +136,7 @@ def forward(
 
     # save_z 처리 (act=None이면 Z==Y alias 가능)
     if save_z and Z_saved is None:
-        if act_kind == _act_none():
-            Z_saved = out
-        else:
-            Z_saved = cp.empty_like(out)
+        Z_saved = out if act_kind == _act_none() else cp.empty_like(out)
     if Z_saved is not None and tuple(Z_saved.shape) != (N, Cout, H_out, W_out):
         raise ValueError("Z_saved shape mismatch")
 
@@ -154,7 +156,8 @@ def forward(
     sptr = int(get_stream_ptr(stream))
 
     # ====== Workspaces (바인딩 명세: HWo 기준) ======
-    K   = CinW * KH * KW
+    # per-group channel 수로 K 계산
+    K   = (Cin // groups) * KH * KW
     HWo = H_out * W_out
     dCol   = cp.empty((HWo, K),     dtype=cp.float32)
     W_KC   = cp.empty((K,   Cout),  dtype=cp.float32)
@@ -184,13 +187,15 @@ def backward(
 ) -> Dict[str, cp.ndarray]:
     """
     Fused Conv2D(+bias+activation) backward (간편/비캡처 경로).
+    - W는 항상 (Cout, Cin, Kh, Kw)
     - 내부에서 WS를 즉시 할당하므로 캡처용으로는 backward_into() 사용 권장.
     """
-    for name,t in (("X",X),("W",W),("gY",gY),("Z",Z)):
-        _assert_f32_4d(t, name)
-        if not t.flags.c_contiguous:
-            locals()[name] = cp.ascontiguousarray(t)
-    X,W,gY,Z = locals()["X"], locals()["W"], locals()["gY"], locals()["Z"]
+
+    _assert_f32_4d(X, "X"); _assert_f32_4d(W, "W"); _assert_f32_4d(gY, "gY"); _assert_f32_4d(Z, "Z")
+    if not X.flags.c_contiguous:  X  = cp.ascontiguousarray(X)
+    if not W.flags.c_contiguous:  W  = cp.ascontiguousarray(W)
+    if not gY.flags.c_contiguous: gY = cp.ascontiguousarray(gY)
+    if not Z.flags.c_contiguous:  Z  = cp.ascontiguousarray(Z)
 
     N, Cin, H, W_in = map(int, X.shape)
     Cout, CinW, KH, KW = map(int, W.shape)
@@ -199,7 +204,7 @@ def backward(
 
     if groups < 1: raise ValueError("groups must be >= 1")
     if Cin % groups != 0: raise ValueError("Cin % groups != 0")
-    if CinW * groups != Cin: raise ValueError("W expects Cin/groups")
+    if CinW != Cin: raise ValueError(f"W expects full Cin; got W.shape[1]={CinW} but Cin={Cin}")
     if Cout % groups != 0: raise ValueError("Cout % groups != 0")
 
     if (Ny, Coy, Hy, Wy) != (N, Cout, Hz, Wz) or Nz != N or Coz != Cout:
@@ -219,7 +224,7 @@ def backward(
     gB = cp.empty((Cout,), cp.float32) if (want_gB and with_bias) else None
 
     # ====== Workspaces (HWo 기준) ======
-    K   = CinW * KH * KW
+    K   = (Cin // groups) * KH * KW
     HWo = Hy * Wy
     dCol   = cp.empty((HWo, K), dtype=cp.float32)
     dTmp   = cp.empty((max(Cout*K, HWo*K),), dtype=cp.float32)
@@ -340,8 +345,10 @@ def forward_into(
     N, Cin, H, W_in = map(int, X.shape)
     Cout, CinW, KH, KW = map(int, W.shape)
     if groups < 1: raise ValueError("groups must be >= 1")
-    if Cin % groups != 0 or CinW * groups != Cin:
-        raise ValueError("groups/Cin mismatch: W expects Cin/groups")
+    if Cin % groups != 0:
+        raise ValueError("Cin % groups != 0")
+    if CinW != Cin:
+        raise ValueError(f"W expects full Cin; got W.shape[1]={CinW} but Cin={Cin}")
     if Cout % groups != 0:
         raise ValueError("Cout % groups != 0")
 
@@ -355,7 +362,7 @@ def forward_into(
             raise ValueError(f"[capture] Z_saved must be float32[{(N,Cout,H_out,W_out)}] when save_z=True")
     else:
         if Z_saved is not None:
-            raise ValueError("[capture] Z_saved must be None when save_z=False")
+            raise ValueError("[capture] Z_saved must be None when save_z=False]")
 
     if with_bias:
         if B is None or B.dtype != cp.float32 or B.ndim != 1 or int(B.size) != Cout:
@@ -371,8 +378,9 @@ def forward_into(
     )
     sptr = int(get_stream_ptr(stream))
 
-    K   = CinW * KH * KW
+    K   = (Cin // groups) * KH * KW
     HWo = H_out * W_out
+
     if work is None:
         raise ValueError("[capture] provide `work: Conv2DWorkspaces` with preallocated buffers")
     work.ensure_forward(HWo=HWo, K=K, Cout=Cout, save_z=save_z)
@@ -417,8 +425,10 @@ def backward_into(
     Nz, Coz, Hz, Wz = map(int, Z.shape)
 
     if groups < 1: raise ValueError("groups must be >= 1")
-    if Cin % groups != 0 or CinW * groups != Cin:
-        raise ValueError("groups/Cin mismatch: W expects Cin/groups")
+    if Cin % groups != 0:
+        raise ValueError("Cin % groups != 0")
+    if CinW != Cin:
+        raise ValueError(f"W expects full Cin; got W.shape[1]={CinW} but Cin={Cin}")
     if Cout % groups != 0:
         raise ValueError("Cout % groups != 0")
 
@@ -432,8 +442,8 @@ def backward_into(
 
     if gX_out is not None and (gX_out.dtype != cp.float32 or tuple(gX_out.shape)!=(N,Cin,H,W_in)):
         raise ValueError(f"[capture] gX_out must be float32[{(N,Cin,H,W_in)}]")
-    if gW_out is not None and (gW_out.dtype != cp.float32 or tuple(gW_out.shape)!=(Cout,CinW,KH,KW)):
-        raise ValueError(f"[capture] gW_out must be float32[{(Cout,CinW,KH,KW)}]")
+    if gW_out is not None and (gW_out.dtype != cp.float32 or tuple(gW_out.shape)!=(Cout,Cin,KH,KW)):
+        raise ValueError(f"[capture] gW_out must be float32[{(Cout,Cin,KH,KW)}]")
     if gB_out is not None:
         if not with_bias:
             raise ValueError("[capture] gB_out must be None when with_bias=False")
@@ -448,8 +458,9 @@ def backward_into(
     )
     sptr = int(get_stream_ptr(stream))
 
-    K   = CinW * KH * KW
+    K   = (Cin // groups) * KH * KW
     HWo = Hy * Wy
+
     if work is None:
         raise ValueError("[capture] provide `work: Conv2DWorkspaces` with preallocated buffers")
     work.ensure_backward(HWo=HWo, K=K, Cout=Cout, want_gX=want_gX, want_gW=want_gW)
