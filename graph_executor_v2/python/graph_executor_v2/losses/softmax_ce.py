@@ -7,7 +7,7 @@ import numpy as np
 try:
     from .base import Loss  # type: ignore
 except Exception:
-    class Loss:  # minimal stub
+    class Loss:
         pass
 
 # CUDA 경로: CuPy + ops.cross_entropy 사용 가능 여부 확인
@@ -79,12 +79,9 @@ def _numpy_forward(
     else:  # "mean"
         loss_scalar = float(loss_all.sum() / n_valid)
 
-    # backward 스케일: reduction='mean'이면 n_valid로 나눔, 'sum'이면 그대로, 'none'이면 합과 동일 취급
+    # backward 스케일: reduction='mean'이면 n_valid로 나눔, 'sum'이면 그대로, 'none'이면 추가 스케일 없음
     if reduction == "mean":
         dx /= n_valid
-    elif reduction == "none":
-        # 외부에서 per-sample 스케일을 곱해 쓰는 패턴과 맞추기 위해 여기서는 추가 스케일 없음
-        pass
 
     return loss_scalar, dx.astype(np.float32, copy=False)
 
@@ -116,16 +113,7 @@ class SoftmaxCrossEntropy(Loss):
         self.from_logits = bool(from_logits)
         self.eps = float(eps)
 
-    def forward(self, logits, target_idx):
-        """
-        입력:
-          - logits: (N, C)  (np.ndarray 또는 cupy.ndarray)
-          - target_idx: (N,) int
-
-        반환:
-          - (loss_scalar: float, grad: 입력과 동일 백엔드/shape의 배열)
-        """
-        # GPU 경로 (CuPy + CUDA 모듈)
+    def forward(self, logits, target_idx, *, return_scalar: bool = True):
         if _HAS_GPU and isinstance(logits, cp.ndarray):
             x = logits
             t = target_idx
@@ -134,30 +122,14 @@ class SoftmaxCrossEntropy(Loss):
             if t.dtype != cp.int32:
                 t = t.astype(cp.int32, copy=False)
 
-            # loss 텐서 준비 (reduction에 따라 shape 다름)
-            if self.reduction == "none":
-                loss = ce_ops.forward(
-                    x, t,
-                    from_logits=self.from_logits,
-                    reduction="none",
-                    ignore_index=self.ignore_index,
-                    eps=self.eps,
-                    ls_eps=self.ls_eps,
-                )  # (N,)
-                # 반환은 스칼라여야 하므로 관례상 평균으로 스칼라화
-                loss_scalar = float(cp.mean(loss))
-            else:
-                loss = ce_ops.forward(
-                    x, t,
-                    from_logits=self.from_logits,
-                    reduction=self.reduction,
-                    ignore_index=self.ignore_index,
-                    eps=self.eps,
-                    ls_eps=self.ls_eps,
-                )  # (1,)
-                loss_scalar = float(loss[0])
-
-            # grad(dX)
+            loss_dev = ce_ops.forward(
+                x, t,
+                from_logits=self.from_logits,
+                reduction=self.reduction,
+                ignore_index=self.ignore_index,
+                eps=self.eps,
+                ls_eps=self.ls_eps,
+            )
             dx = ce_ops.backward(
                 x, t,
                 from_logits=self.from_logits,
@@ -166,22 +138,10 @@ class SoftmaxCrossEntropy(Loss):
                 eps=self.eps,
                 ls_eps=self.ls_eps,
             )
-            return loss_scalar, dx
 
-        # NumPy 폴백
-        x = np.asarray(logits, dtype=np.float32)
-        t = np.asarray(target_idx)
-        loss_scalar, dx_np = _numpy_forward(
-            x, t,
-            from_logits=self.from_logits,
-            reduction=self.reduction,
-            ignore_index=self.ignore_index,
-            eps=self.eps,
-            ls_eps=self.ls_eps,
-        )
-        # 입력이 CuPy였던 경우를 대비해 동일 백엔드로 되돌림
-        if _HAS_GPU and isinstance(logits, cp.ndarray):
-            dx = cp.asarray(dx_np)
-        else:
-            dx = dx_np
-        return loss_scalar, dx
+            if not return_scalar:
+                return loss_dev, dx
+
+            if self.reduction == "none":
+                return float(cp.mean(loss_dev)), dx
+            return float(loss_dev.ravel()[0]), dx

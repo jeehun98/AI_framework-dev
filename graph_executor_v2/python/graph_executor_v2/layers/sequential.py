@@ -1,8 +1,15 @@
 # graph_executor_v2/layers/sequential.py
 from __future__ import annotations
-from typing import List, Tuple, Any, Iterable, Optional
+from typing import List, Tuple, Any, Iterable, Optional, Dict
+import cupy as cp
 
 from .base import Layer
+
+# ✅ 추가: 캡처 플랜 기반 grad 재바인딩 유틸
+try:
+    from graph_executor_v2.optim.adamw import collect_params_from_plan  # type: ignore
+except Exception:
+    collect_params_from_plan = None  # 런타임에 체크
 
 CANDIDATE_PARAM_GRAD_NAMES = [
     ("W", "dW"),
@@ -20,7 +27,11 @@ class Sequential(Layer):
     - zero_grad(): grad 초기화
     - state_dict()/load_state_dict(): 저장/로드
     - train()/eval(): 서브 레이어까지 모드 전파
-    - attach_grads(): 레이어 내부 dW/db 등을 param.grad로 연결
+    - attach_grads(): 레이어 내부 dW/db 등을 param.grad로 연결(가능한 경우)
+    - (추가) supports_capture(): 모든 레이어가 *_into를 지원하는지 확인
+    - (추가) plan_capture(...): 캡처용 버퍼/워크스페이스 사전할당
+    - (추가) record_graph_step(...): CUDA Graph 녹화 후 GraphExec 반환
+    - (추가) compile(...): 전체 학습 1스텝(fwd→loss→bwd→opt) 그래프 컴파일
     """
     def __init__(self, *layers: Layer, name: Optional[str] = None):
         super().__init__(name=name)
@@ -58,7 +69,7 @@ class Sequential(Layer):
     def call(self, x: Any):
         out = x
         for lyr in self.layers:
-            # (선택) 드롭아웃/BN 등은 lyr.training 플래그를 참조하도록 구현
+            # 드롭아웃/BN 등은 lyr.training 플래그를 참조하도록 구현
             if hasattr(lyr, "training"):
                 lyr.training = self.training
             out = lyr(out)
@@ -125,22 +136,23 @@ class Sequential(Layer):
 
     # 표준화된 파라미터 인터페이스
     def parameters(self) -> Iterable[Tuple[Any, Any, str]]:
-        for lyr in self.layers:
+        for idx, lyr in enumerate(self.layers):
+            lname = f"{lyr.__class__.__name__}:{idx}"
             if hasattr(lyr, "parameters") and callable(getattr(lyr, "parameters")):
                 # (param, grad, name) or (param, grad)
                 for t in lyr.parameters():  # type: ignore
-                    if len(t) == 3:
+                    if isinstance(t, tuple) and len(t) == 3:
                         yield t  # (p, g, name)
-                    else:
+                    elif isinstance(t, tuple) and len(t) == 2:
                         p, g = t
-                        yield (p, g, lyr.__class__.__name__)
+                        yield (p, g, lname)
                 continue
             # 휴리스틱 스캔 (W/dW, b/db 등)
             for p_name, g_name in CANDIDATE_PARAM_GRAD_NAMES:
                 if hasattr(lyr, p_name) and hasattr(lyr, g_name):
                     p = getattr(lyr, p_name)
                     g = getattr(lyr, g_name)
-                    yield (p, g, f"{lyr.__class__.__name__}.{p_name}")
+                    yield (p, g, f"{lname}.{p_name}")
 
     def zero_grad(self):
         """param.grad 및 레이어 내부 dW/db 등을 0으로."""
@@ -151,16 +163,22 @@ class Sequential(Layer):
                 try:
                     g[...] = 0
                 except Exception:
-                    if hasattr(g, "zero_"):
-                        g.zero_()
-                    else:
-                        setattr(p, "grad", None)
+                    try:
+                        if hasattr(g, "zero_"):
+                            g.zero_()
+                        else:
+                            setattr(p, "grad", None)
+                    except Exception:
+                        # cupy.ndarray 는 임의 속성 부여가 안 될 수 있음 → 조용히 패스
+                        pass
         # 레이어 내부 그라드 캐시 초기화
         for lyr in self.layers:
             # 사용자 정의 zero_grad가 있으면 우선
             if hasattr(lyr, "zero_grad") and callable(getattr(lyr, "zero_grad")):
-                try: lyr.zero_grad()  # type: ignore
-                except Exception: pass
+                try:
+                    lyr.zero_grad()  # type: ignore
+                except Exception:
+                    pass
                 continue
             # 없으면 휴리스틱
             for _, g_name in CANDIDATE_PARAM_GRAD_NAMES:
@@ -170,8 +188,10 @@ class Sequential(Layer):
                         g[...] = 0
                     except Exception:
                         try:
-                            if hasattr(g, "zero_"): g.zero_()
-                            else: setattr(lyr, g_name, None)
+                            if hasattr(g, "zero_"):
+                                g.zero_()
+                            else:
+                                setattr(lyr, g_name, None)
                         except Exception:
                             pass
 
@@ -180,10 +200,15 @@ class Sequential(Layer):
         레이어 내부 dW/db 등을 param.grad에 연결.
         - Optimizer가 param.grad를 읽는 구조(AdamW/SGD 등) 지원.
         - 역전파 직후 호출.
+        - cupy.ndarray는 임의 속성 부여 실패 가능 → 실패 시 조용히 스킵
         """
         for (p, g, _) in self.parameters():
             if g is not None:
-                setattr(p, "grad", g)
+                try:
+                    setattr(p, "grad", g)
+                except Exception:
+                    # 옵티마이저가 (param, grad) 튜플을 직접 받는다면 이 단계가 불필요
+                    pass
 
     # === 저장/로드 ===
     def state_dict(self) -> dict:
@@ -230,3 +255,367 @@ class Sequential(Layer):
                     except Exception:
                         setattr(lyr, k, v)
         return self
+
+    # =========================
+    # ===== Graph Capture =====
+    # =========================
+    def supports_capture(self) -> bool:
+        """
+        모든 레이어가 forward_into/backward_into 를 제공하는지 검사.
+        (pass-through 레이어는 forward_into만 제공해도 무방하지만,
+         학습 캡처를 위해선 역전파 레이어들도 backward_into 필요)
+        """
+        ok = True
+        for lyr in self.layers:
+            f_ok = hasattr(lyr, "forward_into") and callable(getattr(lyr, "forward_into"))
+            b_ok = hasattr(lyr, "backward_into") and callable(getattr(lyr, "backward_into"))
+            ok = ok and f_ok and b_ok
+        return ok
+
+    def plan_capture(
+        self,
+        input_shape: Tuple[int, ...],
+        *,
+        loss_kind: str = "softmax_ce",
+        lt_bytes: int = (8 << 20),  # 예: 8MB
+    ) -> Dict[str, Any]:
+        """
+        캡처 실행에 필요한 사전 버퍼/워크스페이스를 할당하고 shape를 정리.
+        현재는 Dense 레이어(= GEMM 기반) 위주로 워크스페이스를 준비.
+        반환: dict { 'buffers': ..., 'workspaces': ..., 'shapes': ... }
+        """
+        from graph_executor_v2.ops import gemm as gops  # 지연 임포트
+        cur = tuple(map(int, input_shape))
+        bufs: Dict[str, Any] = {"fwd": [], "bwd": []}
+        wss: Dict[str, Any] = []
+        shapes: Dict[str, Any] = {"per_layer": []}
+
+        # 순전파 출력/프리액티베이션 저장 여부 판단
+        for idx, lyr in enumerate(self.layers):
+            oname = f"L{idx}:{lyr.__class__.__name__}"
+            try:
+                out_shp = tuple(map(int, lyr.compute_output_shape(cur)))
+            except Exception:
+                out_shp = None
+            shapes["per_layer"].append((oname, {"in": cur, "out": out_shp}))
+            # Dense일 경우: Z 버퍼가 필요할 수 있음(activation != 'none')
+            need_z = getattr(lyr, "activation", "none") != "none"
+            # 순전파 out 버퍼
+            if out_shp is not None:
+                y = cp.empty(out_shp, dtype=cp.float32)
+            else:
+                raise RuntimeError(f"cannot infer output shape for {oname}")
+            # Z(옵션)
+            z = cp.empty(out_shp, dtype=cp.float32) if need_z else None
+
+            bufs["fwd"].append({"y": y, "z": z, "name": oname})
+
+            # 역전파 버퍼 (gA, gW, gB 등) — Dense 기준 휴리스틱
+            # 레이어 내부에서 검증하므로 여기선 모양만 추정
+            if hasattr(lyr, "W") and hasattr(lyr, "b"):
+                W = getattr(lyr, "W")
+                in_dim, units = int(W.shape[0]), int(W.shape[1])
+                gA = cp.empty(cur, dtype=cp.float32)
+                gW = cp.empty_like(W)
+                gB = cp.empty((1, units), dtype=cp.float32)
+                bufs["bwd"].append({"gA": gA, "gW": gW, "gB": gB, "name": oname})
+                # GEMM 워크스페이스
+                ws = gops.ensure_workspaces(cur[0], units, lt_bytes=lt_bytes)
+                wss.append({"work": ws, "name": oname})
+            else:
+                # 파라미터가 없는 레이어(예: 활성화, reshape 등)
+                gA = cp.empty(cur, dtype=cp.float32)
+                bufs["bwd"].append({"gA": gA, "gW": None, "gB": None, "name": oname})
+                wss.append({"work": None, "name": oname})
+
+            # 다음 입력 shape 갱신
+            cur = out_shp
+
+        # 최종 로짓/손실용 dY 버퍼 (softmax CE 가정)
+        if loss_kind == "softmax_ce":
+            dY = cp.empty(cur, dtype=cp.float32)
+            bufs["loss"] = {"dY": dY, "out_shape": cur}
+        else:
+            bufs["loss"] = {"dY": None, "out_shape": cur}
+
+        return {"buffers": bufs, "workspaces": wss, "shapes": shapes}
+
+
+    def record_graph_step(
+        self,
+        X: cp.ndarray,
+        y: Any,
+        *,
+        loss_fn,
+        optimizer_step_fn,
+        capture_plan: Dict[str, Any],
+        stream: Optional[cp.cuda.Stream] = None,
+    ):
+        """
+        1 스텝 학습을 CUDA Graph로 녹화하고 GraphExec 유사 객체를 반환.
+        - CUDA Graph 캡처 API가 환경에 없으면 동일 동작의 폴백 객체를 반환(launch만 제공).
+        """
+        if stream is None:
+            stream = cp.cuda.Stream(non_blocking=True)
+
+        bufs = capture_plan["buffers"]
+        fwd_bufs = bufs["fwd"]
+        bwd_bufs = bufs["bwd"]
+        dY = bufs["loss"]["dY"]
+        workspaces = capture_plan["workspaces"]
+
+        # ---- 워밍업 1회(모양/타입/스트림 고정) ----
+        with stream:
+            cur = X
+            # FWD
+            for idx, lyr in enumerate(self.layers):
+                ybuf = fwd_bufs[idx]["y"]
+                zbuf = fwd_bufs[idx]["z"]
+                lyr.forward_into(cur, out=ybuf, z_out=zbuf, stream=stream.ptr)
+                cur = ybuf
+            # LOSS (⚠️ 호스트 복사 금지)
+            loss_dev, dY_tmp = loss_fn.forward(cur, y, return_scalar=False)
+            if dY is not None:
+                dY[...] = dY_tmp
+
+            # ✅ BWD 전에 캡처 grad 버퍼를 0으로 초기화 (누적 방지)
+            for i in range(len(self.layers)):
+                b = bwd_bufs[i]
+                ga = b.get("gA", None)
+                gw = b.get("gW", None)
+                gb = b.get("gB", None)
+                if ga is not None: ga.fill(0)
+                if gw is not None: gw.fill(0)
+                if gb is not None: gb.fill(0)
+
+            # BWD (역순)
+            g = dY if dY is not None else dY_tmp
+            for ridx, lyr in enumerate(reversed(self.layers)):
+                i = len(self.layers) - 1 - ridx
+                b = bwd_bufs[i]
+                ws = workspaces[i]["work"]
+                if b["gW"] is not None:
+                    lyr.backward_into(
+                        g,
+                        gA_out=b["gA"], gW_out=b["gW"], gB_out=b["gB"],
+                        work_dZ=(ws.dZ if ws is not None else None),
+                        lt_workspace=(ws.lt_ws if (ws is not None and ws.lt_ws is not None) else None),
+                        stream=stream.ptr
+                    )
+                else:
+                    lyr.backward_into(  # type: ignore
+                        g, gA_out=b["gA"],
+                        work_dZ=None, lt_workspace=None, stream=stream.ptr
+                    )
+                g = b["gA"]
+            # OPT
+            optimizer_step_fn()
+
+        # ---- 그래프 캡처 지원 여부 확인 ----
+        _has_capture_stream = hasattr(cp.cuda, "graph") and hasattr(cp.cuda.graph, "capture_stream")
+
+        if _has_capture_stream:
+            # ========== 진짜 CUDA Graph 경로 ==========
+            with stream:
+                with cp.cuda.graph.capture_stream(stream) as cap:
+                    cur = X
+                    # FWD
+                    for idx, lyr in enumerate(self.layers):
+                        ybuf = fwd_bufs[idx]["y"]
+                        zbuf = fwd_bufs[idx]["z"]
+                        lyr.forward_into(cur, out=ybuf, z_out=zbuf, stream=stream.ptr)
+                        cur = ybuf
+                    # LOSS (⚠️ 호스트 복사 금지)
+                    loss_dev, dY_tmp = loss_fn.forward(cur, y, return_scalar=False)
+                    if dY is not None:
+                        dY[...] = dY_tmp
+                        g_in = dY
+                    else:
+                        g_in = dY_tmp
+
+                    # ✅ BWD 전에 캡처 grad 버퍼를 0으로 초기화 (누적 방지)
+                    for i in range(len(self.layers)):
+                        b = bwd_bufs[i]
+                        ga = b.get("gA", None)
+                        gw = b.get("gW", None)
+                        gb = b.get("gB", None)
+                        if ga is not None: ga.fill(0)
+                        if gw is not None: gw.fill(0)
+                        if gb is not None: gb.fill(0)
+
+                    # BWD
+                    for ridx, lyr in enumerate(reversed(self.layers)):
+                        i = len(self.layers) - 1 - ridx
+                        b = bwd_bufs[i]
+                        ws = workspaces[i]["work"]
+                        if b["gW"] is not None:
+                            lyr.backward_into(
+                                g_in,
+                                gA_out=b["gA"], gW_out=b["gW"], gB_out=b["gB"],
+                                work_dZ=(ws.dZ if ws is not None else None),
+                                lt_workspace=(ws.lt_ws if (ws is not None and ws.lt_ws is not None) else None),
+                                stream=stream.ptr
+                            )
+                        else:
+                            lyr.backward_into(  # type: ignore
+                                g_in, gA_out=b["gA"],
+                                work_dZ=None, lt_workspace=None, stream=stream.ptr
+                            )
+                        g_in = b["gA"]
+                    # OPT
+                    optimizer_step_fn()
+
+            graph = cap.graph
+            gexec = graph.instantiate()
+            return gexec
+
+        # ========== 폴백: 그래프 미지원 시 GraphExec 유사 객체 반환 ==========
+        def _one_step():
+            # 주의: 스트림/버퍼/shape는 이미 고정되어 있다고 가정(워밍업 동일 순서)
+            cur = X
+            for idx, lyr in enumerate(self.layers):
+                ybuf = fwd_bufs[idx]["y"]
+                zbuf = fwd_bufs[idx]["z"]
+                lyr.forward_into(cur, out=ybuf, z_out=zbuf, stream=stream.ptr)
+                cur = ybuf
+            loss_dev, dY_tmp = loss_fn.forward(cur, y, return_scalar=False)
+            g_in = dY if dY is not None else dY_tmp
+
+            # ✅ BWD 전에 캡처 grad 버퍼를 0으로 초기화 (누적 방지)
+            for i in range(len(self.layers)):
+                b = bwd_bufs[i]
+                ga = b.get("gA", None)
+                gw = b.get("gW", None)
+                gb = b.get("gB", None)
+                if ga is not None: ga.fill(0)
+                if gw is not None: gw.fill(0)
+                if gb is not None: gb.fill(0)
+
+            for ridx, lyr in enumerate(reversed(self.layers)):
+                i = len(self.layers) - 1 - ridx
+                b = bwd_bufs[i]
+                ws = workspaces[i]["work"]
+                if b["gW"] is not None:
+                    lyr.backward_into(
+                        g_in,
+                        gA_out=b["gA"], gW_out=b["gW"], gB_out=b["gB"],
+                        work_dZ=(ws.dZ if ws is not None else None),
+                        lt_workspace=(ws.lt_ws if (ws is not None and ws.lt_ws is not None) else None),
+                        stream=stream.ptr
+                    )
+                else:
+                    lyr.backward_into(  # type: ignore
+                        g_in, gA_out=b["gA"],
+                        work_dZ=None, lt_workspace=None, stream=stream.ptr
+                    )
+                g_in = b["gA"]
+            optimizer_step_fn()
+
+        class _PseudoGraphExec:
+            """CUDA Graph이 없을 때를 위한 간단한 대체. launch(stream_ptr)를 흉내낸다."""
+            def __init__(self, step_fn, stream_obj):
+                self._step_fn = step_fn
+                self._stream = stream_obj
+            def launch(self, stream_ptr=None):
+                # stream_ptr는 무시(이미 self._stream로 고정)
+                with self._stream:
+                    self._step_fn()
+
+        return _PseudoGraphExec(_one_step, stream)
+
+    # =========================
+    # ======== Compile ========
+    # =========================
+    def compile(
+        self,
+        input_shape,
+        *,
+        loss,
+        optimizer,                   # AdamWOpt 등: step_into() 보유 (그리고 rebind_grads 지원)
+        lt_bytes: int = (8 << 20),
+        stream: Optional[cp.cuda.Stream] = None,
+    ) -> "TrainGraph":
+        """
+        전체 학습 1스텝(fwd→loss→bwd→opt)을 CUDA Graph로 캡처하고
+        고정 입출력 버퍼/그래프 실행자를 묶은 TrainGraph를 반환.
+        변경점:
+          - IO 버퍼를 zeros로 초기화(라벨 out-of-range 방지)
+          - 캡처 플랜 생성 직후 optimizer의 grad 포인터를 gW/gB로 재바인딩
+        """
+        if not self.built:
+            self.build(tuple(map(int, input_shape)))
+
+        assert self.supports_capture(), "All layers must implement forward_into/backward_into for capture"
+
+        bs, in_dim = int(input_shape[0]), int(input_shape[1])
+
+        # ✅ 안전하게 zeros로 초기화 (라벨/입력 쓰레기값 방지)
+        X_buf = cp.zeros((bs, in_dim), dtype=cp.float32)
+        y_buf = cp.zeros((bs,),        dtype=cp.int32)   # 클래스 0으로 초기화 → 항상 유효
+
+        # 캡처 플랜
+        plan = self.plan_capture(tuple(map(int, input_shape)), loss_kind="softmax_ce", lt_bytes=lt_bytes)
+
+        # 🔗 옵티마이저 grad 포인터를 캡처 버퍼(gW/gB)로 재바인딩
+        if hasattr(optimizer, "rebind_grads") and collect_params_from_plan is not None:
+            cap_triplets = collect_params_from_plan(self, plan)
+            optimizer.rebind_grads(cap_triplets)
+        else:
+            # (폴백) rebind 불가 시, record_graph_step 내부에서 plan gW/gB → layer.dW/db 복사 필요
+            # 권장: AdamWOpt에 rebind_grads를 구현하고 여기서 재바인딩하세요.
+            pass
+
+        # 캡처용 스트림 고정
+        if stream is None:
+            stream = cp.cuda.Stream(non_blocking=True)
+
+        # 그래프 녹화 (optimizer.step_into를 콜백으로)
+        gexec = self.record_graph_step(
+            X_buf, y_buf,
+            loss_fn=loss,
+            optimizer_step_fn=optimizer.step_into,
+            capture_plan=plan,
+            stream=stream
+        )
+
+        # 마지막 레이어 출력 버퍼를 노출(로깅/검증용)
+        io = {
+            "X": X_buf,
+            "y": y_buf,
+            "logits": plan["buffers"]["fwd"][-1]["y"],
+        }
+        return TrainGraph(gexec, io, stream)
+
+
+class TrainGraph:
+    """
+    CUDA Graph 실행 핸들 + 고정 IO 버퍼를 보관.
+      - set_batch(X, y): 고정된 디바이스 버퍼에 복사(포인터 불변)
+      - launch(): 캡처된 그래프 1스텝 실행
+      - logits: 마지막 레이어 FWD 출력 버퍼(고정 포인터)
+    """
+    def __init__(self, gexec, io, stream):
+        self._gexec = gexec
+        self._io = io
+        self._stream = stream
+
+    @property
+    def logits(self):
+        return self._io["logits"]
+
+    @property
+    def X_buf(self):
+        return self._io["X"]
+
+    @property
+    def y_buf(self):
+        return self._io["y"]
+
+    def set_batch(self, X_dev, y_dev):
+        # CPU → GPU도 허용: cupy.asarray로 복사
+        xb = self._io["X"]; yb = self._io["y"]
+        xb[...] = cp.asarray(X_dev, dtype=xb.dtype)
+        yb[...] = cp.asarray(y_dev, dtype=yb.dtype)
+
+    def launch(self):
+        self._gexec.launch(self._stream.ptr)
