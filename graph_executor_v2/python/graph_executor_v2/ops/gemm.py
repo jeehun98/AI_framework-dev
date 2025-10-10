@@ -19,16 +19,18 @@ from graph_executor_v2.ops import _ops_gemm as g
 # (Windows) CUDA DLL 경로 가드
 ensure_cuda_dlls()
 
-# 파일 상단 근처에 추가
+# ============================================================
+# Workspace helpers
+# ============================================================
 class GemmWorkspaces:
     """
     Capture-safe workspaces for GEMM backward.
-    - dZ : (M,N) float32, dAct(Z) ⊙ gY 임시 버퍼 (필수)
-    - lt_ws : uint8 1D, cublasLt workspace (옵션)
+      - dZ    : (M, N) float32, dAct(Z) ⊙ gY 임시 버퍼 (필수)
+      - lt_ws : uint8 1D, cublasLt workspace (옵션)
     """
     def __init__(self):
-        self.dZ = None       # cp.ndarray(float32)[M,N]
-        self.lt_ws = None    # cp.ndarray(uint8)[bytes] or None
+        self.dZ: Optional[cp.ndarray] = None    # cp.ndarray(float32)[M,N]
+        self.lt_ws: Optional[cp.ndarray] = None # cp.ndarray(uint8)[bytes] or None
 
     def ensure_backward(self, M: int, N: int):
         if self.dZ is None or self.dZ.dtype != cp.float32 or tuple(self.dZ.shape) != (M, N):
@@ -36,30 +38,65 @@ class GemmWorkspaces:
         if self.lt_ws is not None and self.lt_ws.dtype != cp.uint8:
             raise ValueError("[capture] work.lt_ws must be uint8 or None")
 
-_WS_CACHE = {}  # key: (M, N, dev_id) -> {"dZ": cupy.ndarray, "lt_ws": cupy.ndarray}
 
+_WS_CACHE: Dict[Tuple[int, int, int], GemmWorkspaces] = {}  # key: (M, N, dev_id)
+
+def ensure_workspaces(M: int, N: int, *, lt_bytes: int = 0) -> GemmWorkspaces:
+    """
+    (M,N) + current device 기준으로 GemmWorkspaces를 캐시/재사용.
+    캡처 전에 한 번 호출해두고 backward_into에 공급할 것.
+    """
+    dev = int(cp.cuda.runtime.getDevice())
+    key = (M, N, dev)
+    ws = _WS_CACHE.get(key)
+    if ws is None:
+        ws = GemmWorkspaces()
+        ws.dZ = cp.empty((M, N), dtype=cp.float32)
+        ws.lt_ws = cp.empty(lt_bytes, dtype=cp.uint8) if lt_bytes > 0 else None
+        _WS_CACHE[key] = ws
+    else:
+        if ws.dZ is None or ws.dZ.shape != (M, N) or ws.dZ.dtype != cp.float32:
+            ws.dZ = cp.empty((M, N), dtype=cp.float32)
+        if lt_bytes > 0 and (ws.lt_ws is None or ws.lt_ws.nbytes < lt_bytes or ws.lt_ws.dtype != cp.uint8):
+            ws.lt_ws = cp.empty(lt_bytes, dtype=cp.uint8)
+    return ws
+
+def clear_ws_cache() -> None:
+    """워크스페이스 캐시 전체 제거(메모리 반환 유도)."""
+    _WS_CACHE.clear()
+
+
+# ============================================================
+# Act / Attrs helpers
+# ============================================================
 def _parse_act_to_kind(act: str) -> "g.ActKind":
-    s = (act or "none").lower()
-    if s == "none":    return getattr(g.ActKind, "None")
-    if s == "relu":    return g.ActKind.ReLU
-    if s in ("leakyrelu","leaky_relu","lrelu"): return g.ActKind.LeakyReLU
-    if s == "gelu":    return g.ActKind.GELU
-    if s == "sigmoid": return g.ActKind.Sigmoid
-    if s == "tanh":    return g.ActKind.Tanh
+    # 대소/공백/하이픈/언더스코어 제거 후 비교
+    s = (act or "none").strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    if s == "none":      return getattr(g.ActKind, "None")
+    if s == "relu":      return g.ActKind.ReLU
+    if s in ("leakyrelu", "lrelu"): return g.ActKind.LeakyReLU
+    if s == "gelu":      return g.ActKind.GELU
+    if s == "sigmoid":   return g.ActKind.Sigmoid
+    if s == "tanh":      return g.ActKind.Tanh
     raise ValueError(f"unknown act: {act}")
 
 def _mk_attrs(act: str, with_bias: bool, leaky_slope: float) -> "g.GemmAttrs":
     a = g.GemmAttrs()
     a.trans_a = False
     a.trans_b = False
-    a.act = _parse_act_to_kind(act)
+    a.act = _parse_act_to_kind(act)  # enum 고정
     a.with_bias = bool(with_bias)
     a.leaky_slope = float(leaky_slope)
-    # save_z는 BWD에 필요 없음
+    # save_z는 attrs에 두지 않음 (포함된 변형도 가능하지만 여기선 호출부 인자로 처리)
     return a
-# ------------------------------------------------------------
-# Forward: fused GEMM(+bias+activation) with optional Z(pre) save
-# ------------------------------------------------------------
+
+def _has(name: str) -> bool:
+    return hasattr(g, name)
+
+
+# ============================================================
+# Forward (allocating) : fused GEMM(+bias+activation)
+# ============================================================
 def forward(
     A: cp.ndarray,
     B: cp.ndarray,
@@ -78,7 +115,7 @@ def forward(
     """
     Fused GEMM(+bias+activation):  Y = act( A @ B (+ bias) )
       - A: (M, K), B: (K, N)
-      - bias: (N,) | (1, N) | (M, 1) | (M, N) | scalar | None
+      - bias: (N,) | (1, N) | (M, 1) | (M, N) | scalar | None   (※ capture-safe 경로 아님)
       - dtype=float32, row-major 2D
       - save_z=True면 pre-activation Z를 z_out에 저장(없으면 내부에서 할당)
       - return_z=True면 (Y, Z)를 반환
@@ -88,11 +125,13 @@ def forward(
     if K != K2:
         raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
 
-    # with_bias 추론 (사용자가 명시했으면 그대로)
+    # with_bias 추론/검증
+    if bias is not None and with_bias is False:
+        raise ValueError("bias is provided but with_bias=False; set with_bias=True or remove bias")
     if with_bias is False and bias is not None:
         with_bias = True
 
-    # bias 처리 (+ scalar 허용)
+    # bias 처리 (+ scalar 허용)  — allocating 경로에서는 친절히 보정 허용
     tBias = None
     if with_bias:
         if bias is None:
@@ -108,6 +147,7 @@ def forward(
                 bias = bias.reshape(1, N)
             elif bias.ndim == 2:
                 bm, bn = bias.shape
+                # (1,N)|(M,1)|(M,N) 허용
                 if not ((bm == 1 and bn == N) or (bm == M and bn == 1) or (bm == M and bn == N)):
                     raise ValueError(f"unsupported bias shape {bias.shape}; expected (1,N)|(M,1)|(M,N)")
             else:
@@ -116,14 +156,14 @@ def forward(
             raise TypeError("bias must be scalar or CuPy ndarray")
         tBias = as_tensor_2d(bias)
 
-    # 출력 Y
+    # out 준비
     if out is None:
         out = cp.empty((M, N), dtype=cp.float32)
     elif out.shape != (M, N) or out.dtype != cp.float32:
         raise ValueError(f"out must be float32[{M},{N}]")
 
     # act='none'이면 Z==Y alias 가능
-    act_is_none = (act or "none").lower() == "none"
+    act_is_none = (act or "none").strip().lower() in ("none",)
 
     # Z 저장 버퍼
     if save_z or return_z:
@@ -143,26 +183,40 @@ def forward(
 
     stream_ptr = get_stream_ptr(stream)
 
-    # C++ 바인딩 시그니처:
-    # forward_ex(A,B,Bias,Y, trans_a,trans_b, act, with_bias, leaky_slope, save_z, Z_saved, stream)
-    g.forward_ex(
-        tA, tB, tBias, tY,
-        False, False,              # trans_a, trans_b
-        act, bool(with_bias), float(leaky_slope),
-        bool(save_z or return_z),  # save_z
-        tZ,                        # Z_saved
-        to_voidp_capsule(stream_ptr),
-    )
+    # ---- 호출: attrs 경로가 있으면 우선 사용, 없으면 구버전 시그니처로 폴백 ----
+    if _has("forward_ex_attrs"):
+        attrs = _mk_attrs(act, with_bias, leaky_slope)
+        # 바인딩은 Z_saved가 주어지면 내부에서 save_z를 암시적으로 활성화
+        # (가능하면 attrs.save_z도 맞춰 주자 — 없는 구현일 수도 있으니 try/except)
+        try:
+            attrs.save_z = bool(save_z or return_z)
+        except Exception:
+            pass
+        g.forward_ex_attrs(
+            tA, tB, tBias, tY,
+            attrs,
+            tZ,
+            to_voidp_capsule(stream_ptr),
+        )
+    else:
+        # 구버전: 문자열 act/스칼라 인자 기반
+        g.forward_ex(
+            tA, tB, tBias, tY,
+            False, False,                         # trans_a, trans_b
+            act, bool(with_bias), float(leaky_slope),
+            bool(save_z or return_z),             # save_z
+            tZ,                                   # Z_saved
+            to_voidp_capsule(stream_ptr),
+        )
 
     if return_z or save_z:
         return out, z_out  # (Y, Z)
     return out
 
 
-# ------------------------------------------------------------
-# Backward: fused GEMM(+bias+activation)
-#   - gBias는 반드시 "PerN" 축으로: shape=(1, N)
-# ------------------------------------------------------------
+# ============================================================
+# Backward (allocating)
+# ============================================================
 def backward(
     A: cp.ndarray,
     B: cp.ndarray,
@@ -214,7 +268,6 @@ def backward(
     gA_arr = empty_like_2d(A) if want_gA else None
     gB_arr = empty_like_2d(B) if want_gB else None
     gC_arr = empty_like_2d(Z) if (C is not None) else None
-
     # ✅ PerN 보장: (1, N)
     gBias_arr = empty_2d(1, N) if (want_gBias and with_bias) else None
 
@@ -225,20 +278,27 @@ def backward(
 
     stream_ptr = get_stream_ptr(stream)
 
-    # C++ 바인딩 시그니처:
-    # backward_ex(A,B,C,gY,Z, gA,gB,gC,gBias, trans_a,trans_b, act, with_bias, leaky_slope, stream)
-    g.backward_ex(
-        tA, tB, tC, tgY, tZ,
-        t_gA, t_gB, t_gC, t_gBias,
-        False, False,
-        act, bool(with_bias), float(leaky_slope),
-        to_voidp_capsule(stream_ptr),
-    )
+    # ---- 호출: attrs 경로가 있으면 우선 사용, 없으면 구버전 시그니처로 폴백 ----
+    if _has("backward_ex_attrs"):
+        attrs = _mk_attrs(act, with_bias, leaky_slope)
+        g.backward_ex_attrs(
+            tA, tB, tC, tgY, tZ,
+            t_gA, t_gB, t_gC, t_gBias,
+            attrs,
+            to_voidp_capsule(stream_ptr),
+        )
+    else:
+        g.backward_ex(
+            tA, tB, tC, tgY, tZ,
+            t_gA, t_gB, t_gC, t_gBias,
+            False, False,
+            act, bool(with_bias), float(leaky_slope),
+            to_voidp_capsule(stream_ptr),
+        )
 
     if warn_mismatch and gBias_arr is not None:
         if gBias_arr.shape != (1, N):
-            print(f"[warn] gBias shape is {gBias_arr.shape}, expected (1,{N}). "
-                  f"Ensure PerN bias grad (length N).")
+            print(f"[warn] gBias shape is {gBias_arr.shape}, expected (1,{N}). Ensure PerN bias grad (length N).")
         if not cp.isfinite(gBias_arr).all():
             print("[warn] gBias contains non-finite values.")
 
@@ -250,13 +310,15 @@ def backward(
     return out
 
 
-# --- capture-safe forward (no allocations) ---
+# ============================================================
+# Forward (capture-safe, NO allocations)
+# ============================================================
 def forward_into(
     A: cp.ndarray,
     B: cp.ndarray,
     *,
     out: cp.ndarray,                   # (M,N) preallocated
-    bias: Optional[cp.ndarray] = None,
+    bias: Optional[cp.ndarray] = None, # ★ capture-safe: PerN (1,N)만 허용
     act: str = "none",
     with_bias: bool = False,
     leaky_slope: float = 0.01,
@@ -270,43 +332,30 @@ def forward_into(
         raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
 
     # --- STRICT no-allocation path ---
-    if out is None or out.dtype != cp.float32 or out.shape != (M, N):
-        raise ValueError(f"[capture] out must be preallocated float32[{M},{N}]")
-    if not (A.flags.c_contiguous and B.flags.c_contiguous and out.flags.c_contiguous):
-        raise ValueError("[capture] inputs/outputs must be C-contiguous")
+    if out is None or out.dtype != cp.float32 or out.shape != (M, N) or not out.flags.c_contiguous:
+        raise ValueError(f"[capture] out must be C-contiguous float32[{M},{N}] (use cp.ascontiguousarray before capture)")
+    if not (A.flags.c_contiguous and B.flags.c_contiguous):
+        raise ValueError("[capture] inputs must be C-contiguous; use cp.ascontiguousarray before capture")
+
+    if bias is not None and with_bias is False:
+        raise ValueError("[capture] bias provided but with_bias=False; set with_bias=True or remove bias")
 
     tBias = None
     if with_bias:
         if bias is None:
             raise ValueError("[capture] with_bias=True but bias is None")
-        if cp.isscalar(bias):
-            bias = cp.asarray(bias, dtype=cp.float32).reshape(1, 1)
-        elif isinstance(bias, cp.ndarray):
-            if bias.dtype != cp.float32:
-                raise ValueError("[capture] bias must be float32 (no astype during capture)")
-            if bias.ndim == 1:
-                if bias.size != N:
-                    raise ValueError(f"[capture] bias length must be N={N}")
-                bias = bias.reshape(1, N)
-            elif bias.ndim == 2:
-                bm, bn = bias.shape
-                if not ((bm == 1 and bn == N) or (bm == M and bn == 1) or (bm == M and bn == N)):
-                    raise ValueError(f"[capture] unsupported bias shape {bias.shape}")
-            else:
-                raise ValueError(f"[capture] unsupported bias ndim={bias.ndim}")
-        else:
-            raise TypeError("[capture] bias must be scalar or CuPy ndarray")
+        # ★ capture-safe: PerN (1,N)만 허용 (브로드캐스트/astype/reshape 없음)
+        if not (isinstance(bias, cp.ndarray) and bias.dtype == cp.float32 and bias.ndim == 2 and bias.shape == (1, N) and bias.flags.c_contiguous):
+            raise ValueError("[capture] bias must be C-contiguous float32[1,N] (PerN) in capture-safe path")
         tBias = as_tensor_2d(bias)
 
-    # act='none'이면 Z==Y alias 가능
-    act_is_none = (act or "none").lower() == "none"
+    # act='none'이면 Z==Y alias 가능 (호출자가 동일 버퍼를 넘겨도 OK)
+    act_is_none = (act or "none").strip().lower() in ("none",)
 
     if save_z:
-        if z_out is None or z_out.dtype != cp.float32 or z_out.shape != (M, N):
-            raise ValueError(f"[capture] z_out must be preallocated float32[{M},{N}] when save_z=True")
-        if not z_out.flags.c_contiguous:
-            raise ValueError("[capture] z_out must be C-contiguous")
-        # alias는 호출자가 직접 동일 버퍼를 넘기는 방식으로 사용 가능 (out is z_out)
+        if z_out is None or z_out.dtype != cp.float32 or z_out.shape != (M, N) or not z_out.flags.c_contiguous:
+            raise ValueError(f"[capture] z_out must be C-contiguous float32[{M},{N}] when save_z=True")
+        # alias는 호출자가 동일 버퍼(out is z_out)로 넘기는 방식으로 사용 가능
     else:
         if z_out is not None:
             raise ValueError("[capture] z_out must be None when save_z=False")
@@ -315,21 +364,36 @@ def forward_into(
     tB = as_tensor_2d(B)
     tY = as_tensor_2d(out)
     tZ = as_tensor_2d(z_out) if z_out is not None else (tY if (save_z and act_is_none) else None)
-
     stream_ptr = get_stream_ptr(stream)
 
-    g.forward_ex(
-        tA, tB, tBias, tY,
-        False, False,
-        act, bool(with_bias), float(leaky_slope),
-        bool(save_z),
-        tZ,
-        to_voidp_capsule(stream_ptr),
-    )
-    # return 없음 (in-place into out/z_out)
+    # attrs 우선, 폴백 허용
+    if _has("forward_ex_attrs"):
+        attrs = _mk_attrs(act, with_bias, leaky_slope)
+        try:
+            attrs.save_z = bool(save_z)
+        except Exception:
+            pass
+        g.forward_ex_attrs(
+            tA, tB, tBias, tY,
+            attrs,
+            tZ,
+            to_voidp_capsule(stream_ptr),
+        )
+    else:
+        g.forward_ex(
+            tA, tB, tBias, tY,
+            False, False,
+            act, bool(with_bias), float(leaky_slope),
+            bool(save_z),
+            tZ,
+            to_voidp_capsule(stream_ptr),
+        )
+    # return 없음 (in-place)
 
 
-# --- capture-safe backward (NO allocations) ---
+# ============================================================
+# Backward (capture-safe, NO allocations)
+# ============================================================
 def backward_into(
     A: cp.ndarray,
     B: cp.ndarray,
@@ -345,47 +409,52 @@ def backward_into(
     gC_out: Optional[cp.ndarray] = None,
     gBias_out: Optional[cp.ndarray] = None,
     stream: Optional[int] = None,
-    # ★ 새 인자: 캡쳐-세이프용 워크스페이스 (필수: dZ, 옵션: lt_ws)
-    work_dZ: Optional[cp.ndarray] = None,           # shape=(M,N) or flat M*N
-    lt_workspace: Optional[cp.ndarray] = None,      # dtype=uint8 권장, e.g. 8MB
+    # ★ 캡쳐-세이프용 워크스페이스 (필수: dZ, 옵션: lt_ws)
+    work_dZ: Optional[cp.ndarray] = None,           # shape=(M,N) contiguous float32
+    lt_workspace: Optional[cp.ndarray] = None,      # dtype=uint8 contiguous (e.g., 8MB)
 ) -> None:
     M, K = assert_f32_2d(A, "A")
     K2, N = assert_f32_2d(B, "B")
-    if K != K2: raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
+    if K != K2:
+        raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
     Mg, Ng = assert_f32_2d(gY, "gY")
     Mz, Nz = assert_f32_2d(Z, "Z")
-    if (Mg,Ng)!=(M,N) or (Mz,Nz)!=(M,N):
-        raise ValueError(f"[capture] gY/Z must be (M={M},N={N})")
+    if (Mg, Ng) != (M, N) or (Mz, Nz) != (M, N):
+        raise ValueError(f"[capture] gY/Z must be (M={M}, N={N})")
 
     # 출력 버퍼 모양 검증(모두 contiguous)
     def _chk(arr, shape, name):
-        if arr is None: return
-        if arr.dtype != cp.float32 or tuple(arr.shape)!=shape or not arr.flags.c_contiguous:
-            raise ValueError(f"[capture] {name} must be contiguous float32{shape}")
-    _chk(gA_out, (M,K), "gA_out")
-    _chk(gB_out, (K,N), "gB_out")
+        if arr is None:
+            return
+        if arr.dtype != cp.float32 or tuple(arr.shape) != shape or not arr.flags.c_contiguous:
+            raise ValueError(f"[capture] {name} must be C-contiguous float32{shape}")
+    _chk(gA_out, (M, K), "gA_out")
+    _chk(gB_out, (K, N), "gB_out")
+
     if C is None:
         if gC_out is not None:
             raise ValueError("[capture] gC_out must be None when C is None")
     else:
-        Mc,Nc = assert_f32_2d(C, "C")
-        if (Mc,Nc)!=(M,N): raise ValueError(f"[capture] C must be (M={M},N={N})")
-        _chk(gC_out, (M,N), "gC_out")
+        Mc, Nc = assert_f32_2d(C, "C")
+        if (Mc, Nc) != (M, N):
+            raise ValueError(f"[capture] C must be (M={M}, N={N})")
+        _chk(gC_out, (M, N), "gC_out")
+
     if with_bias:
-        _chk(gBias_out, (1,N), "gBias_out")
+        _chk(gBias_out, (1, N), "gBias_out")
     else:
         if gBias_out is not None:
             raise ValueError("[capture] gBias_out must be None when with_bias=False")
 
     # ★ 워크스페이스 필수: dZ
-    if work_dZ is None or work_dZ.dtype != cp.float32 or work_dZ.size != M*N or not work_dZ.flags.c_contiguous:
-        raise ValueError("[capture] work_dZ must be contiguous float32 with size M*N")
+    if work_dZ is None or work_dZ.dtype != cp.float32 or work_dZ.size != M * N or not work_dZ.flags.c_contiguous:
+        raise ValueError("[capture] work_dZ must be C-contiguous float32 with size M*N")
     dZ_ptr = int(work_dZ.data.ptr)
 
     # 옵션: Lt workspace
     if lt_workspace is not None:
         if lt_workspace.dtype != cp.uint8 or not lt_workspace.flags.c_contiguous:
-            raise ValueError("[capture] lt_workspace must be contiguous uint8")
+            raise ValueError("[capture] lt_workspace must be C-contiguous uint8")
         lt_ptr   = int(lt_workspace.data.ptr)
         lt_bytes = int(lt_workspace.nbytes)
     else:
@@ -405,7 +474,12 @@ def backward_into(
     attrs = _mk_attrs(act, with_bias, leaky_slope)
     stream_ptr = get_stream_ptr(stream)
 
-    # ★ 캡쳐-세이프 진입점
+    if not _has("backward_into"):
+        # 백엔드가 아직 capture-safe용 backward_into를 제공하지 않는다면,
+        # 이 경로는 사용할 수 없음. (할당 없는 경로 요구사항 때문에)
+        raise RuntimeError("g.backward_into entrypoint not found in bindings (capture-safe BWD unavailable)")
+
+    # ★ 캡쳐-세이프 진입점 (C++ 바인딩 시그니처에 맞춤)
     g.backward_into(
         tA, tB, tC, tgY, tZ,
         t_gA, t_gB, t_gC, t_gBias,

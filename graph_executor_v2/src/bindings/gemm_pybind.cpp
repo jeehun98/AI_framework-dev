@@ -453,6 +453,48 @@ PYBIND11_MODULE(_ops_gemm, m) {
         "Capture-safe GEMM backward that uses preallocated workspaces (no malloc during capture)."
     );
 
+    // === 파일 하단 m.def 들 아래쪽에 “별칭”만 추가 ===
+
+// attrs 버전과 동일하게 연결
+m.def(
+    "forward_ex_attrs",
+    [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* Bias,
+       ai::Tensor& Y, ai::GemmAttrs attrs, ai::Tensor* Z_saved, void* stream) {
+        py::gil_scoped_release release;
+        if (Z_saved && Z_saved->data && !attrs.save_z) attrs.save_z = true;
+        if (attrs.save_z && (!Z_saved || !Z_saved->data))
+            throw std::invalid_argument("[_ops_gemm::forward_ex_attrs] save_z=True requires Z_saved");
+        auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+        raise_if_not_ok(st, "forward_ex_attrs");
+    },
+    "A"_a, "B"_a, "bias"_a = nullptr, "Y"_a,
+    "attrs"_a, "Z_saved"_a = nullptr, "stream"_a = nullptr,
+    "Alias to `forward` that accepts GemmAttrs (kept for Python compatibility)."
+);
+
+m.def(
+    "backward_ex_attrs",
+    [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* C,
+       const ai::Tensor& gY, const ai::Tensor& Z,
+       ai::Tensor* gA, ai::Tensor* gB, ai::Tensor* gC, ai::Tensor* gBias,
+       const ai::GemmAttrs& attrs, void* stream) {
+        py::gil_scoped_release release;
+        const int64_t M = A.desc.shape.at(0);
+        const int64_t N = B.desc.shape.at(1);
+        if (gBias && gBias->data) {
+            const auto& s = gBias->desc.shape;
+            if ((s.size()==1 && s[0]==M) || (s.size()==2 && s[0]==M && s[1]==1))
+                throw std::invalid_argument("[_ops_gemm::backward_ex_attrs] gBias must be PerN (1,N) or (N,)");
+        }
+        auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
+        raise_if_not_ok(st, "backward_ex_attrs");
+    },
+    "A"_a, "B"_a, "C"_a = nullptr, "gY"_a, "Z"_a,
+    "gA"_a = nullptr, "gB"_a = nullptr, "gC"_a = nullptr, "gBias"_a = nullptr,
+    "attrs"_a, "stream"_a = nullptr,
+    "Alias to `backward` that accepts GemmAttrs (kept for Python compatibility)."
+);
+
     // 메타
     m.attr("__package__") = "graph_executor_v2.ops";
     m.attr("__all__") = py::make_tuple(
@@ -463,6 +505,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
         "forward", "backward",
         "forward_ex", "backward_ex",
         "forward_numpy", "backward_numpy",
-        "backward_into" // ★ 공개 API에 포함
+        "backward_into",
+        "forward_ex_attrs", "backward_ex_attrs" // ★ 공개 API에 포함
     );
 }
