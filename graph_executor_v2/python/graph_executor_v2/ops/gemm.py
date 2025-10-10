@@ -126,10 +126,15 @@ def forward(
         raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
 
     # with_bias 추론/검증
+    # allocating path (forward): 친절 모드
+    auto_bias = (bias is not None)
+    if auto_bias and not with_bias:
+        with_bias = True  # 자동 승격 허용
+
+    # capture-safe path(forward_into): 엄격 모드 유지(현재 코드 OK)
     if bias is not None and with_bias is False:
-        raise ValueError("bias is provided but with_bias=False; set with_bias=True or remove bias")
-    if with_bias is False and bias is not None:
-        with_bias = True
+        raise ValueError("[capture] bias provided but with_bias=False ...")
+
 
     # bias 처리 (+ scalar 허용)  — allocating 경로에서는 친절히 보정 허용
     tBias = None
