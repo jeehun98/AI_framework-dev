@@ -52,8 +52,10 @@ def main():
 
     model = make_model(M,D,H,C)
     opt = AdamWOpt([], lr=1e-3, wd=1e-4)  # 파라미터는 trainer.compile에서 rebind
-    if hasattr(opt, "ensure_initialized"): opt.ensure_initialized()
-    if hasattr(opt, "set_grad_scale"):     opt.set_grad_scale(gs)
+    if hasattr(opt, "ensure_initialized"): 
+        opt.ensure_initialized()
+    if hasattr(opt, "set_grad_scale"):     
+        opt.set_grad_scale(gs)
 
     trainer = CudaGraphTrainer(model, loss, opt)
     trainer.compile((M, D))

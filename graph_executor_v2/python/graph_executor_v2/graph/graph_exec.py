@@ -4,6 +4,8 @@ from typing import Any, Optional
 import cupy as cp
 from .capture_plan import CapturePlan
 
+# 한 스텝 학습(fwd→loss→bwd→opt) 을 CUDA Graph에 녹화하고 실행자를 반환.
+
 class GraphExecLike:
     def __init__(self, launch_fn, stream: cp.cuda.Stream):
         self._launch = launch_fn
@@ -12,12 +14,14 @@ class GraphExecLike:
         with self._stream:
             self._launch()
 
+# 누적 방지를 위해 gA/gW/gB를 0으로 초기화.
 def _zero_bwd_buffers(plan: CapturePlan):
     for p in plan.per_layer:
         if p.gA is not None: p.gA.fill(0)
         if p.gW is not None: p.gW.fill(0)
         if p.gB is not None: p.gB.fill(0)
 
+# X에서 시작해 각 레이어의 forward_into 호출.
 def _run_fwd(model, plan: CapturePlan, X, stream_ptr: Optional[int]):
     """고정 입력 X에서 시작해 레이어별 forward_into 실행."""
     cur = X
@@ -28,6 +32,7 @@ def _run_fwd(model, plan: CapturePlan, X, stream_ptr: Optional[int]):
         cur = ybuf
     return cur
 
+# g_in에서 역순으로 backward_into 호출.
 def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
     for ridx, lyr in enumerate(reversed(model.layers)):
         i = len(model.layers) - 1 - ridx
@@ -48,6 +53,16 @@ def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
             )
         g_in = per.gA
     return g_in
+
+# model — forward_into/backward_into 지원 모델
+# loss_fn — forward(logits, y, return_scalar=False) 지원
+# optimizer_step_fn — 옵티마이저 스텝 콜러블(예: opt.step_into)
+# plan: CapturePlan
+# X_buf, y_buf — 고정 입력/라벨 버퍼(그래프 내에서 참조)
+# stream — 캡처/실행 스트림(없으면 내부 생성)
+
+# 1. 워밍업 1회: FWD → LOSS → BWD(zero) → OPT 로 커널 파이프/스트림 상태 고정.
+# 2. 지원 시 CUDA Graph 캡처(cp.cuda.graph.capture_stream)로 동일 시퀀스 녹화.
 
 def record_step_graph(
     model,
