@@ -246,6 +246,101 @@ if Conv2D is not None:
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
 
+# 3) Pool2D (layers.pool2d.Pool2D)
+try:
+    from graph_executor_v2.layers.pool2d import Pool2D as _Pool2DLayer  # type: ignore
+except Exception:
+    _Pool2DLayer = None  # type: ignore
+
+if _Pool2DLayer is not None:
+    @register_planner(_Pool2DLayer)  # type: ignore[misc]
+    def _plan_pool2d(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
+        """
+        Pool2D 플래너:
+          - forward: y[(N,C,Ho,Wo)], z=None
+          - backward: gA[(N,C,H,W)], no gW/gB
+          - work: MaxPool일 때 indices(int32, NCHW) 버퍼를 미리 할당해 전달
+        """
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+        if len(cur) != 4:
+            raise RuntimeError(f"{lname}: Pool2D expects 4D input (N,C,H,W), got {cur}")
+        N, C, H, W = map(int, cur)
+        kH, kW = map(int, getattr(lyr, "kernel_size", (2, 2)))
+        stride   = getattr(lyr, "stride", (2, 2))
+        padding  = getattr(lyr, "padding", (0, 0))
+        dilation = getattr(lyr, "dilation", (1, 1))
+        ceil_mode = bool(getattr(lyr, "ceil_mode", False))
+        mode      = str(getattr(lyr, "mode", "max")).lower()
+
+        # out shape
+        def _out_hw(H: int, W: int, kH: int, kW: int,
+                    s: Tuple[int,int], p: Tuple[int,int], d: Tuple[int,int], ceil: bool):
+            sH, sW = s; pH, pW = p; dH, dW = d
+            effKH = (kH - 1) * dH + 1
+            effKW = (kW - 1) * dW + 1
+            aH = H + 2 * pH - effKH
+            aW = W + 2 * pW - effKW
+            if ceil:
+                Ho = (aH >= 0) and ((aH + sH - 1)//sH + 1) or 0
+                Wo = (aW >= 0) and ((aW + sW - 1)//sW + 1) or 0
+            else:
+                Ho = (aH >= 0) and (aH//sH + 1) or 0
+                Wo = (aW >= 0) and (aW//sW + 1) or 0
+            return max(0, int(Ho)), max(0, int(Wo))
+
+        Ho, Wo = _out_hw(H, W, kH, kW, stride, padding, dilation, ceil_mode)
+        out_shp = (N, C, Ho, Wo)
+
+        # forward buffer
+        y = cp.empty(out_shp, dtype=cp.float32)
+        z = None  # pre-activation 개념 없음
+
+        # backward buffer (no params)
+        gA = cp.empty((N, C, H, W), dtype=cp.float32)
+        gW = None
+        gB = None
+
+        # work (MaxPool → indices)
+        work = None
+        if mode == "max":
+            from graph_executor_v2.layers.pool2d import _Pool2DWork  # local class
+            work = _Pool2DWork()
+            work.indices = cp.empty((N, C, Ho, Wo), dtype=cp.int32)  # 캡처 중 forward에서 채워짐
+
+        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=work), out_shp
+
+# 4) Activation (layers.activation_layer.ActivationLayer, CuPy-only)
+try:
+    from graph_executor_v2.layers.activation_layer import ActivationLayer  # type: ignore
+except Exception:
+    ActivationLayer = None  # type: ignore
+
+if ActivationLayer is not None:
+    @register_planner(ActivationLayer)  # type: ignore[misc]
+    def _plan_activation(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
+        """
+        Activation 플래너 (ReLU/LeakyReLU/GELU/Sigmoid/Tanh/SiLU/ELU/Softplus):
+          - shape 보존: out_shape == cur
+          - forward: y[out_shape], z=None (y_saved가 필요하면 레이어 내부 save_y=True로 out을 참조 저장)
+          - backward: gA[cur], gW/gB/WS 없음
+        """
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+
+        # 출력 shape = 입력 shape
+        out_shp = tuple(map(int, cur))
+
+        # forward / bac kward 버퍼 (FP32 고정 — gemm/conv와 일관)
+        y  = cp.empty(out_shp, dtype=cp.float32)
+        z  = None  # pre-activation 개념 없음; save_y는 레이어 내부에서 out 참조 저장
+        gA = cp.empty(cur, dtype=cp.float32)
+        gW = None
+        gB = None
+        ws = None
+
+        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
+
+
+
 # ============================================================
 # Public API
 # ============================================================

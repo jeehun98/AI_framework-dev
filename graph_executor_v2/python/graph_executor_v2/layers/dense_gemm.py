@@ -4,9 +4,38 @@ from typing import Optional, Tuple, List
 import cupy as cp
 
 from .base import Layer
-from .activations import apply_activation_grad
+
 from graph_executor_v2.ops import gemm as gemm_ops
 
+try:
+    from .activations import apply_activation_grad  # optional
+except Exception:
+    def apply_activation_grad(
+        grad_output: cp.ndarray,
+        z: cp.ndarray,
+        act: Optional[str] = None,
+        leaky_slope: float = 0.01,
+    ) -> cp.ndarray:
+        if act is None or act == "none":
+            return grad_output
+        a = act.lower()
+        if a == "relu":
+            return grad_output * (z > 0)
+        if a in ("leakyrelu", "leaky_relu", "lrelu"):
+            return grad_output * cp.where(z > 0, 1.0, leaky_slope)
+        if a == "sigmoid":
+            sig = 1.0 / (1.0 + cp.exp(-z))
+            return grad_output * sig * (1.0 - sig)
+        if a == "tanh":
+            t = cp.tanh(z)
+            return grad_output * (1.0 - t * t)
+        if a == "gelu":
+            c = cp.sqrt(2.0 / cp.pi, dtype=cp.float32)
+            t = cp.tanh(c * (z + 0.044715 * z * z * z))
+            dt = (1.0 - t * t) * c * (1.0 + 3.0 * 0.044715 * z * z)
+            gelu_grad = 0.5 * (1.0 + t) + 0.5 * z * dt
+            return grad_output * gelu_grad
+        raise ValueError(f"Unknown activation grad: {act}")
 
 class Dense(Layer):
     """
