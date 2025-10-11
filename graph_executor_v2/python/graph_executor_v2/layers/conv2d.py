@@ -23,15 +23,15 @@ class Conv2D(Layer):
     """
     캡처-호환 Conv2D 레이어 (fused bias/activation).
     - 파라미터: W(Cout,Cin,KH,KW), (opt) b(Cout,)
-    - 활성화: ops.conv2d에서 제공하는 fused act 문자열("none","relu","gelu","sigmoid","tanh","leakyrelu")
-    - capture 경로: forward_into / backward_into 지원 (workspace 외부 주입)
+    - 활성화: "none","relu","gelu","sigmoid","tanh","leakyrelu"
+    - capture 경로: forward_into / backward_into (workspace 외부 주입)
 
     Args:
       out_channels, kernel_size
       stride=(1,1), padding=(0,0), dilation=(1,1), groups=1
       activation="none", with_bias=True
       initializer=("xavier"|"kaiming"|"zeros"), bias_init="zeros"
-      save_z_in_fwd=True  # 학습 시 pre-activation을 저장(역전파용, 비캡처 경로 대비)
+      save_z_in_fwd=True  # 학습 시 pre-activation을 저장(옵션 A 계약 준수)
     """
     def __init__(
         self,
@@ -154,30 +154,68 @@ class Conv2D(Layer):
 
     # --------- runtime (eager) ----------
     def call(self, X: cp.ndarray) -> cp.ndarray:
+        """
+        옵션 A:
+          - act=='none'이면 Z는 Y와 alias (옵스가 내부 처리) -> _last_Z = _last_Y 로 기억
+          - act!='none'이고 training & save_z_in_fwd=True 이면 Z 버퍼를 우리가 prealloc 하여 전달
+        """
         assert self.W is not None
+
+        # 출력 공간/필요 Z 여부 판단
+        N, Cin, H, W = map(int, X.shape)
+        KH, KW = self.kernel_size
+        H_out, W_out = _out_hw(H, W, KH, KW, self.stride, self.padding, self.dilation)
+        need_save_z = bool(self.training and (self.save_z_in_fwd or self.activation == "none"))
+        act_is_none = (self.activation == "none")
+
+        Z_buf: Optional[cp.ndarray] = None
+        if need_save_z and not act_is_none:
+            # 역전파용 Z를 우리가 소유해야 하므로 prealloc
+            Z_buf = cp.empty((N, self.out_channels, H_out, W_out), dtype=cp.float32)
+
         Y = convops.forward(
             X, self.W, self.b,
             stride=self.stride, padding=self.padding, dilation=self.dilation,
             groups=self.groups, with_bias=self.with_bias,
             act=self.activation, leaky_slope=0.01,
-            save_z=self.training and self.save_z_in_fwd,
+            save_z=need_save_z,
+            Z_saved=Z_buf,          # act==none이면 None 전달 -> 내부 alias
         )
+
         if self.training:
             self._last_X = X
             self._last_Y = Y
-            # 비캡처 경로에선 별도 Z 버퍼를 ops에서 외부로 받지 않으므로,
-            # 활성화가 'none'이면 out을 Z로 alias 하여 사용.
-            self._last_Z = Y if self.activation == "none" else self._last_Z
+            if act_is_none:
+                # 옵션 A: Z==Y alias
+                self._last_Z = Y
+            else:
+                # 우리가 prealloc한 Z_buf가 채워져 있어야 함
+                if need_save_z:
+                    self._last_Z = Z_buf
+                else:
+                    self._last_Z = None  # 사용자가 save_z_in_fwd=False면 역전파 시 에러 유도
+
         return Y
 
     def backward(self, gY: cp.ndarray) -> cp.ndarray:
+        """
+        비캡처 경로: 옵션 A에 따라 Z가 항상 존재해야 학습이 안전.
+        - act=='none'이면 Z==Y
+        - act!='none'이면 call()에서 Z_buf를 prealloc/전달해야 함
+        """
         assert self.W is not None and self._last_X is not None, "call() 이후 backward() 호출"
-        # 비캡처: ops가 내부에서 WS를 즉시 할당
-        Z_needed = self._last_Y if (self.activation == "none") else self._last_Z
-        if Z_needed is None:
-            # save_z 옵션 없이 비캡처를 쓴다면 활성화 미분을 수동 구현해야 하나,
-            # 간이 버전으로 활성화 없음으로 간주
+
+        act_is_none = (self.activation == "none")
+        if act_is_none:
             Z_needed = self._last_Y
+        else:
+            if self._last_Z is None:
+                raise RuntimeError(
+                    "[Conv2D.backward] activation != 'none' 인데 Z가 저장되지 않았습니다. "
+                    "Conv2D(save_z_in_fwd=True)로 호출하거나, capture 경로를 사용하세요."
+                )
+            Z_needed = self._last_Z
+
         outs = convops.backward(
             self._last_X, self.W, gY, Z_needed,
             stride=self.stride, padding=self.padding, dilation=self.dilation,
@@ -199,13 +237,54 @@ class Conv2D(Layer):
         stream: Optional[int] = None,
         work: Optional[convops.Conv2DWorkspaces] = None,
     ) -> None:
-        """
-        캡처 안전: 모든 출력/워크스페이스는 외부에서 prealloc.
-        - out: (N,Cout,H_out,W_out) 미리 할당
-        - z_out: pre-activation 버퍼(활성화/역전파용). act='none'이면 out과 alias 가능.
-        - work: Conv2DWorkspaces
-        """
         assert self.W is not None
+
+        act_is_none = (self.activation == "none")
+        if (not act_is_none) and (z_out is None):
+            raise ValueError("[Conv2D.forward_into] activation != 'none' 에서는 z_out 버퍼가 필요합니다.")
+
+        # --- 공통 shape 계산 ---
+        N, Cin, H, W = map(int, X.shape)
+        KH, KW = self.kernel_size
+        H_out, W_out = _out_hw(H, W, KH, KW, self.stride, self.padding, self.dilation)
+        HWo = H_out * W_out
+        Cout = int(self.out_channels)
+        groups = int(self.groups)
+        K = (Cin // groups) * KH * KW
+
+        # --- 옵션 A: act==none 이면 내부적으로 save_z가 강제된다고 보고, WS에도 Z_rows 필요 ---
+        effective_save_z = bool(act_is_none or (z_out is not None))
+
+        # --- work 보강: 존재하든 말든 필요한 버퍼가 없으면 즉시 채움 ---
+        if work is None:
+            work = convops.Conv2DWorkspaces()
+
+        def _need_set(attr, shape):
+            arr = getattr(work, attr, None)
+            return (arr is None) or (arr.dtype != cp.float32) or (tuple(arr.shape) != tuple(shape))
+
+        # forward WS
+        if _need_set("dCol",  (HWo, K)):     work.dCol   = cp.empty((HWo, K),    dtype=cp.float32)
+        if _need_set("W_KC",  (K,   Cout)):  work.W_KC   = cp.empty((K,   Cout), dtype=cp.float32)
+        if _need_set("Y_tmp", (HWo, Cout)):  work.Y_tmp  = cp.empty((HWo, Cout), dtype=cp.float32)
+        if effective_save_z:
+            if _need_set("Z_rows", (HWo, Cout)):
+                work.Z_rows = cp.empty((HWo, Cout), dtype=cp.float32)
+        else:
+            # save_z=False 경로에서는 Z_rows가 None이어야 함
+            if getattr(work, "Z_rows", None) is not None:
+                work.Z_rows = None
+
+        # backward 공통/옵션은 여기서 강제할 필요는 없지만, 미리 만들어두면 검증 패스가 깔끔
+        if _need_set("dCol_b",  (HWo, K)):     work.dCol_b  = cp.empty((HWo, K),    dtype=cp.float32)
+        if _need_set("dTmp",    (max(Cout*K, HWo*K),)): work.dTmp = cp.empty((max(Cout*K, HWo*K),), dtype=cp.float32)
+        if _need_set("gy_rows", (Cout, HWo)):  work.gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)
+        if _need_set("Z_rows_b",(Cout, HWo)):  work.Z_rows_b= cp.empty((Cout, HWo), dtype=cp.float32)
+        if _need_set("W_CK",    (Cout, K)):    work.W_CK    = cp.empty((Cout, K),   dtype=cp.float32)
+        if _need_set("dY_HT",   (HWo,  Cout)): work.dY_HT   = cp.empty((HWo,  Cout),dtype=cp.float32)
+        if _need_set("dWpack",  (Cout, K)):    work.dWpack  = cp.empty((Cout, K),   dtype=cp.float32)
+
+        # --- 호출 ---
         convops.forward_into(
             X, self.W,
             out=out,
@@ -213,42 +292,87 @@ class Conv2D(Layer):
             stride=self.stride, padding=self.padding, dilation=self.dilation,
             groups=self.groups, with_bias=self.with_bias,
             act=self.activation, leaky_slope=0.01,
-            save_z=(z_out is not None),
+            save_z=(z_out is not None),  # act==none이면 내부 alias
             Z_saved=z_out,
             stream=stream,
             work=work
         )
-        # ✅ 역전파용 캡처 캐시 저장 (z_out이 없으면 out을 Z로 alias)
+
+        # 역전파용 캐시
         self._cap_X = X
-        self._cap_Z = z_out if z_out is not None else out
+        self._cap_Z = (out if act_is_none else z_out)
 
     def backward_into(
         self, gY: cp.ndarray, *,
         gA_out: cp.ndarray,
         gW_out: Optional[cp.ndarray] = None,
         gB_out: Optional[cp.ndarray] = None,
-        work_dZ: Optional[Any] = None,          # Dense 인터페이스와 시그니처 호환(미사용)
-        lt_workspace: Optional[Any] = None,     # Dense 인터페이스와 시그니처 호환(미사용)
+        work_dZ: Optional[Any] = None,
+        lt_workspace: Optional[Any] = None,
         stream: Optional[int] = None,
         work: Optional[convops.Conv2DWorkspaces] = None,
-        # (선택) 캡처 플랜에서 명시 전달 가능; 없으면 forward_into 캐시 사용
         Z_saved: Optional[cp.ndarray] = None,
         X_saved: Optional[cp.ndarray] = None,
         W_ref: Optional[cp.ndarray] = None,
     ) -> None:
-        """
-        캡처 안전: gA_out/gW_out/gB_out/WS 모두 외부에서 준비.
-        - X_saved / Z_saved 는 캡처 플랜이 관리하는 고정 버퍼를 전달하면 우선 사용
-          (없으면 forward_into에서 저장한 self._cap_X / self._cap_Z 사용)
-        """
-        # 우선순위: 명시 전달 > 캡처 캐시 > (비권장) eager 캐시
+        # 버퍼 선택
         X_use = X_saved if X_saved is not None else (self._cap_X if self._cap_X is not None else self._last_X)
-        Z_use = Z_saved if Z_saved is not None else (self._cap_Z if self._cap_Z is not None else self._last_Y)
+        Z_use = Z_saved if Z_saved is not None else (self._cap_Z if self._cap_Z is not None else self._last_Z)
         W_use = W_ref  if W_ref  is not None else self.W
-
         if X_use is None or Z_use is None or W_use is None:
             raise RuntimeError("[Conv2D.backward_into] missing saved X/Z/W buffers from capture plan")
 
+        # shapes
+        N, Cin, H, W = map(int, X_use.shape)
+        Ny, Cout, Hy, Wy = map(int, gY.shape)
+        Nz, Coz, Hz, Wz  = map(int, Z_use.shape)
+        if (Ny, Cout, Hy, Wy) != (Nz, Coz, Hz, Wz):
+            raise ValueError("[Conv2D.backward_into] gY and Z shapes must match")
+        _, CinW, KH, KW = map(int, W_use.shape)
+        if CinW != Cin or W_use.shape[0] != Cout:
+            raise ValueError("[Conv2D.backward_into] W incompatible with X/gY")
+
+        # C-Contiguous 보정
+        if not X_use.flags.c_contiguous: X_use = cp.ascontiguousarray(X_use)
+        if not Z_use.flags.c_contiguous: Z_use = cp.ascontiguousarray(Z_use)
+        if not W_use.flags.c_contiguous: W_use = cp.ascontiguousarray(W_use)
+
+        # WS 보강 (있든 말든 부족한 것만 채움)
+        KH, KW = int(KH), int(KW)
+        groups = int(self.groups)
+        K   = (Cin // groups) * KH * KW
+        HWo = Hy * Wy
+
+        if work is None:
+            work = convops.Conv2DWorkspaces()
+
+        def _need_set(attr, shape):
+            arr = getattr(work, attr, None)
+            return (arr is None) or (arr.dtype != cp.float32) or (tuple(arr.shape) != tuple(shape))
+
+        # backward 공통 필수
+        if _need_set("dCol_b",  (HWo, K)):     work.dCol_b  = cp.empty((HWo, K),    dtype=cp.float32)
+        if _need_set("dTmp",    (max(Cout*K, HWo*K),)): work.dTmp = cp.empty((max(Cout*K, HWo*K),), dtype=cp.float32)
+        if _need_set("gy_rows", (Cout, HWo)):  work.gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)
+        if _need_set("Z_rows_b",(Cout, HWo)):  work.Z_rows_b= cp.empty((Cout, HWo), dtype=cp.float32)
+        # backward 옵션
+        if gA_out is not None:
+            if _need_set("W_CK",  (Cout, K)):    work.W_CK  = cp.empty((Cout, K),   dtype=cp.float32)
+            if _need_set("dY_HT", (HWo,  Cout)): work.dY_HT = cp.empty((HWo, Cout), dtype=cp.float32)
+        else:
+            work.W_CK = None; work.dY_HT = None
+        if gW_out is not None:
+            if _need_set("dWpack",(Cout, K)):    work.dWpack= cp.empty((Cout, K),   dtype=cp.float32)
+        else:
+            work.dWpack = None
+
+        # (forward WS는 여기서 필수는 아니지만, 일부 커널이 validate 할 수 있어 미리 채워 둠)
+        if _need_set("dCol",  (HWo, K)):     work.dCol   = cp.empty((HWo, K),    dtype=cp.float32)
+        if _need_set("W_KC",  (K,   Cout)):  work.W_KC   = cp.empty((K,   Cout), dtype=cp.float32)
+        if _need_set("Y_tmp", (HWo, Cout)):  work.Y_tmp  = cp.empty((HWo, Cout), dtype=cp.float32)
+        if _need_set("Z_rows",(HWo, Cout)):  work.Z_rows = cp.empty((HWo, Cout), dtype=cp.float32)
+
+        # 호출
         convops.backward_into(
             X_use, W_use, gY, Z_use,
             stride=self.stride, padding=self.padding, dilation=self.dilation,
@@ -257,6 +381,8 @@ class Conv2D(Layer):
             gX_out=gA_out, gW_out=gW_out, gB_out=gB_out,
             stream=stream, work=work
         )
+
+
 
     # --------- misc ----------
     def zero_grad(self):

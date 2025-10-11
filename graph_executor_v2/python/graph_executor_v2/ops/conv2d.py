@@ -107,6 +107,7 @@ def forward(
     Fused Conv2D(+bias+activation) forward (간편/비캡처 경로).
     - W는 항상 (Cout, Cin, Kh, Kw)
     - 내부에서 WS를 즉시 할당하므로 캡처용으로는 forward_into() 사용 권장.
+    - [옵션 A] act=None이면 Z를 out과 alias 하여 저장(내부 save_z 강제 on)
     """
     if (B is not None) and (with_bias is False):
         raise ValueError("B is provided but with_bias=False; set with_bias=True or pass B=None")
@@ -122,7 +123,6 @@ def forward(
     if groups < 1: raise ValueError("groups must be >= 1")
     if Cin % groups != 0:
         raise ValueError(f"Cin={Cin} must be divisible by groups={groups}")
-    # W는 전체 Cin 채널이어야 함
     if CinW != Cin:
         raise ValueError(f"W expects full Cin; got W.shape[1]={CinW} but Cin={Cin}")
     if Cout % groups != 0:
@@ -133,12 +133,22 @@ def forward(
         out = cp.empty((N, Cout, H_out, W_out), dtype=cp.float32)
 
     act_kind = _parse_act_kind(act)
+    # === 옵션 A 핵심: 내부 save_z 플래그 결정 ===
+    effective_save_z = bool(save_z or (act_kind == _act_none()))
 
     # save_z 처리 (act=None이면 Z==Y alias 가능)
-    if save_z and Z_saved is None:
-        Z_saved = out if act_kind == _act_none() else cp.empty_like(out)
-    if Z_saved is not None and tuple(Z_saved.shape) != (N, Cout, H_out, W_out):
-        raise ValueError("Z_saved shape mismatch")
+    if effective_save_z:
+        if Z_saved is None:
+            if act_kind == _act_none():
+                Z_saved = out  # alias
+            else:
+                Z_saved = cp.empty_like(out)
+        else:
+            if tuple(Z_saved.shape) != (N, Cout, H_out, W_out) or Z_saved.dtype != cp.float32:
+                raise ValueError("Z_saved shape/dtype mismatch")
+    else:
+        if Z_saved is not None:
+            raise ValueError("Z_saved must be None when save_z=False and act!=None")
 
     # bias
     if with_bias:
@@ -151,18 +161,17 @@ def forward(
     attrs = _attrs_from_args(
         stride, padding, dilation, groups,
         with_bias=with_bias, act_kind=act_kind,
-        leaky_slope=leaky_slope, save_z=save_z
+        leaky_slope=leaky_slope, save_z=effective_save_z
     )
     sptr = int(get_stream_ptr(stream))
 
     # ====== Workspaces (바인딩 명세: HWo 기준) ======
-    # per-group channel 수로 K 계산
     K   = (Cin // groups) * KH * KW
     HWo = H_out * W_out
     dCol   = cp.empty((HWo, K),     dtype=cp.float32)
     W_KC   = cp.empty((K,   Cout),  dtype=cp.float32)
     Y_tmp  = cp.empty((HWo, Cout),  dtype=cp.float32)
-    Z_rows = cp.empty((HWo, Cout),  dtype=cp.float32) if save_z else None
+    Z_rows = cp.empty((HWo, Cout),  dtype=cp.float32) if effective_save_z else None
 
     _g.forward(
         int(X.data.ptr), [N, Cin, H, W_in],
@@ -189,6 +198,7 @@ def backward(
     Fused Conv2D(+bias+activation) backward (간편/비캡처 경로).
     - W는 항상 (Cout, Cin, Kh, Kw)
     - 내부에서 WS를 즉시 할당하므로 캡처용으로는 backward_into() 사용 권장.
+    - [옵션 A] act=None인 경우 forward에서 Z_saved가 out과 alias 되도록 처리했음을 가정
     """
 
     _assert_f32_4d(X, "X"); _assert_f32_4d(W, "W"); _assert_f32_4d(gY, "gY"); _assert_f32_4d(Z, "Z")
@@ -211,10 +221,11 @@ def backward(
         raise ValueError("gY/Z shapes must match (N,Cout,H_out,W_out)")
 
     act_kind = _parse_act_kind(act)
+    # backward는 항상 Z를 요구 (옵션 A에서는 forward에서 보장)
     attrs = _attrs_from_args(
         stride, padding, dilation, groups,
         with_bias=with_bias, act_kind=act_kind,
-        leaky_slope=leaky_slope, save_z=False
+        leaky_slope=leaky_slope, save_z=False  # backward에서의 save_z flag는 의미 없음
     )
     sptr = int(get_stream_ptr(stream))
 
@@ -331,11 +342,17 @@ def forward_into(
     with_bias: bool = False,
     act: str | "_g.ActKind" = "none",
     leaky_slope: float = 0.01,
-    save_z: bool = False,
-    Z_saved: Optional[cp.ndarray] = None,  # preallocated if save_z
+    save_z: bool = False,                # 사용자가 False여도 act=None이면 내부에서 True로 간주
+    Z_saved: Optional[cp.ndarray] = None,  # preallocated if effective_save_z; act=None이면 out alias 허용
     stream: Optional[int] = None,
     work: Optional[Conv2DWorkspaces] = None,
 ) -> None:
+    """
+    [옵션 A]
+    - 캡처 시에는 내부적으로 `effective_save_z = save_z or (act==none)` 로 동작
+    - act==none이면 Z_saved가 None이어도 out에 alias 하여 Z 포인터 고정
+    - 이 경우에도 work.Z_rows는 반드시 준비되어야 함 (save_z=True 경로와 동일)
+    """
     _assert_f32_4d(X, "X"); _assert_f32_4d(W, "W")
     if out is None or out.dtype != cp.float32 or out.ndim != 4:
         raise ValueError("[capture] `out` must be preallocated float32 4D")
@@ -357,12 +374,22 @@ def forward_into(
         raise ValueError(f"[capture] out must be {(N,Cout,H_out,W_out)}")
 
     act_kind = _parse_act_kind(act)
-    if save_z:
-        if Z_saved is None or Z_saved.dtype != cp.float32 or tuple(Z_saved.shape)!=(N,Cout,H_out,W_out):
-            raise ValueError(f"[capture] Z_saved must be float32[{(N,Cout,H_out,W_out)}] when save_z=True")
+    # === 옵션 A 핵심: 내부 save_z 플래그 결정 ===
+    effective_save_z = bool(save_z or (act_kind == _act_none()))
+
+    # Z_saved 준비
+    if effective_save_z:
+        if Z_saved is None:
+            if act_kind == _act_none():
+                Z_saved = out  # alias 허용: 포인터 고정 목적
+            else:
+                raise ValueError(f"[capture] Z_saved must be float32[{(N,Cout,H_out,W_out)}] when save_z=True")
+        else:
+            if Z_saved.dtype != cp.float32 or tuple(Z_saved.shape)!=(N,Cout,H_out,W_out):
+                raise ValueError(f"[capture] Z_saved must be float32[{(N,Cout,H_out,W_out)}] when save_z=True")
     else:
         if Z_saved is not None:
-            raise ValueError("[capture] Z_saved must be None when save_z=False]")
+            raise ValueError("[capture] Z_saved must be None when save_z=False and act!=None")
 
     if with_bias:
         if B is None or B.dtype != cp.float32 or B.ndim != 1 or int(B.size) != Cout:
@@ -374,7 +401,7 @@ def forward_into(
     attrs = _attrs_from_args(
         stride, padding, dilation, groups,
         with_bias=with_bias, act_kind=act_kind,
-        leaky_slope=leaky_slope, save_z=save_z
+        leaky_slope=leaky_slope, save_z=effective_save_z
     )
     sptr = int(get_stream_ptr(stream))
 
@@ -383,7 +410,7 @@ def forward_into(
 
     if work is None:
         raise ValueError("[capture] provide `work: Conv2DWorkspaces` with preallocated buffers")
-    work.ensure_forward(HWo=HWo, K=K, Cout=Cout, save_z=save_z)
+    work.ensure_forward(HWo=HWo, K=K, Cout=Cout, save_z=effective_save_z)
 
     _g.forward(
         int(X.data.ptr), [N, Cin, H, W_in],
@@ -395,21 +422,24 @@ def forward_into(
         int(work.dCol.data.ptr),
         int(work.W_KC.data.ptr),
         int(work.Y_tmp.data.ptr),
-        int(work.Z_rows.data.ptr) if save_z else 0
+        int(work.Z_rows.data.ptr) if effective_save_z else 0
     )
     # return 없음 (out/Z_saved in-place)
 
 
 def backward_into(
-    X: cp.ndarray, W: cp.ndarray, gY: cp.ndarray, Z: cp.ndarray, *,
-    stride=(1,1), padding=(0,0), dilation=(1,1), groups=1,
-    with_bias=False, act: str | "_g.ActKind" = "none", leaky_slope=0.01,
-    gX_out: Optional[cp.ndarray] = None,
-    gW_out: Optional[cp.ndarray] = None,
-    gB_out: Optional[cp.ndarray] = None,   # with_bias=True여도 None이면 gB 스킵
-    stream: Optional[int] = None,
-    work: Optional[Conv2DWorkspaces] = None,
+    X: cp.ndarray, W: cp.ndarray, gY: cp.ndarray, Z: cp.ndarray, *
+    , stride=(1,1), padding=(0,0), dilation=(1,1), groups=1
+    , with_bias=False, act: str | "_g.ActKind" = "none", leaky_slope=0.01
+    , gX_out: Optional[cp.ndarray] = None
+    , gW_out: Optional[cp.ndarray] = None
+    , gB_out: Optional[cp.ndarray] = None   # with_bias=True여도 None이면 gB 스킵
+    , stream: Optional[int] = None
+    , work: Optional[Conv2DWorkspaces] = None
 ) -> None:
+    """
+    [옵션 A] 전제: 캡처 시 forward 단계에서 `effective_save_z`에 따라 Z가 항상 고정 주소로 존재
+    """
     for name,t in (("X",X),("W",W),("gY",gY),("Z",Z)):
         _assert_f32_4d(t, name)
         if not t.flags.c_contiguous:
