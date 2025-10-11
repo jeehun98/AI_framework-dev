@@ -228,7 +228,7 @@ class Pool2D(Layer):
     def zero_grad(self):  # no-op (파라미터 없음)
         return
 
-    def state_dict(self) -> Dict[str,   Any]:
+    def state_dict(self) -> Dict[str, Any]:
         return {
             "kernel_size": self.kernel_size, "stride": self.stride, "padding": self.padding,
             "dilation": self.dilation, "ceil_mode": self.ceil_mode,
