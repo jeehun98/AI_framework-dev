@@ -54,20 +54,56 @@ class Sequential(Layer):
             if osh is not None:
                 self.output_shape = tuple(map(int, osh))
 
-    def build(self, input_shape: Tuple[int, ...]) -> None:
+
+    def build(
+        self,
+        input_shape: Tuple[int, ...],
+        *,
+        strict: bool = True,            # 실패 시 바로 예외
+        verify_output: bool = True      # build 후 shape 검증
+    ) -> None:
         cur = tuple(map(int, input_shape))
-        for lyr in self.layers:
+        errors = []
+
+        for i, lyr in enumerate(self.layers):
+            lname = f"{lyr.__class__.__name__}:{i}"
+
+            # 1) build
             try:
-                lyr.build(cur)
-            except Exception:
-                pass
+                if hasattr(lyr, "build"):
+                    lyr.build(cur)
+            except Exception as e:
+                msg = f"[Sequential.build] build failed at {lname} with in_shape={cur}: {e}"
+                if strict:
+                    raise RuntimeError(msg) from e
+                errors.append(msg)
+
+            # 2) output shape
             try:
-                cur = tuple(map(int, lyr.compute_output_shape(cur)))
-            except Exception:
-                pass
+                if hasattr(lyr, "compute_output_shape"):
+                    cur = tuple(map(int, lyr.compute_output_shape(cur)))
+                else:
+                    # compute_output_shape가 없으면 다음 레이어에 동일 shape 전달 (권장 X)
+                    pass
+            except Exception as e:
+                msg = f"[Sequential.build] compute_output_shape failed at {lname} with in_shape={cur}: {e}"
+                if strict:
+                    raise RuntimeError(msg) from e
+                errors.append(msg)
+                cur = None
+                break  # 더 진행 못 함
+
         self.input_shape = tuple(map(int, input_shape))
         self.output_shape = cur if isinstance(cur, tuple) else None
-        self.built = True
+        self.built = (len(errors) == 0) and (self.output_shape is not None)
+
+        if verify_output and not self.built:
+            # 어떤 레이어에서 실패했는지 메시지 보여주기
+            detail = "\n".join(errors) if errors else "unknown error"
+            raise RuntimeError(
+                f"[Sequential.build] build incomplete. output_shape={self.output_shape}, "
+                f"errors:\n{detail}"
+            )
 
     # === Runtime ===
     def call(self, x: Any):
