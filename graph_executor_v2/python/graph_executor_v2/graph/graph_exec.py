@@ -23,46 +23,75 @@ def _zero_bwd_buffers(plan: CapturePlan):
 
 # X에서 시작해 각 레이어의 forward_into 호출.
 def _run_fwd(model, plan: CapturePlan, X, stream_ptr: Optional[int]):
-    """고정 입력 X에서 시작해 레이어별 forward_into 실행."""
+    """
+    고정 입력 X에서 시작해 레이어별 forward_into 실행.
+    레이어별로 필요한 workspace 키워드가 다르므로, 우선 work를 넘겨보고
+    TypeError면 최소 인자 집합으로 재시도한다.
+    """
     cur = X
     for i, lyr in enumerate(model.layers):
-        ybuf = plan.per_layer[i].y
-        zbuf = plan.per_layer[i].z
-        lyr.forward_into(cur, out=ybuf, z_out=zbuf, stream=stream_ptr)
+        per  = plan.per_layer[i]
+        ybuf = per.y
+        zbuf = per.z
+        # 1) 일반 경로: work 전달(Conv2D 등)
+        try:
+            lyr.forward_into(cur, out=ybuf, z_out=zbuf, work=getattr(per, "work", None), stream=stream_ptr)
+        except TypeError:
+            # 2) Dense 등: work 인자를 받지 않는 시그니처
+            lyr.forward_into(cur, out=ybuf, z_out=zbuf, stream=stream_ptr)
         cur = ybuf
     return cur
 
 # g_in에서 역순으로 backward_into 호출.
 def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
+    """
+    레이어별로 backward_into 시그니처가 다르다.
+    - Dense: backward_into(g_in, gA_out, gW_out, gB_out, work_dZ=..., lt_workspace=..., stream=...)
+    - Conv2D: backward_into(X, W, gY, Z, ..., gX_out, gW_out, gB_out, work=..., stream=...) (레이어 구현에 따라 다름)
+    본 프레임워크의 레이어 래퍼는 최소한 아래 두 형태 중 하나를 만족하도록 설계한다:
+      A) backward_into(g_in, gA_out=..., gW_out=..., gB_out=..., work=..., stream=...)
+      B) backward_into(g_in, gA_out=..., gW_out=..., gB_out=..., stream=...)
+    """
     for ridx, lyr in enumerate(reversed(model.layers)):
         i = len(model.layers) - 1 - ridx
         per = plan.per_layer[i]
-        ws = per.work
+        ws  = getattr(per, "work", None)
+
         if per.gW is not None:
-            lyr.backward_into(
-                g_in,
-                gA_out=per.gA, gW_out=per.gW, gB_out=per.gB,
-                work_dZ=(ws.dZ if ws is not None else None),
-                lt_workspace=(ws.lt_ws if (ws is not None and ws.lt_ws is not None) else None),
-                stream=stream_ptr
-            )
+            # 파라미터가 있는 레이어(예: Dense, Conv2D)
+            try:
+                # 경로 A: work 키워드 사용
+                lyr.backward_into(
+                    g_in,
+                    gA_out=per.gA, gW_out=per.gW, gB_out=per.gB,
+                    work=ws, stream=stream_ptr
+                )
+            except TypeError:
+                try:
+                    # Dense 전용 시그니처(레거시 GEMM): work_dZ / lt_workspace
+                    lyr.backward_into(
+                        g_in,
+                        gA_out=per.gA, gW_out=per.gW, gB_out=per.gB,
+                        work_dZ=(ws.dZ if ws is not None and hasattr(ws, "dZ") else None),
+                        lt_workspace=(ws.lt_ws if ws is not None and hasattr(ws, "lt_ws") else None),
+                        stream=stream_ptr
+                    )
+                except TypeError:
+                    # 경로 B: 최소 인자 세트
+                    lyr.backward_into(
+                        g_in,
+                        gA_out=per.gA, gW_out=per.gW, gB_out=per.gB,
+                        stream=stream_ptr
+                    )
         else:
-            lyr.backward_into(  # type: ignore
-                g_in, gA_out=per.gA,
-                work_dZ=None, lt_workspace=None, stream=stream_ptr
-            )
+            # 파라미터 없는 레이어(활성화, reshape 등)
+            try:
+                lyr.backward_into(g_in, gA_out=per.gA, work=ws, stream=stream_ptr)  # 경로 A
+            except TypeError:
+                lyr.backward_into(g_in, gA_out=per.gA, stream=stream_ptr)           # 경로 B
+
         g_in = per.gA
     return g_in
-
-# model — forward_into/backward_into 지원 모델
-# loss_fn — forward(logits, y, return_scalar=False) 지원
-# optimizer_step_fn — 옵티마이저 스텝 콜러블(예: opt.step_into)
-# plan: CapturePlan
-# X_buf, y_buf — 고정 입력/라벨 버퍼(그래프 내에서 참조)
-# stream — 캡처/실행 스트림(없으면 내부 생성)
-
-# 1. 워밍업 1회: FWD → LOSS → BWD(zero) → OPT 로 커널 파이프/스트림 상태 고정.
-# 2. 지원 시 CUDA Graph 캡처(cp.cuda.graph.capture_stream)로 동일 시퀀스 녹화.
 
 def record_step_graph(
     model,
@@ -70,8 +99,8 @@ def record_step_graph(
     optimizer_step_fn,
     plan: CapturePlan,
     *,
-    X_buf: cp.ndarray,          # ✅ 고정 입력 버퍼
-    y_buf: cp.ndarray,          # ✅ 고정 라벨 버퍼
+    X_buf: cp.ndarray,          # 고정 입력 버퍼 (예: (N,C,H,W) 그대로)
+    y_buf: cp.ndarray,          # 고정 라벨 버퍼
     stream: Optional[cp.cuda.Stream] = None,
 ):
     """

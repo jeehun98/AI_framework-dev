@@ -1,362 +1,289 @@
 # python/graph_executor_v2/layers/conv2d.py
-
-# 원하면 groups>1에도 캐시를 확장해줄 수 있고, 사용자 스트림(cudaStream_t) 포인터를 받을 수 있게 옵션도 여유롭게 추가해줄 수 있어요.
 from __future__ import annotations
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Iterable, Any, Dict
 import cupy as cp
 
 from .base import Layer
-from graph_executor_v2.ops import conv2d as conv_ops
+from ..ops import conv2d as convops
 
-# 내부 런처 직접 호출(워크스페이스 주입용)
-from graph_executor_v2.ops import _ops_conv2d as _g
-
-_USE_NATIVE_GROUPS = False  # 네이티브 groups 경로가 준비되면 True
+# shape utils -------------------------------------------------
+def _out_hw(H: int, W: int, KH: int, KW: int,
+            stride: Tuple[int, int],
+            padding: Tuple[int, int],
+            dilation: Tuple[int, int]) -> Tuple[int, int]:
+    sH, sW = map(int, stride)
+    pH, pW = map(int, padding)
+    dH, dW = map(int, dilation)
+    H_out = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
+    W_out = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
+    return H_out, W_out
 
 
 class Conv2D(Layer):
     """
-    Conv2D 레이어 (NCHW)
-      - filters: out_channels
-      - kernel_size/stride/padding/dilation: (h,w) 튜플
-      - groups 지원 (groups==1 fast path는 내부 워크스페이스 캐시를 재사용)
-      - 활성화는 포함하지 않음(필요 시 별도 Activation 레이어 추가)
+    캡처-호환 Conv2D 레이어 (fused bias/activation).
+    - 파라미터: W(Cout,Cin,KH,KW), (opt) b(Cout,)
+    - 활성화: ops.conv2d에서 제공하는 fused act 문자열("none","relu","gelu","sigmoid","tanh","leakyrelu")
+    - capture 경로: forward_into / backward_into 지원 (workspace 외부 주입)
+
+    Args:
+      out_channels, kernel_size
+      stride=(1,1), padding=(0,0), dilation=(1,1), groups=1
+      activation="none", with_bias=True
+      initializer=("xavier"|"kaiming"|"zeros"), bias_init="zeros"
+      save_z_in_fwd=True  # 학습 시 pre-activation을 저장(역전파용, 비캡처 경로 대비)
     """
     def __init__(
         self,
-        filters: int,
-        kernel_size: Tuple[int, int],
-        stride: Tuple[int, int] = (1, 1),
-        padding: Tuple[int, int] = (0, 0),
-        dilation: Tuple[int, int] = (1, 1),
+        out_channels: int,
+        kernel_size: Tuple[int, int] | int,
+        *,
+        stride: Tuple[int, int] | int = (1, 1),
+        padding: Tuple[int, int] | int = (0, 0),
+        dilation: Tuple[int, int] | int = (1, 1),
         groups: int = 1,
-        use_bias: bool = True,
-        initializer: str = "he",
+        activation: str = "none",
+        with_bias: bool = True,
+        initializer: str = "xavier",
+        bias_init: str = "zeros",
         name: Optional[str] = None,
+        save_z_in_fwd: bool = True,
     ):
         super().__init__(name=name)
-        self.filters = int(filters)
-        self.kernel_size = tuple(map(int, kernel_size))
-        self.stride = tuple(map(int, stride))
-        self.padding = tuple(map(int, padding))
-        self.dilation = tuple(map(int, dilation))
-        self.groups = int(groups)
-        self.use_bias = bool(use_bias)
+        # 하이퍼파라미터
+        self.out_channels = int(out_channels)
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+        if isinstance(stride, int):   stride   = (stride, stride)
+        if isinstance(padding, int):  padding  = (padding, padding)
+        if isinstance(dilation, int): dilation = (dilation, dilation)
+
+        self.kernel_size = tuple(map(int, kernel_size))  # (KH,KW)
+        self.stride      = tuple(map(int, stride))
+        self.padding     = tuple(map(int, padding))
+        self.dilation    = tuple(map(int, dilation))
+        self.groups      = int(groups)
+        self.activation  = str(activation or "none").lower()
+        self.with_bias   = bool(with_bias)
         self.initializer = initializer
+        self.bias_init   = bias_init
+        self.save_z_in_fwd = bool(save_z_in_fwd)
 
-        self.W: Optional[cp.ndarray] = None  # (Cout, Cin/groups, KH, KW)
-        self.b: Optional[cp.ndarray] = None  # (Cout,)
-
-        # cache
-        self.last_input: Optional[cp.ndarray] = None
-        self.last_z: Optional[cp.ndarray] = None  # pre-activation (act=none이면 Y와 alias)
-
-        # grads
+        # 파라미터/그라드
+        self.W: Optional[cp.ndarray] = None
+        self.b: Optional[cp.ndarray] = None
         self.dW: Optional[cp.ndarray] = None
         self.db: Optional[cp.ndarray] = None
 
-        # ----- workspace caches (fast path: groups==1) -----
-        self._ws_sig: Optional[tuple] = None
-        self._ws_fwd: Optional[tuple] = None  # (dCol, W_KC, Y_tmp, Z_rows)
-        self._ws_bwd: Optional[tuple] = None  # (dCol, dTmp, W_CK, dWpack, dY_HT, gy_rows, Z_rows)
+        # 비캡처 경로에서 사용할 캐시
+        self._last_X: Optional[cp.ndarray] = None          # (N,Cin,H,W)
+        self._last_Z: Optional[cp.ndarray] = None          # (N,Cout,H_out,W_out) pre-activation
+        self._last_Y: Optional[cp.ndarray] = None          # (N,Cout,H_out,W_out)
 
-    # ---------------------- init helpers ----------------------
+        # 캡처 경로 캐시(그래프 캡처 동안 유효)
+        self._cap_X: Optional[cp.ndarray] = None
+        self._cap_Z: Optional[cp.ndarray] = None
+
+        # shape
+        self.input_shape: Optional[Tuple[int, ...]] = None
+        self.output_shape: Optional[Tuple[int, ...]] = None
+        self.built: bool = False
+
+        self.training: bool = True
+
+    # --------- init helpers ----------
     def _init_weights(self, Cin: int):
-        Cout = self.filters
         KH, KW = self.kernel_size
-        fan_in = Cin * KH * KW / self.groups
-        if self.initializer == "he":
-            std = cp.sqrt(2.0 / fan_in)
-            W = cp.random.normal(0.0, std, (Cout, Cin // self.groups, KH, KW)).astype(cp.float32)
-        elif self.initializer == "xavier":
-            lim = cp.sqrt(6.0 / (fan_in + Cout))
-            W = cp.random.uniform(-lim, lim, (Cout, Cin // self.groups, KH, KW)).astype(cp.float32)
+        Cout = self.out_channels
+        W = cp.empty((Cout, Cin, KH, KW), dtype=cp.float32)
+        if self.initializer.lower() in ("xavier", "glorot", "xavier_uniform"):
+            limit = (6.0 / (Cin*KH*KW + Cout*KH*KW)) ** 0.5
+            W[...] = cp.random.uniform(-limit, limit, size=W.shape).astype(cp.float32)
+        elif self.initializer.lower() in ("kaiming", "he", "he_normal"):
+            std = (2.0 / (Cin*KH*KW)) ** 0.5
+            W[...] = std * cp.random.randn(*W.shape).astype(cp.float32)
+        elif self.initializer.lower() in ("zeros", "zero"):
+            W.fill(0)
         else:
-            W = cp.random.normal(0.0, 0.05, (Cout, Cin // self.groups, KH, KW)).astype(cp.float32)
-        b = cp.zeros((Cout,), dtype=cp.float32) if self.use_bias else None
-        return W, b
+            raise ValueError(f"unknown initializer: {self.initializer}")
+        self.W = W
 
-    def build(self, input_shape):
-        super().build(input_shape)
-        if len(input_shape) != 4:
-            raise ValueError(f"Conv2D expects 4D NCHW, got {input_shape}")
+        if self.with_bias:
+            b = cp.empty((Cout,), dtype=cp.float32)
+            if self.bias_init.lower() in ("zeros", "zero"):
+                b.fill(0)
+            else:
+                b[...] = cp.random.randn(Cout).astype(cp.float32) * 1e-3
+            self.b = b
+        else:
+            self.b = None
+
+        # grad buffers (비캡처 경로에서만 사용)
+        self.dW = cp.zeros_like(self.W) if self.W is not None else None
+        self.db = cp.zeros_like(self.b) if self.b is not None else None
+
+    # --------- Layer API -------------
+    def build(self, input_shape: Tuple[int, ...]) -> None:
+        """
+        input_shape: (N, Cin, H, W)
+        """
+        N, Cin, H, W = map(int, input_shape)
+        if self.groups < 1 or Cin % self.groups != 0:
+            raise ValueError(f"Cin({Cin}) % groups({self.groups}) != 0")
+        self._init_weights(Cin)
+
+        H_out, W_out = _out_hw(H, W, self.kernel_size[0], self.kernel_size[1],
+                               self.stride, self.padding, self.dilation)
+        self.input_shape  = (N, Cin, H, W)
+        self.output_shape = (N, self.out_channels, H_out, W_out)
+        self.built = True
+
+    def compute_output_shape(self, input_shape: Tuple[int, ...]) -> Tuple[int, ...]:
         _, Cin, H, W = map(int, input_shape)
-        if Cin % self.groups != 0:
-            raise ValueError(f"Cin({Cin}) must be divisible by groups({self.groups})")
-        if self.filters % self.groups != 0:
-            raise ValueError(f"filters/Cout({self.filters}) must be divisible by groups({self.groups})")
+        if self.groups < 1 or Cin % self.groups != 0:
+            raise ValueError(f"Cin({Cin}) % groups({self.groups}) != 0")
+        H_out, W_out = _out_hw(H, W, self.kernel_size[0], self.kernel_size[1],
+                               self.stride, self.padding, self.dilation)
+        return (int(input_shape[0]), self.out_channels, H_out, W_out)
 
-        self.W, self.b = self._init_weights(Cin)
-        self.W = cp.ascontiguousarray(self.W)
-        if self.use_bias and self.b is not None:
-            self.b = cp.ascontiguousarray(self.b)
+    def parameters(self) -> Iterable[Tuple[Any, Any, str]]:
+        if self.W is not None:
+            yield (self.W, self.dW, f"{self.name or 'Conv2D'}.W")
+        if self.b is not None:
+            yield (self.b, self.db, f"{self.name or 'Conv2D'}.b")
 
-        KH, KW = self.kernel_size
-        sH, sW = self.stride
-        pH, pW = self.padding
-        dH, dW = self.dilation
-        outH = (H + 2 * pH - dH * (KH - 1) - 1) // sH + 1
-        outW = (W + 2 * pW - dW * (KW - 1) - 1) // sW + 1
-        self.output_shape = (input_shape[0], self.filters, outH, outW)
+    # --------- runtime (eager) ----------
+    def call(self, X: cp.ndarray) -> cp.ndarray:
+        assert self.W is not None
+        Y = convops.forward(
+            X, self.W, self.b,
+            stride=self.stride, padding=self.padding, dilation=self.dilation,
+            groups=self.groups, with_bias=self.with_bias,
+            act=self.activation, leaky_slope=0.01,
+            save_z=self.training and self.save_z_in_fwd,
+        )
+        if self.training:
+            self._last_X = X
+            self._last_Y = Y
+            # 비캡처 경로에선 별도 Z 버퍼를 ops에서 외부로 받지 않으므로,
+            # 활성화가 'none'이면 out을 Z로 alias 하여 사용.
+            self._last_Z = Y if self.activation == "none" else self._last_Z
+        return Y
 
-        # invalidate workspaces on build (shape may change later)
-        self._ws_sig = None
-        self._ws_fwd = None
-        self._ws_bwd = None
+    def backward(self, gY: cp.ndarray) -> cp.ndarray:
+        assert self.W is not None and self._last_X is not None, "call() 이후 backward() 호출"
+        # 비캡처: ops가 내부에서 WS를 즉시 할당
+        Z_needed = self._last_Y if (self.activation == "none") else self._last_Z
+        if Z_needed is None:
+            # save_z 옵션 없이 비캡처를 쓴다면 활성화 미분을 수동 구현해야 하나,
+            # 간이 버전으로 활성화 없음으로 간주
+            Z_needed = self._last_Y
+        outs = convops.backward(
+            self._last_X, self.W, gY, Z_needed,
+            stride=self.stride, padding=self.padding, dilation=self.dilation,
+            groups=self.groups, with_bias=self.with_bias, act=self.activation, leaky_slope=0.01,
+            want_gX=True, want_gW=True, want_gB=self.with_bias
+        )
+        if self.dW is None: self.dW = cp.zeros_like(self.W)
+        self.dW[...] = outs["gW"]
+        if self.with_bias:
+            if self.db is None: self.db = cp.zeros_like(self.b)
+            self.db[...] = outs["gB"]
+        return outs["gX"]
 
-    # ---------------------- workspace helpers ----------------------
-    def _ensure_ws(self, x_shape: Tuple[int, int, int, int], save_z: bool) -> Tuple[int, int]:
+    # --------- capture path ----------
+    def forward_into(
+        self, X: cp.ndarray, *,
+        out: cp.ndarray,
+        z_out: Optional[cp.ndarray] = None,
+        stream: Optional[int] = None,
+        work: Optional[convops.Conv2DWorkspaces] = None,
+    ) -> None:
         """
-        Allocate (or reuse) forward/backward workspaces for groups==1 fast path.
-        Signature: (HWo, K, Cout, save_z) to determine reuse.
+        캡처 안전: 모든 출력/워크스페이스는 외부에서 prealloc.
+        - out: (N,Cout,H_out,W_out) 미리 할당
+        - z_out: pre-activation 버퍼(활성화/역전파용). act='none'이면 out과 alias 가능.
+        - work: Conv2DWorkspaces
         """
-        N, Cin, H, W = map(int, x_shape)
-        KH, KW = self.kernel_size
-        sH, sW = self.stride
-        pH, pW = self.padding
-        dH, dW = self.dilation
-        Cout = self.filters
+        assert self.W is not None
+        convops.forward_into(
+            X, self.W,
+            out=out,
+            B=self.b,
+            stride=self.stride, padding=self.padding, dilation=self.dilation,
+            groups=self.groups, with_bias=self.with_bias,
+            act=self.activation, leaky_slope=0.01,
+            save_z=(z_out is not None),
+            Z_saved=z_out,
+            stream=stream,
+            work=work
+        )
+        # ✅ 역전파용 캡처 캐시 저장 (z_out이 없으면 out을 Z로 alias)
+        self._cap_X = X
+        self._cap_Z = z_out if z_out is not None else out
 
-        H_out = (H + 2 * pH - dH * (KH - 1) - 1) // sH + 1
-        W_out = (W + 2 * pW - dW * (KW - 1) - 1) // sW + 1
-        HWo = H_out * W_out
-        # groups==1 fast path에서의 K
-        K = Cin * KH * KW
+    def backward_into(
+        self, gY: cp.ndarray, *,
+        gA_out: cp.ndarray,
+        gW_out: Optional[cp.ndarray] = None,
+        gB_out: Optional[cp.ndarray] = None,
+        work_dZ: Optional[Any] = None,          # Dense 인터페이스와 시그니처 호환(미사용)
+        lt_workspace: Optional[Any] = None,     # Dense 인터페이스와 시그니처 호환(미사용)
+        stream: Optional[int] = None,
+        work: Optional[convops.Conv2DWorkspaces] = None,
+        # (선택) 캡처 플랜에서 명시 전달 가능; 없으면 forward_into 캐시 사용
+        Z_saved: Optional[cp.ndarray] = None,
+        X_saved: Optional[cp.ndarray] = None,
+        W_ref: Optional[cp.ndarray] = None,
+    ) -> None:
+        """
+        캡처 안전: gA_out/gW_out/gB_out/WS 모두 외부에서 준비.
+        - X_saved / Z_saved 는 캡처 플랜이 관리하는 고정 버퍼를 전달하면 우선 사용
+          (없으면 forward_into에서 저장한 self._cap_X / self._cap_Z 사용)
+        """
+        # 우선순위: 명시 전달 > 캡처 캐시 > (비권장) eager 캐시
+        X_use = X_saved if X_saved is not None else (self._cap_X if self._cap_X is not None else self._last_X)
+        Z_use = Z_saved if Z_saved is not None else (self._cap_Z if self._cap_Z is not None else self._last_Y)
+        W_use = W_ref  if W_ref  is not None else self.W
 
-        sig = (HWo, K, Cout, bool(save_z))
-        if self._ws_sig == sig and self._ws_fwd is not None and self._ws_bwd is not None:
-            return H_out, W_out
+        if X_use is None or Z_use is None or W_use is None:
+            raise RuntimeError("[Conv2D.backward_into] missing saved X/Z/W buffers from capture plan")
 
-        # ----- allocate workspaces -----
-        dCol = cp.empty((HWo, K), dtype=cp.float32)       # [HWo, K]
-        W_KC = cp.empty((K,   Cout), dtype=cp.float32)    # [K, Cout]
-        Y_tmp = cp.empty((HWo, Cout), dtype=cp.float32)   # [HWo, Cout]
-        Z_rows = cp.empty((HWo, Cout), dtype=cp.float32) if save_z else None
+        convops.backward_into(
+            X_use, W_use, gY, Z_use,
+            stride=self.stride, padding=self.padding, dilation=self.dilation,
+            groups=self.groups, with_bias=self.with_bias,
+            act=self.activation, leaky_slope=0.01,
+            gX_out=gA_out, gW_out=gW_out, gB_out=gB_out,
+            stream=stream, work=work
+        )
 
-        dTmp = cp.empty((max(Cout * K, HWo * K),), dtype=cp.float32)
-        W_CK = cp.empty((Cout, K), dtype=cp.float32)      # gX path
-        dWpack = cp.empty((Cout, K), dtype=cp.float32)    # gW path
-        dY_HT = cp.empty((HWo, Cout), dtype=cp.float32)   # gX path
-        gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)
-        Zr = cp.empty((Cout, HWo), dtype=cp.float32)
+    # --------- misc ----------
+    def zero_grad(self):
+        if self.dW is not None: self.dW[...] = 0
+        if self.db is not None: self.db[...] = 0
 
-        self._ws_fwd = (dCol, W_KC, Y_tmp, Z_rows)
-        self._ws_bwd = (dCol, dTmp, W_CK, dWpack, dY_HT, gy_rows, Zr)
-        self._ws_sig = sig
-        return H_out, W_out
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "W": self.W, "b": self.b,
+            "stride": self.stride, "padding": self.padding,
+            "dilation": self.dilation, "groups": self.groups,
+            "activation": self.activation, "with_bias": self.with_bias,
+            "kernel_size": self.kernel_size,
+        }
 
-    # ---------------------- forward ----------------------
-    def call(self, x: cp.ndarray) -> cp.ndarray:
-        # dtype/shape guard + contiguity
-        if not isinstance(x, cp.ndarray) or x.dtype != cp.float32 or x.ndim != 4:
-            raise TypeError(
-                f"Conv2D.call: expected float32 NCHW, got {type(x)} {getattr(x,'shape',None)} {getattr(x,'dtype',None)}"
-            )
-        x = cp.ascontiguousarray(x)
-        self.last_input = x
-
-        # param contiguity
-        self.W = cp.ascontiguousarray(self.W)
-        if self.use_bias and self.b is not None:
-            self.b = cp.ascontiguousarray(self.b)
-
-        G = self.groups
-
-        # ---------- fast path: groups==1 (native launcher + cached workspaces) ----------
-        if G == 1 or _USE_NATIVE_GROUPS:
-            save_z = True  # act='none' → Z==Y alias
-            H_out, W_out = self._ensure_ws(x.shape, save_z=save_z)
-            dCol, W_KC, Y_tmp, Z_rows = self._ws_fwd
-
-            # output: pre-allocate and alias Z to Y
-            y = cp.empty((x.shape[0], self.filters, H_out, W_out), dtype=cp.float32)
-
-            # attrs
-            attrs = _g.Conv2DAttrs()
-            attrs.stride_h, attrs.stride_w = self.stride
-            attrs.pad_h, attrs.pad_w = self.padding
-            attrs.dil_h, attrs.dil_w = self.dilation
-            attrs.groups = self.groups
-            attrs.with_bias = self.use_bias
-            attrs.act = getattr(_g.ActKind, "None")
-
-            attrs.leaky_slope = 0.01
-            attrs.save_z = True
-
-            # pointers
-            x_ptr = int(x.data.ptr)
-            w_ptr = int(self.W.data.ptr)
-            y_ptr = int(y.data.ptr)
-            b_ptr = int(self.b.data.ptr) if (self.use_bias and self.b is not None) else None
-            z_ptr = int(y.data.ptr)  # alias Z==Y (act=none)
-
-            _g.forward(
-                x_ptr, [int(v) for v in x.shape],
-                w_ptr, [int(v) for v in self.W.shape],
-                y_ptr, [int(v) for v in y.shape],
-                b_ptr if b_ptr is not None else None,
-                z_ptr,
-                attrs,
-                0,  # stream
-                # workspaces
-                int(dCol.data.ptr),
-                int(W_KC.data.ptr),
-                int(Y_tmp.data.ptr),
-                int(Z_rows.data.ptr) if Z_rows is not None else 0
-            )
-
-            self.last_z = y
-            return y
-
-        # ---------- python fallback: groups>1 ----------
-        N, Cin, H, W = map(int, x.shape)
-        KH, KW = self.kernel_size
-        sH, sW = self.stride
-        pH, pW = self.padding
-        dH, dW = self.dilation
-        Cout = self.filters
-
-        Cin_g = Cin // G
-        Cout_g = Cout // G
-
-        outH = (H + 2 * pH - dH * (KH - 1) - 1) // sH + 1
-        outW = (W + 2 * pW - dW * (KW - 1) - 1) // sW + 1
-
-        y = cp.empty((N, Cout, outH, outW), dtype=cp.float32)
-        Z = y
-
-        for g in range(G):
-            ci0, ci1 = g * Cin_g, (g + 1) * Cin_g
-            co0, co1 = g * Cout_g, (g + 1) * Cout_g
-
-            x_g = cp.ascontiguousarray(x[:, ci0:ci1, :, :])
-            W_g = cp.ascontiguousarray(self.W[co0:co1, :, :, :])
-            b_g = None if not self.use_bias else cp.ascontiguousarray(self.b[co0:co1])
-
-            y_g = conv_ops.forward(
-                x_g, W_g, b_g,
-                stride=self.stride, padding=self.padding,
-                dilation=self.dilation, groups=1,
-                with_bias=self.use_bias,
-                act="none",
-                save_z=True, Z_saved=None
-            )
-            y[:, co0:co1, :, :] = y_g
-
-        self.last_z = Z
-        return y
-
-    # ---------------------- backward ----------------------
-    def backward(self, grad_output: cp.ndarray) -> cp.ndarray:
-        if self.last_input is None or self.last_z is None:
-            raise RuntimeError("Conv2D.backward called before forward")
-        if not isinstance(grad_output, cp.ndarray) or grad_output.dtype != cp.float32 or grad_output.ndim != 4:
-            raise TypeError("Conv2D.backward: grad_output must be float32 NCHW")
-
-        gy = cp.ascontiguousarray(grad_output)
-        self.W = cp.ascontiguousarray(self.W)
-        if self.use_bias and self.b is not None:
-            self.b = cp.ascontiguousarray(self.b)
-
-        G = self.groups
-
-        # ---------- fast path: groups==1 (native launcher + cached workspaces) ----------
-        if G == 1 or _USE_NATIVE_GROUPS:
-            # ensure workspaces exist (save_z=True used in fwd)
-            self._ensure_ws(self.last_input.shape, save_z=True)
-            dCol, dTmp, W_CK, dWpack, dY_HT, gy_rows, Z_rows = self._ws_bwd
-
-            X = self.last_input
-            Z = self.last_z
-
-            # outputs
-            gW = cp.empty_like(self.W)
-            gB = cp.empty((self.filters,), dtype=cp.float32) if self.use_bias else None
-            gX = cp.empty_like(X)
-
-            # attrs
-            attrs = _g.Conv2DAttrs()
-            attrs.stride_h, attrs.stride_w = self.stride
-            attrs.pad_h, attrs.pad_w = self.padding
-            attrs.dil_h, attrs.dil_w = self.dilation
-            attrs.groups = self.groups
-            attrs.with_bias = self.use_bias
-            attrs.act = getattr(_g.ActKind, "None")
-
-            attrs.leaky_slope = 0.01
-            attrs.save_z = False
-
-            _g.backward(
-                int(X.data.ptr),  [int(v) for v in X.shape],
-                int(self.W.data.ptr),  [int(v) for v in self.W.shape],
-                int(gy.data.ptr), [int(v) for v in gy.shape],
-                int(Z.data.ptr),  [int(v) for v in Z.shape],
-                int(gW.data.ptr),                                     # dw_ptr
-                int(gB.data.ptr) if gB is not None else None,         # db_ptr
-                int(gX.data.ptr),                                     # dx_ptr
-                attrs,
-                0,  # stream
-                # workspaces
-                int(dCol.data.ptr),
-                int(dTmp.data.ptr),
-                int(W_CK.data.ptr),
-                int(dWpack.data.ptr),
-                int(dY_HT.data.ptr),
-                int(gy_rows.data.ptr),
-                int(Z_rows.data.ptr),
-            )
-
-            self.dW = gW
-            self.db = gB
-            return gX
-
-        # ---------- python fallback: groups>1 ----------
-        x = self.last_input
-        z = self.last_z
-        N, Cin, H, W = map(int, x.shape)
-        Cout = self.filters
-        Cin_g = Cin // G
-        Cout_g = Cout // G
-
-        dx = cp.zeros_like(x)
-        dW = cp.zeros_like(self.W)
-        db = None if not self.use_bias else cp.zeros((Cout,), dtype=cp.float32)
-
-        for g in range(G):
-            ci0, ci1 = g * Cin_g, (g + 1) * Cin_g
-            co0, co1 = g * Cout_g, (g + 1) * Cout_g
-
-            x_g = cp.ascontiguousarray(x[:, ci0:ci1, :, :])
-            z_g = cp.ascontiguousarray(z[:, co0:co1, :, :])
-            gy_g = cp.ascontiguousarray(gy[:, co0:co1, :, :])
-            W_g = cp.ascontiguousarray(self.W[co0:co1, :, :, :])
-
-            outs = conv_ops.backward(
-                x_g, W_g, gy_g, z_g,
-                stride=self.stride, padding=self.padding,
-                dilation=self.dilation, groups=1,
-                with_bias=self.use_bias,
-                act="none",
-                want_gX=True, want_gW=True, want_gB=self.use_bias,
-            )
-            dx[:, ci0:ci1, :, :] = outs["gX"]
-            dW[co0:co1, :, :, :] = outs["gW"]
-            if self.use_bias:
-                db[co0:co1] = cp.ascontiguousarray(outs["gB"])
-
-        self.dW = dW
-        self.db = db
-        return dx
-
-    # ---------------------- shape util ----------------------
-    def compute_output_shape(self, input_shape):
-        if len(input_shape) != 4:
-            raise ValueError(f"Conv2D expects 4D NCHW, got {input_shape}")
-        N, _, H, W = map(int, input_shape)
-        KH, KW = self.kernel_size
-        sH, sW = self.stride
-        pH, pW = self.padding
-        dH, dW = self.dilation
-        outH = (H + 2 * pH - dH * (KH - 1) - 1) // sH + 1
-        outW = (W + 2 * pW - dW * (KW - 1) - 1) // sW + 1
-        return (N, self.filters, outH, outW)
+    def load_state_dict(self, sd: Dict[str, Any]):
+        for k in ("W","b"):
+            if k in sd and sd[k] is not None:
+                if getattr(self, k) is None:
+                    setattr(self, k, sd[k].copy())
+                else:
+                    getattr(self, k)[...] = sd[k]
+        # 하이퍼파라미터 재적용(선택)
+        for k in ("stride","padding","dilation","groups","activation","with_bias","kernel_size"):
+            if k in sd:
+                setattr(self, k, sd[k])
+        # grad 버퍼 재생성
+        self.dW = cp.zeros_like(self.W) if self.W is not None else None
+        self.db = cp.zeros_like(self.b) if self.b is not None else None
+        return self
