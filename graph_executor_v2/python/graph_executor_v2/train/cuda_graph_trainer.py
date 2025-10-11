@@ -6,6 +6,10 @@ from ..graph.capture_plan import make_plan_for_sequential
 from ..graph.graph_exec import record_step_graph, TrainGraph
 from ..optim.rebind import try_rebind_grads
 
+# 사용자 입장에서 최소 호출로 그래프 캡처 학습을 돌릴 수 있는 E2E 트레이너.
+
+# 모델/손실/옵티마이저를 주입.
+# 고정 X_buf, y_buf 생성 및 TrainGraph 구축.
 class CudaGraphTrainer:
     def __init__(self, model, loss_fn, optimizer, *, lt_bytes: int = (8 << 20)):
         self.model = model
@@ -15,6 +19,7 @@ class CudaGraphTrainer:
         self.stream = cp.cuda.Stream(non_blocking=True)
         self._tg: Optional[TrainGraph] = None
 
+    # 고정 X_buf, y_buf 생성 및 TrainGraph 구축.
     def compile(self, input_shape: Tuple[int, int]):
         if not getattr(self.model, "built", False):
             self.model.build(tuple(map(int, input_shape)))
@@ -36,6 +41,7 @@ class CudaGraphTrainer:
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
         self._tg = TrainGraph(gexec, io, self.stream)
 
+    # 고정 버퍼에 복사 후 그래프 실행, 현재 모델 파라미터로 손실 재계산하여 반환.
     def one_step(self, X, y) -> float:
         assert self._tg is not None, "call compile() first"
         self._tg.set_batch(X, y)

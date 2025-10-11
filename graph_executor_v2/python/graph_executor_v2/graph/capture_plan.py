@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 import cupy as cp
 
+# Sequential 계열 모델의 그래프 캡처용 사전 할당 계획(CapturePlan)을 만든다.
+# 레이어별 순전파 출력/프리액티베이션 버퍼(y,z), 역전파 버퍼(gA,gW,gB), 백엔드 워크스페이스(work) 를 준비.
+
+
 # 내부 GEMM 워크스페이스 유틸 (지연 임포트)
 def _ensure_gemm_workspaces(m: int, n: int, *, lt_bytes: int):
     from graph_executor_v2.ops import gemm as gops  # type: ignore
