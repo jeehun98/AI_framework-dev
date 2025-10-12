@@ -3,19 +3,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Callable, Type
 import cupy as cp
 
-# ============================================================
-# CapturePlan core dataclasses
-# ============================================================
-
 __all__ = [
     "PerLayerBufs", "LossBufs", "CapturePlan",
     "register_planner", "make_plan_for_sequential",
 ]
 
-def _generic_paramless_planner(lyr, cur, idx, lt_bytes):
-    lname = f"L{idx}:{lyr.__class__.__name__}"
-    if not hasattr(lyr, "compute_output_shape"):
-        raise RuntimeError(f"{lname}: register a planner or implement compute_output_shape()")
+# ============================================================
+# Core dataclasses
+# ============================================================
 
 @dataclass
 class PerLayerBufs:
@@ -27,7 +22,7 @@ class PerLayerBufs:
     gA: cp.ndarray                       # grad w.r.t input (required)
     gW: Optional[cp.ndarray]             # grad w.r.t weight (optional)
     gB: Optional[cp.ndarray]             # grad w.r.t bias (optional)
-    # backend-specific workspaces (e.g., GEMM/Conv)
+    # backend-specific workspaces (e.g., GEMM/Conv/Pool indices)
     work: Any
 
 @dataclass
@@ -41,15 +36,11 @@ class CapturePlan:
     per_layer: List[PerLayerBufs]
     loss: LossBufs
 
-
 # ============================================================
 # Low-level helpers
 # ============================================================
 
 def _ensure_gemm_workspaces(m: int, n: int, *, lt_bytes: int):
-    """
-    Dense/GEMM용 워크스페이스 확보 (지연 임포트)
-    """
     from graph_executor_v2.ops import gemm as gops  # type: ignore
     return gops.ensure_workspaces(m, n, lt_bytes=lt_bytes)
 
@@ -62,10 +53,8 @@ def _conv2d_out_hw(
     W_out = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
     return H_out, W_out
 
-
 # ============================================================
-# Layer planner registry
-#   - 각 레이어 타입별로 plan 함수를 등록하여, 추가/분리 용이하게 구성
+# Planner registry
 # ============================================================
 
 _Planner = Callable[
@@ -75,38 +64,25 @@ _Planner = Callable[
 _PLANNERS: Dict[Type[Any], _Planner] = {}
 
 def register_planner(layer_type: Type[Any]):
-    """
-    @register_planner(MyLayer)
-    def plan_mylayer(lyr, cur, idx, lt_bytes): ...
-    """
     def _wrap(func: _Planner):
         _PLANNERS[layer_type] = func
         return func
     return _wrap
 
 def _find_planner(lyr: Any) -> Optional[_Planner]:
-    # 정확한 타입 매치 우선
     t = type(lyr)
     if t in _PLANNERS:
         return _PLANNERS[t]
-    # 상속 계층 탐색(필요시)
     for kls, fn in _PLANNERS.items():
         if isinstance(lyr, kls):
             return fn
     return None
 
-
 # ============================================================
-# Generic fallback planner (param-less or unknown)
+# Generic fallback (param-less / reshape / activation 등)
 # ============================================================
 
 def _generic_paramless_planner(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
-    """
-    파라미터 없는 레이어(예: 활성화, reshape 등) 기본 플래너.
-    - forward: y[out_shape], z(optional if act!=none)
-    - backward: gA[cur], no gW/gB
-    - work: None
-    """
     lname = f"L{idx}:{lyr.__class__.__name__}"
     try:
         out_shp = tuple(map(int, lyr.compute_output_shape(cur)))
@@ -120,18 +96,20 @@ def _generic_paramless_planner(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: in
     gA = cp.empty(cur, dtype=cp.float32)
     gW = None
     gB = None
-    ws  = None
-
+    ws = None
     return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
-
 
 # ============================================================
 # Concrete planners
-#   1) Dense (GEMM 기반)
-#   2) Conv2D (있으면 활성)
+#   1) Dense (GEMM)
+#   2) Conv2D
+#   3) Pool2D
+#   4) Activation (cupy-only)
+#   5) Pad
+#   6) BatchNorm2d
 # ============================================================
 
-# 1) Dense/GEMM (layers.dense_gemm.Dense)
+# 1) Dense
 try:
     from graph_executor_v2.layers.dense_gemm import Dense  # type: ignore
 except Exception:
@@ -140,12 +118,6 @@ except Exception:
 if Dense is not None:
     @register_planner(Dense)  # type: ignore[misc]
     def _plan_dense(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
-        """
-        Dense 플래너:
-          - forward y[out], z[out if activation!=none]
-          - backward gA[cur], gW[W.shape], gB[(1, units)]
-          - work = gemm.ensure_workspaces(B, units)
-        """
         lname = f"L{idx}:{lyr.__class__.__name__}"
         try:
             out_shp = tuple(map(int, lyr.compute_output_shape(cur)))
@@ -156,7 +128,6 @@ if Dense is not None:
         need_z = getattr(lyr, "activation", "none") != "none"
         z = cp.empty(out_shp, dtype=cp.float32) if need_z else None
 
-        # backward buffers
         gA = cp.empty(cur, dtype=cp.float32)
         if hasattr(lyr, "W") and lyr.W is not None:
             W = lyr.W
@@ -171,8 +142,7 @@ if Dense is not None:
 
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
-
-# 2) Conv2D (layers.conv2d.Conv2D + ops.conv2d.Conv2DWorkspaces)
+# 2) Conv2D
 try:
     from graph_executor_v2.layers.conv2d import Conv2D  # type: ignore
 except Exception:
@@ -181,36 +151,27 @@ except Exception:
 if Conv2D is not None:
     @register_planner(Conv2D)  # type: ignore[misc]
     def _plan_conv2d(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
-        """
-        Conv2D 플래너:
-          - forward: y[(N,Cout,H_out,W_out)], z(활성화 시)
-          - backward: gA[(N,Cin,H,W)], gW[(Cout,Cin,KH,KW)], gB[(Cout,)](옵션)
-          - work: Conv2DWorkspaces (HWo/K/Cout 기반)
-        """
         lname = f"L{idx}:{lyr.__class__.__name__}"
         if len(cur) != 4:
             raise RuntimeError(f"{lname}: Conv2D expects 4D input (N,C,H,W), got {cur}")
         N, Cin, H, W = map(int, cur)
         KH, KW = map(int, getattr(lyr, "kernel_size", (1, 1)))
-        stride = getattr(lyr, "stride", (1, 1))
-        padding = getattr(lyr, "padding", (0, 0))
+        stride   = getattr(lyr, "stride", (1, 1))
+        padding  = getattr(lyr, "padding", (0, 0))
         dilation = getattr(lyr, "dilation", (1, 1))
-        groups = max(1, int(getattr(lyr, "groups", 1)))
-        Cout = int(getattr(lyr, "out_channels"))
+        groups   = max(1, int(getattr(lyr, "groups", 1)))
+        Cout     = int(getattr(lyr, "out_channels"))
 
         H_out, W_out = _conv2d_out_hw(H, W, KH, KW, stride, padding, dilation)
         out_shp = (N, Cout, H_out, W_out)
         y = cp.empty(out_shp, dtype=cp.float32)
 
-        need_z = (getattr(lyr, "activation", "none") != "none")
+        act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "none")
+        need_z = (str(act_name).lower() != "none")
         z = y if not need_z else cp.empty_like(y)
 
         gA = cp.empty((N, Cin, H, W), dtype=cp.float32)
         gW = cp.empty((Cout, Cin, KH, KW), dtype=cp.float32)
-
-        act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "none")
-        need_z = (str(act_name).lower() != "none")
-
         with_bias = (
             bool(getattr(lyr, "with_bias", False)) or
             (getattr(lyr, "B", None) is not None) or
@@ -218,34 +179,27 @@ if Conv2D is not None:
         )
         gB = cp.empty((Cout,), dtype=cp.float32) if with_bias else None
 
-        # workspaces (HWo/K/Cout 기반)
-        try:
-            from graph_executor_v2.ops.conv2d import Conv2DWorkspaces  # type: ignore
-        except Exception as e:
-            raise RuntimeError(
-                f"{lname}: Conv2D ops binding not available; build _ops_conv2d first."
-            ) from e
+        from graph_executor_v2.ops.conv2d import Conv2DWorkspaces  # type: ignore
         ws = Conv2DWorkspaces()
-        # forward WS
         HWo = H_out * W_out
         K   = (Cin // groups) * KH * KW
+        # forward
         ws.dCol   = cp.empty((HWo, K),     dtype=cp.float32)
         ws.W_KC   = cp.empty((K,   Cout),  dtype=cp.float32)
         ws.Y_tmp  = cp.empty((HWo, Cout),  dtype=cp.float32)
         ws.Z_rows = cp.empty((HWo, Cout),  dtype=cp.float32) if need_z else None
-        # backward common
+        # backward
         ws.dCol_b  = cp.empty((HWo, K), dtype=cp.float32)
         ws.dTmp    = cp.empty((max(Cout*K, HWo*K),), dtype=cp.float32)
         ws.gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)
         ws.Z_rows_b= cp.empty((Cout, HWo), dtype=cp.float32)
-        # backward opt
         ws.W_CK   = cp.empty((Cout, K), dtype=cp.float32)
         ws.dY_HT  = cp.empty((HWo,  Cout), dtype=cp.float32)
         ws.dWpack = cp.empty((Cout, K), dtype=cp.float32)
 
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
-# 3) Pool2D (layers.pool2d.Pool2D)
+# 3) Pool2D
 try:
     from graph_executor_v2.layers.pool2d import Pool2D as _Pool2DLayer  # type: ignore
 except Exception:
@@ -254,24 +208,17 @@ except Exception:
 if _Pool2DLayer is not None:
     @register_planner(_Pool2DLayer)  # type: ignore[misc]
     def _plan_pool2d(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
-        """
-        Pool2D 플래너:
-          - forward: y[(N,C,Ho,Wo)], z=None
-          - backward: gA[(N,C,H,W)], no gW/gB
-          - work: MaxPool일 때 indices(int32, NCHW) 버퍼를 미리 할당해 전달
-        """
         lname = f"L{idx}:{lyr.__class__.__name__}"
         if len(cur) != 4:
             raise RuntimeError(f"{lname}: Pool2D expects 4D input (N,C,H,W), got {cur}")
         N, C, H, W = map(int, cur)
         kH, kW = map(int, getattr(lyr, "kernel_size", (2, 2)))
-        stride   = getattr(lyr, "stride", (2, 2))
-        padding  = getattr(lyr, "padding", (0, 0))
-        dilation = getattr(lyr, "dilation", (1, 1))
+        stride    = getattr(lyr, "stride", (2, 2))
+        padding   = getattr(lyr, "padding", (0, 0))
+        dilation  = getattr(lyr, "dilation", (1, 1))
         ceil_mode = bool(getattr(lyr, "ceil_mode", False))
         mode      = str(getattr(lyr, "mode", "max")).lower()
 
-        # out shape
         def _out_hw(H: int, W: int, kH: int, kW: int,
                     s: Tuple[int,int], p: Tuple[int,int], d: Tuple[int,int], ceil: bool):
             sH, sW = s; pH, pW = p; dH, dW = d
@@ -290,118 +237,101 @@ if _Pool2DLayer is not None:
         Ho, Wo = _out_hw(H, W, kH, kW, stride, padding, dilation, ceil_mode)
         out_shp = (N, C, Ho, Wo)
 
-        # forward buffer
         y = cp.empty(out_shp, dtype=cp.float32)
-        z = None  # pre-activation 개념 없음
-
-        # backward buffer (no params)
+        z = None
         gA = cp.empty((N, C, H, W), dtype=cp.float32)
         gW = None
         gB = None
 
-        # work (MaxPool → indices)
         work = None
         if mode == "max":
-            from graph_executor_v2.layers.pool2d import _Pool2DWork  # local class
+            from graph_executor_v2.layers.pool2d import _Pool2DWork  # local helper
             work = _Pool2DWork()
-            work.indices = cp.empty((N, C, Ho, Wo), dtype=cp.int32)  # 캡처 중 forward에서 채워짐
+            work.indices = cp.empty((N, C, Ho, Wo), dtype=cp.int32)
 
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=work), out_shp
 
-
-# 3) Pool2D (layers.pool2d.Pool2D)
+# 4) Activation (cupy only, shape-preserving)
 try:
-    from graph_executor_v2.layers.pool2d import Pool2D as _Pool2DLayer  # type: ignore
-except Exception:
-    _Pool2DLayer = None  # type: ignore
-
-if _Pool2DLayer is not None:
-    @register_planner(_Pool2DLayer)  # type: ignore[misc]
-    def _plan_pool2d(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
-        """
-        Pool2D 플래너:
-          - forward: y[(N,C,Ho,Wo)], z=None
-          - backward: gA[(N,C,H,W)], no gW/gB
-          - work: MaxPool일 때 indices(int32, NCHW) 버퍼를 미리 할당해 전달
-        """
-        lname = f"L{idx}:{lyr.__class__.__name__}"
-        if len(cur) != 4:
-            raise RuntimeError(f"{lname}: Pool2D expects 4D input (N,C,H,W), got {cur}")
-        N, C, H, W = map(int, cur)
-        kH, kW = map(int, getattr(lyr, "kernel_size", (2, 2)))
-        stride   = getattr(lyr, "stride", (2, 2))
-        padding  = getattr(lyr, "padding", (0, 0))
-        dilation = getattr(lyr, "dilation", (1, 1))
-        ceil_mode = bool(getattr(lyr, "ceil_mode", False))
-        mode      = str(getattr(lyr, "mode", "max")).lower()
-
-        # out shape
-        def _out_hw(H: int, W: int, kH: int, kW: int,
-                    s: Tuple[int,int], p: Tuple[int,int], d: Tuple[int,int], ceil: bool):
-            sH, sW = s; pH, pW = p; dH, dW = d
-            effKH = (kH - 1) * dH + 1
-            effKW = (kW - 1) * dW + 1
-            aH = H + 2 * pH - effKH
-            aW = W + 2 * pW - effKW
-            if ceil:
-                Ho = (aH >= 0) and ((aH + sH - 1)//sH + 1) or 0
-                Wo = (aW >= 0) and ((aW + sW - 1)//sW + 1) or 0
-            else:
-                Ho = (aH >= 0) and (aH//sH + 1) or 0
-                Wo = (aW >= 0) and (aW//sW + 1) or 0
-            return max(0, int(Ho)), max(0, int(Wo))
-
-        Ho, Wo = _out_hw(H, W, kH, kW, stride, padding, dilation, ceil_mode)
-        out_shp = (N, C, Ho, Wo)
-
-        # forward buffer
-        y = cp.empty(out_shp, dtype=cp.float32)
-        z = None  # pre-activation 개념 없음
-
-        # backward buffer (no params)
-        gA = cp.empty((N, C, H, W), dtype=cp.float32)
-        gW = None
-        gB = None
-
-        # work (MaxPool → indices)
-        work = None
-        if mode == "max":
-            from graph_executor_v2.layers.pool2d import _Pool2DWork  # local class
-            work = _Pool2DWork()
-            work.indices = cp.empty((N, C, Ho, Wo), dtype=cp.int32)  # 캡처 중 forward에서 채워짐
-
-        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=work), out_shp
-
-# 4) Activation (layers.activation_layer.ActivationLayer, CuPy-only)
-try:
-    from graph_executor_v2.layers.activation_layer import ActivationLayer  # type: ignore
+    from graph_executor_v2.layers.activations import ActivationLayer  # type: ignore
 except Exception:
     ActivationLayer = None  # type: ignore
 
 if ActivationLayer is not None:
     @register_planner(ActivationLayer)  # type: ignore[misc]
     def _plan_activation(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
-        """
-        Activation 플래너 (ReLU/LeakyReLU/GELU/Sigmoid/Tanh/SiLU/ELU/Softplus):
-          - shape 보존: out_shape == cur
-          - forward: y[out_shape], z=None (y_saved가 필요하면 레이어 내부 save_y=True로 out을 참조 저장)
-          - backward: gA[cur], gW/gB/WS 없음
-        """
         lname = f"L{idx}:{lyr.__class__.__name__}"
-
-        # 출력 shape = 입력 shape
         out_shp = tuple(map(int, cur))
-
-        # forward / bac kward 버퍼 (FP32 고정 — gemm/conv와 일관)
         y  = cp.empty(out_shp, dtype=cp.float32)
-        z  = None  # pre-activation 개념 없음; save_y는 레이어 내부에서 out 참조 저장
+        z  = None
         gA = cp.empty(cur, dtype=cp.float32)
         gW = None
         gB = None
         ws = None
-
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
+# 5) Pad (constant pad; param-less, but shape-change)
+try:
+    from graph_executor_v2.layers.pad import Pad as _PadLayer  # type: ignore
+except Exception:
+    _PadLayer = None  # type: ignore
+
+if _PadLayer is not None:
+    @register_planner(_PadLayer)  # type: ignore[misc]
+    def _plan_pad(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
+        """
+        Pad 레이어 플래너:
+          - forward: y[out_shape], z=None
+          - backward: gA[cur], no params
+        """
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+        # 레이어가 compute_output_shape를 제공한다고 가정
+        try:
+            out_shp = tuple(map(int, lyr.compute_output_shape(cur)))
+        except Exception as e:
+            raise RuntimeError(f"cannot infer output shape for {lname}: {e}")
+
+        y = cp.empty(out_shp, dtype=cp.float32)
+        z = None
+        gA = cp.empty(cur, dtype=cp.float32)
+        gW = None
+        gB = None
+        ws = None
+        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
+
+# 6) BatchNorm2d
+try:
+    from graph_executor_v2.layers.batchnorm import BatchNorm2d as _BN2d  # type: ignore
+except Exception:
+    _BN2d = None  # type: ignore
+
+if _BN2d is not None:
+    @register_planner(_BN2d)  # type: ignore[misc]
+    def _plan_bn2d(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
+        """
+        BatchNorm2d 플래너:
+          - forward: y[cur], z=None
+          - backward: gA[cur], gW[gamma] / gB[beta] (affine일 때)
+          - work: None (X_saved는 graph_exec에서 이전 레이어 y로 전달)
+        """
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+        if len(cur) != 4:
+            raise RuntimeError(f"{lname}: BN2d expects 4D input, got {cur}")
+        out_shp = tuple(map(int, cur))
+
+        y = cp.empty(out_shp, dtype=cp.float32)
+        z = None
+        gA = cp.empty(cur, dtype=cp.float32)
+        if getattr(lyr, "affine", True):
+            # gamma/beta shape: [C]
+            C = cur[3] if getattr(lyr, "channels_last", False) else cur[1]
+            gW = cp.empty((C,), dtype=cp.float32)  # dgamma
+            gB = cp.empty((C,), dtype=cp.float32)  # dbeta
+        else:
+            gW = None
+            gB = None
+        ws = None
+        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
 
 # ============================================================
@@ -422,29 +352,23 @@ def make_plan_for_sequential(
     """
     cur = tuple(map(int, input_shape))
 
-    # ✅ 필요 시 자동 build
+    # 필요 시 자동 build
     if not getattr(model, "built", False):
         if hasattr(model, "build"):
             model.build(cur)
 
     per_layer: List[PerLayerBufs] = []
-
     for idx, lyr in enumerate(getattr(model, "layers", [])):
         planner = _find_planner(lyr)
         if planner is None:
-            # 파라미터 없는 레이어로 가정 (활성화/reshape 등)
             per, out_shp = _generic_paramless_planner(lyr, cur, idx, lt_bytes)
         else:
             per, out_shp = planner(lyr, cur, idx, lt_bytes)
         per_layer.append(per)
         cur = tuple(map(int, out_shp))
 
-
-    # 끝부분, loss dY 준비
-    if loss_kind == "softmax_ce":
-        dY = cp.empty(tuple(cur), dtype=cp.float32)  # ✅ FP32로 고정
-    else:
-        dY = None
+    # loss dY
+    dY = cp.empty(cur, dtype=cp.float32) if loss_kind == "softmax_ce" else None
 
     return CapturePlan(
         input_shape=tuple(map(int, input_shape)),

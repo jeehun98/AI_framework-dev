@@ -188,6 +188,9 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/optimizer/kernels.cu
   backends/cuda/ops/optimizer/launcher.cu
 
+  backends/cuda/ops/batchnorm/kernels.cu
+  backends/cuda/ops/batchnorm/launcher.cu
+
   # ✅ OBJECT 소스는 "sources" 목록에 포함 (올바른 사용)
   $<TARGET_OBJECTS:ge2_regemm_core>
 )
@@ -622,6 +625,49 @@ endif()
 apply_win_warnings(_ops_softmax)
 
 # =========================
+# Python 모듈 (_ops_batchnorm) — 독립 바인딩
+# =========================
+pybind11_add_module(_ops_batchnorm MODULE
+  src/bindings/batchnorm_pybind.cpp
+  backends/cuda/ops/batchnorm/launcher.cu
+  backends/cuda/ops/batchnorm/kernels.cu
+)
+
+target_compile_definitions(_ops_batchnorm PRIVATE BUILD_STANDALONE_OPS=1)
+
+target_include_directories(_ops_batchnorm PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/batchnorm
+)
+
+# BatchNorm은 GEMM 의존성이 없으므로 별도 object 링크 불필요
+# (필요 시 공통 유틸 obj 타겟을 여기에 추가)
+
+target_link_libraries(_ops_batchnorm PRIVATE
+  CUDA::cudart
+  # CUDA::cublas  # 필요없음
+  # CUDA::cudnn   # 사용 시 주석 해제
+)
+
+set_target_properties(_ops_batchnorm PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_batchnorm PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_batchnorm)
+
+
+# =========================
 # Python 모듈 (_ops_layernorm) — op 전용 독립 바인딩
 # =========================
 pybind11_add_module(_ops_layernorm MODULE
@@ -693,7 +739,7 @@ endif()
 # =========================
 # _ops_common 선행 의존성 일괄 추가 (안전 가드)
 # =========================
-set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn _ops_optimizer _ops_memory)
+set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn _ops_optimizer _ops_memory _ops_batchnorm)
 foreach(mod IN LISTS _ops_modules)
   if (TARGET ${mod} AND TARGET _ops_common)
     add_dependencies(${mod} _ops_common)
