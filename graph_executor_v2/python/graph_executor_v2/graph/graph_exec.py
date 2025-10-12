@@ -8,6 +8,12 @@ from .capture_plan import CapturePlan
 from graph_executor_v2.layers.conv2d import Conv2D
 from graph_executor_v2.ops import conv2d as convops
 
+# (선택) BN2d 타입 감지용
+try:
+    from graph_executor_v2.layers.batchnorm import BatchNorm2d as _BN2d
+except Exception:
+    _BN2d = None
+
 
 class GraphExecLike:
     def __init__(self, launch_fn, stream: cp.cuda.Stream):
@@ -116,38 +122,33 @@ def _zero_bwd_buffers(plan: CapturePlan):
 
 # ---------------- forward / backward runners ----------------
 def _run_fwd(model, plan: CapturePlan, X, stream_ptr: Optional[int]):
-    """
-    고정 입력 X에서 시작해 레이어별 forward_into 실행.
-    Conv2D는 WS를 즉시 생성/전달한다(옵션 A 대응).
-    """
     cur = X
     for i, lyr in enumerate(model.layers):
         per  = plan.per_layer[i]
         ybuf = per.y
         zbuf = per.z
 
-        # Conv2D인 경우: WS를 즉시 준비하고 지역변수로 전달
         ws_local = None
         if isinstance(lyr, Conv2D):
             ws_local = _ensure_conv2d_ws_for_forward(per, lyr, cur.shape)
 
         try:
-            lyr.forward_into(cur, out=ybuf, z_out=zbuf,
-                             work=(ws_local if ws_local is not None else getattr(per, "work", None)),
-                             stream=stream_ptr)
+            # 1st try: work + z_out
+            lyr.forward_into(
+                cur, out=ybuf, z_out=zbuf,
+                work=(ws_local if ws_local is not None else getattr(per, "work", None)),
+                stream=stream_ptr
+            )
         except TypeError:
-            # Dense 등: work 인자를 받지 않는 시그니처
-            lyr.forward_into(cur, out=ybuf, z_out=zbuf, stream=stream_ptr)
+            # 2nd try: 최소 인자 (out, stream)만
+            lyr.forward_into(cur, out=ybuf, stream=stream_ptr)
 
         cur = ybuf
     return cur
 
 
+# python/graph_executor_v2/graph/graph_exec.py (발췌)
 def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
-    """
-    레이어별 backward_into 호출.
-    Conv2D의 경우 per.work가 없더라도 per.y/lyr.W로 크기 재계산해 WS 즉시 생성.
-    """
     for ridx, lyr in enumerate(reversed(model.layers)):
         i = len(model.layers) - 1 - ridx
         per = plan.per_layer[i]
@@ -156,8 +157,22 @@ def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
         if isinstance(lyr, Conv2D):
             ws_local = _ensure_conv2d_ws_for_backward(per, lyr)
 
+        # ---- BN2d: always needs X_saved regardless of affine ----
+        is_bn = (_BN2d is not None and isinstance(lyr, _BN2d))
+        if is_bn:
+            prev_y = plan.per_layer[i-1].y if i-1 >= 0 else None
+            # gW_out/gB_out은 affine=False면 None이어도 OK
+            lyr.backward_into(
+                g_in,
+                gA_out=per.gA, gW_out=per.gW, gB_out=per.gB,
+                X_saved=prev_y,
+                stream=stream_ptr
+            )
+            g_in = per.gA
+            continue  # BN 처리는 끝, 다음 레이어로
+
+        # ---- 기존 경로 (Dense/Conv/기타) ----
         if per.gW is not None:
-            # 파라미터가 있는 레이어(예: Dense, Conv2D)
             try:
                 lyr.backward_into(
                     g_in,
@@ -167,13 +182,12 @@ def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
                 )
             except TypeError:
                 try:
-                    # Dense 전용 시그니처(레거시 GEMM): work_dZ / lt_workspace
                     ws = (ws_local if ws_local is not None else getattr(per, "work", None))
                     lyr.backward_into(
                         g_in,
                         gA_out=per.gA, gW_out=per.gW, gB_out=per.gB,
-                        work_dZ=(ws.dZ if ws is not None and hasattr(ws, "dZ") else None),
-                        lt_workspace=(ws.lt_ws if ws is not None and hasattr(ws, "lt_ws") else None),
+                        work_dZ=(getattr(ws, "dZ", None) if ws is not None else None),
+                        lt_workspace=(getattr(ws, "lt_ws", None) if ws is not None else None),
                         stream=stream_ptr
                     )
                 except TypeError:
@@ -183,16 +197,18 @@ def _run_bwd(model, plan: CapturePlan, g_in, stream_ptr: Optional[int]):
                         stream=stream_ptr
                     )
         else:
-            # 파라미터 없는 레이어(활성화, reshape 등)
             try:
-                lyr.backward_into(g_in, gA_out=per.gA,
-                                  work=(ws_local if ws_local is not None else getattr(per, "work", None)),
-                                  stream=stream_ptr)
+                lyr.backward_into(
+                    g_in, gA_out=per.gA,
+                    work=(ws_local if ws_local is not None else getattr(per, "work", None)),
+                    stream=stream_ptr
+                )
             except TypeError:
                 lyr.backward_into(g_in, gA_out=per.gA, stream=stream_ptr)
 
         g_in = per.gA
     return g_in
+
 
 
 # ---------------- record / instantiate ----------------
@@ -217,6 +233,8 @@ def record_step_graph(
 
     # ------ 워밍업 ------
     with stream:
+        # 그래프 입력 버퍼를 BN bwd fallback용으로 보관
+        setattr(model, "_graph_input_buf", X_buf)
         cur = _run_fwd(model, plan, X_buf, stream.ptr)
         loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
         g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
