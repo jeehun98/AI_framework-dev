@@ -1,79 +1,116 @@
-// backends/cuda/ops/concat/kernels.cu
 #include <cuda_runtime.h>
 #include <cstdint>
 
+// 공통: 임의 region 복사/가산 커널
 namespace {
 
-__global__ void concat_copy_kernel(
-  const float* const* __restrict__ in_ptrs,
-  const int64_t* __restrict__ sizes_axis,
-  int n_inputs,
-  float* __restrict__ out,
-  const int64_t* __restrict__ shape, int rank,
-  int axis)
-{
-  // RowMajor 연속 인덱스 → (n0,n1,n2,n3) 해석
-  // strides
-  int64_t stride[4]={0,0,0,0}, sh[4]={1,1,1,1};
-  for(int d=0; d<rank; ++d) sh[d]=(int)shape[d];
-  stride[rank-1]=1;
-  for(int d=rank-2; d>=0; --d) stride[d]=stride[d+1]*sh[d+1];
-  const int64_t total = stride[0]*sh[0];
-
-  int64_t axis_stride = stride[axis];
-  int64_t inner = (axis==rank-1) ? 1 : stride[axis+1];
-  int64_t outer = total / (sh[axis]*inner);
-
-  int64_t tid = blockIdx.x*blockDim.x + threadIdx.x;
-  if (tid>=total) return;
-
-  // 좌표 복원
-  int64_t tmp = tid;
-  int64_t coord[4]={0,0,0,0};
-  for(int d=0; d<rank; ++d){
-    coord[d] = tmp / stride[d];
-    tmp -= coord[d]*stride[d];
-  }
-
-  // 입력 선택: coord[axis]가 어느 input의 축에 속하는지
-  int64_t aidx = coord[axis];
-  int which = 0;
-  int64_t off = aidx;
-  for(; which<n_inputs; ++which){
-    int64_t sz = sizes_axis[which];
-    if (off < sz) break;
-    off -= sz;
-  }
-  if (which==n_inputs) return; // shouldn't happen
-
-  // 입력 포인터의 위치 계산:
-  // 입력 텐서의 동일 좌표에서 axis만 'off'로 교체
-  int64_t in_index = 0;
-  for(int d=0; d<rank; ++d){
-    int64_t v = (d==axis) ? off : coord[d];
-    // 입력 stride 동일(모든 입력은 base와 동일한 shape except axis)
-    // stride 재사용 가능
-    in_index += v * stride[d];
-  }
-  out[tid] = in_ptrs[which][in_index];
-}
-
-} // anon
-
-namespace ai {
-
-void concat_copy_launcher(const float* const* in_ptrs,
-                          const int64_t* sizes_axis,
-                          int n_inputs,
-                          float* out,
-                          const int64_t* shape, int rank,
-                          int axis,
-                          cudaStream_t s)
-{
+template<int BS>
+__global__ void tensor_copy_region_kernel(
+    const float* __restrict__ X,
+    float* __restrict__ Y,
+    int rank,
+    const int* __restrict__ reg_dims,   // [4] region 크기
+    const int* __restrict__ x_strides,  // [4] X row-major stride
+    const int* __restrict__ y_strides,  // [4] Y row-major stride
+    const int* __restrict__ x_starts,   // [4] X 시작 좌표
+    const int* __restrict__ y_starts    // [4] Y 시작 좌표
+){
   int64_t total = 1;
-  for(int d=0; d<rank; ++d) total *= shape[d];
-  dim3 block(256), grid((unsigned)((total + block.x - 1)/block.x));
-  concat_copy_kernel<<<grid, block, 0, s>>>(in_ptrs, sizes_axis, n_inputs, out, shape, rank, axis);
+  #pragma unroll
+  for (int d=0; d<4; ++d) { if (d<rank) total *= (int64_t)reg_dims[d]; }
+
+  int64_t idx = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
+  if (idx >= total) return;
+
+  // region-linear -> multi-index (row-major)
+  int coord[4] = {0,0,0,0};
+  // region strides (row-major)
+  int rstr[4] = {1,1,1,1};
+  for (int d=rank-2; d>=0; --d) rstr[d] = rstr[d+1]*reg_dims[d+1];
+  #pragma unroll
+  for (int d=0; d<4; ++d){
+    if (d<rank) coord[d] = (int)((idx / (int64_t)rstr[d]) % reg_dims[d]);
+  }
+
+  int64_t xoff = 0, yoff = 0;
+  #pragma unroll
+  for (int d=0; d<4; ++d){
+    if (d<rank){
+      xoff += (int64_t)(x_starts[d] + coord[d]) * x_strides[d];
+      yoff += (int64_t)(y_starts[d] + coord[d]) * y_strides[d];
+    }
+  }
+
+  Y[yoff] = X[xoff];
 }
 
-} // namespace ai
+template<int BS>
+__global__ void tensor_add_region_kernel(
+    const float* __restrict__ S,  // source
+    float* __restrict__ D,        // dst += S
+    int rank,
+    const int* __restrict__ reg_dims,
+    const int* __restrict__ s_strides,
+    const int* __restrict__ d_strides,
+    const int* __restrict__ s_starts,
+    const int* __restrict__ d_starts
+){
+  int64_t total = 1;
+  #pragma unroll
+  for (int d=0; d<4; ++d) { if (d<rank) total *= (int64_t)reg_dims[d]; }
+
+  int64_t idx = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
+  if (idx >= total) return;
+
+  int coord[4] = {0,0,0,0};
+  int rstr[4] = {1,1,1,1};
+  for (int d=rank-2; d>=0; --d) rstr[d] = rstr[d+1]*reg_dims[d+1];
+  #pragma unroll
+  for (int d=0; d<4; ++d){
+    if (d<rank) coord[d] = (int)((idx / (int64_t)rstr[d]) % reg_dims[d]);
+  }
+
+  int64_t soff = 0, doff = 0;
+  #pragma unroll
+  for (int d=0; d<4; ++d){
+    if (d<rank){
+      soff += (int64_t)(s_starts[d] + coord[d]) * s_strides[d];
+      doff += (int64_t)(d_starts[d] + coord[d]) * d_strides[d];
+    }
+  }
+  D[doff] += S[soff];
+}
+
+} // anonymous
+
+extern "C" void concat_copy_region_kernel_launcher(
+  const float* X, float* Y, int rank,
+  const int* reg_dims,
+  const int* x_strides, const int* y_strides,
+  const int* x_starts,  const int* y_starts,
+  cudaStream_t s
+){
+  int64_t total = 1;
+  for (int i=0;i<rank;++i) total *= reg_dims[i];
+  constexpr int BS = 256;
+  dim3 block(BS), grid((int)((total + BS - 1)/BS));
+  tensor_copy_region_kernel<BS><<<grid, block, 0, s>>>(
+    X,Y,rank,reg_dims,x_strides,y_strides,x_starts,y_starts
+  );
+}
+
+extern "C" void concat_add_region_kernel_launcher(
+  const float* S, float* D, int rank,
+  const int* reg_dims,
+  const int* s_strides, const int* d_strides,
+  const int* s_starts,  const int* d_starts,
+  cudaStream_t s
+){
+  int64_t total = 1;
+  for (int i=0;i<rank;++i) total *= reg_dims[i];
+  constexpr int BS = 256;
+  dim3 block(BS), grid((int)((total + BS - 1)/BS));
+  tensor_add_region_kernel<BS><<<grid, block, 0, s>>>(
+    S,D,rank,reg_dims,s_strides,d_strides,s_starts,d_starts
+  );
+}
