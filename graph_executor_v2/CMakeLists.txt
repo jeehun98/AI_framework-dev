@@ -37,17 +37,18 @@ find_package(CUDAToolkit REQUIRED)  # CUDA::cudart, CUDA::cublas 등
 set(PROJECT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 
 # =========================
-# 공통 경고/옵션 헬퍼
+# 공통 경고/옵션 헬퍼  (/utf-8 추가)
 # =========================
 function(apply_win_warnings tgt)
   if (MSVC)
     target_compile_options(${tgt} PRIVATE
-      $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc>
+      $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8>
       $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
       $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>
       $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>
       $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/permissive->
       $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/EHsc>
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/utf-8>
     )
     target_compile_definitions(${tgt} PRIVATE NOMINMAX)
   else()
@@ -82,9 +83,8 @@ add_library(ai_core STATIC
   src/ops/memory.cpp
   src/ops/upsample2d.cpp
   src/ops/view.cpp
-  src/ops/rnn.cpp            # ✅ RNN 오퍼 통합
+  src/ops/rnn.cpp
 )
-
 target_include_directories(ai_core
   PUBLIC
     ${PROJECT_INCLUDE_DIR}
@@ -102,11 +102,9 @@ set(GE2_REGEMM_SOURCES
   backends/cuda/ops/gemm/kernels/regemm_backward.cu
 )
 
-# (1) 통합 백엔드용: BUILD_STANDALONE_OPS 미정의
-# *** 오타 수정: ge2_regemmm_core -> ge2_regemm_core (m이 2개) ***
+# (1) 통합 백엔드용
 add_library(ge2_regemm_core OBJECT ${GE2_REGEMM_SOURCES})
 set_property(TARGET ge2_regemm_core PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-# (ALIAS 제거: $<TARGET_OBJECTS:...>에서 ALIAS 사용 불가)
 target_include_directories(ge2_regemm_core
   PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -115,7 +113,7 @@ target_include_directories(ge2_regemm_core
 )
 apply_win_warnings(ge2_regemm_core)
 
-# (2) 독립 모듈용: BUILD_STANDALONE_OPS=1 정의
+# (2) 독립 모듈용
 add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES})
 set_target_properties(ge2_regemm_standalone PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -131,57 +129,62 @@ apply_win_warnings(ge2_regemm_standalone)
 
 # =========================
 # ai_backend_cuda (CUDA 백엔드 + 모든 CUDA ops)
-#  - 통합 백엔드 경로에서는 ge2_regemm_core 객체 재사용
 # =========================
 add_library(ai_backend_cuda STATIC
   src/ops/register_ops.cpp
 
   backends/cuda/ops/rmsnorm/kernels.cu
   backends/cuda/ops/rmsnorm/launcher.cu
-  
+
   backends/cuda/ops/layernorm/kernels.cu
   backends/cuda/ops/layernorm/launcher.cu
-  
+
   backends/cuda/ops/softmax/kernels.cu
   backends/cuda/ops/softmax/launcher.cu
-  
+
   backends/cuda/ops/cross_entropy/kernels.cu
   backends/cuda/ops/cross_entropy/launcher.cu
-  
+
   backends/cuda/ops/dropout/kernels.cu
   backends/cuda/ops/dropout/launcher.cu
-  
+
   backends/cuda/ops/conv2d/kernels.cu
   backends/cuda/ops/conv2d/launcher.cu
-  
+
   backends/cuda/ops/pool2d/kernels.cu
   backends/cuda/ops/pool2d/launcher.cu
-  
+
   backends/cuda/ops/sdpa/launcher.cu
-  
+
   backends/cuda/ops/elementwise/kernels.cu
   backends/cuda/ops/elementwise/launcher.cu
-  
+
   backends/cuda/ops/reduction/kernels.cu
   backends/cuda/ops/reduction/launcher.cu
-  
+
+  # Concat
+  backends/cuda/ops/concat/kernels.cu
   backends/cuda/ops/concat/launcher.cu
-  
+
+  # Slice
+  backends/cuda/ops/slice/kernels.cu
   backends/cuda/ops/slice/launcher.cu
-  
+
   backends/cuda/ops/pad/launcher.cu
-  
+
   backends/cuda/ops/memory/launcher.cu
   backends/cuda/ops/memory/kernels.cu
-  
+
   backends/cuda/ops/upsample2d/launcher.cu
-  
+
+  # View (커널/런처 사용)
+  backends/cuda/ops/view/kernels.cu
   backends/cuda/ops/view/launcher.cu
 
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
-  # ✅ RNN 통합 (통합 백엔드)
+  # RNN
   backends/cuda/ops/rnn/kernels.cu
   backends/cuda/ops/rnn/launcher.cu
 
@@ -194,10 +197,8 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/embedding/kernels.cu
   backends/cuda/ops/embedding/launcher.cu
 
-  # ✅ OBJECT 소스는 "sources" 목록에 포함 (올바른 사용)
   $<TARGET_OBJECTS:ge2_regemm_core>
 )
-
 set_target_properties(ai_backend_cuda PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -240,7 +241,7 @@ if (BUILD_PYTHON)
 endif()
 
 # =========================
-# Python 모듈 (_ops_common) — 공용 타입 바인딩
+# Python 모듈 (_ops_common)
 # =========================
 pybind11_add_module(_ops_common MODULE
   src/bindings/ops_common_pybind.cpp
@@ -262,12 +263,11 @@ endif()
 apply_win_warnings(_ops_common)
 
 # =========================
-# Python 모듈 (_ops_gemm) — 독립 바인딩
+# Python 모듈 (_ops_gemm)
 # =========================
 pybind11_add_module(_ops_gemm MODULE
   src/bindings/gemm_pybind.cpp
 )
-# OBJECT 소스는 target_sources 로 포함
 target_sources(_ops_gemm PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
 )
@@ -296,7 +296,7 @@ endif()
 apply_win_warnings(_ops_gemm)
 
 # =========================
-# Python 모듈 (_ops_conv2d) — 독립 바인딩
+# Python 모듈 (_ops_conv2d)
 # =========================
 pybind11_add_module(_ops_conv2d MODULE
   src/bindings/conv2d_pybind.cpp
@@ -317,7 +317,6 @@ target_sources(_ops_conv2d PRIVATE
 target_link_libraries(_ops_conv2d PRIVATE
   CUDA::cudart
   CUDA::cublas
-  # CUDA::cudnn
 )
 set_target_properties(_ops_conv2d PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -333,47 +332,37 @@ if (WIN32)
 endif()
 apply_win_warnings(_ops_conv2d)
 
-
 # =========================
-# Python 모듈 (_ops_memory) — 독립 바인딩
+# Python 모듈 (_ops_memory)
 # =========================
 pybind11_add_module(_ops_memory MODULE
   src/bindings/memory_pybind.cpp
   backends/cuda/ops/memory/launcher.cu
   backends/cuda/ops/memory/kernels.cu
 )
-
 target_compile_definitions(_ops_memory PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_memory PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/memory
 )
-
-target_link_libraries(_ops_memory PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_memory PRIVATE CUDA::cudart)
 set_target_properties(_ops_memory PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_memory PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_memory)
 
-
 # =========================
-# Python 모듈 (_ops_dropout) — 독립 바인딩
+# Python 모듈 (_ops_dropout)
 # =========================
 pybind11_add_module(_ops_dropout MODULE
   src/bindings/dropout_pybind.cpp
@@ -401,82 +390,65 @@ endif()
 apply_win_warnings(_ops_dropout)
 
 # =========================
-# Python 모듈 (_ops_rmsnorm) — op 전용 독립 바인딩
+# Python 모듈 (_ops_rmsnorm)
 # =========================
 pybind11_add_module(_ops_rmsnorm MODULE
   src/bindings/rmsnorm_pybind.cpp
   backends/cuda/ops/rmsnorm/launcher.cu
   backends/cuda/ops/rmsnorm/kernels.cu
 )
-
 target_compile_definitions(_ops_rmsnorm PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_rmsnorm PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/rmsnorm
 )
-
-target_link_libraries(_ops_rmsnorm PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_rmsnorm PRIVATE CUDA::cudart)
 set_target_properties(_ops_rmsnorm PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_rmsnorm PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_rmsnorm)
 
 # =========================
-# Python 모듈 (_ops_cross_entropy) — op 전용 독립 바인딩
+# Python 모듈 (_ops_cross_entropy)
 # =========================
 pybind11_add_module(_ops_cross_entropy MODULE
   src/bindings/cross_entropy_pybind.cpp
   backends/cuda/ops/cross_entropy/launcher.cu
   backends/cuda/ops/cross_entropy/kernels.cu
 )
-
 target_compile_definitions(_ops_cross_entropy PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_cross_entropy PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/cross_entropy
 )
-
-target_link_libraries(_ops_cross_entropy PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_cross_entropy PRIVATE CUDA::cudart)
 set_target_properties(_ops_cross_entropy PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_cross_entropy PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_cross_entropy)
 
-
 # =========================
-# Python 모듈 (_ops_pad) — op 전용 독립 바인딩
+# Python 모듈 (_ops_pad)
 # =========================
 pybind11_add_module(_ops_pad MODULE
   src/bindings/pad_pybind.cpp
@@ -488,9 +460,7 @@ target_include_directories(_ops_pad PRIVATE
   backends/cuda/ops/_common/shim
   backends/cuda/ops/pad
 )
-target_link_libraries(_ops_pad PRIVATE
-  CUDA::cudart
-)
+target_link_libraries(_ops_pad PRIVATE CUDA::cudart)
 set_target_properties(_ops_pad PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -506,7 +476,7 @@ endif()
 apply_win_warnings(_ops_pad)
 
 # =========================
-# Python 모듈 (_ops_pool2d) — op 전용 독립 바인딩
+# Python 모듈 (_ops_pool2d)
 # =========================
 pybind11_add_module(_ops_pool2d MODULE
   src/bindings/pool2d_pybind.cpp
@@ -519,9 +489,7 @@ target_include_directories(_ops_pool2d PRIVATE
   backends/cuda/ops/_common/shim
   backends/cuda/ops/pool2d
 )
-target_link_libraries(_ops_pool2d PRIVATE
-  CUDA::cudart
-)
+target_link_libraries(_ops_pool2d PRIVATE CUDA::cudart)
 set_target_properties(_ops_pool2d PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -537,7 +505,7 @@ endif()
 apply_win_warnings(_ops_pool2d)
 
 # =========================
-# Python 모듈 (_ops_rnn) — 독립 바인딩
+# Python 모듈 (_ops_rnn)
 # =========================
 pybind11_add_module(_ops_rnn MODULE
   src/bindings/rnn_pybind.cpp
@@ -549,31 +517,44 @@ target_include_directories(_ops_rnn PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/gemm/include
-  # (필요하면) rnn 헤더 폴더도 추가
   backends/cuda/ops/rnn
 )
+target_sources(_ops_rnn PRIVATE
+  $<TARGET_OBJECTS:ge2_regemm_standalone>
+)
+target_link_libraries(_ops_rnn PRIVATE
+  CUDA::cudart
+  CUDA::cublas
+)
+set_target_properties(_ops_rnn PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_rnn PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+apply_win_warnings(_ops_rnn)
 
 # =========================
-# Python 모듈 (_ops_optimizer) — op 전용 독립 바인딩
+# Python 모듈 (_ops_optimizer)
 # =========================
 pybind11_add_module(_ops_optimizer MODULE
   src/bindings/optimizer_pybind.cpp
   backends/cuda/ops/optimizer/launcher.cu
   backends/cuda/ops/optimizer/kernels.cu
 )
-
 target_compile_definitions(_ops_optimizer PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_optimizer PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/optimizer
 )
-
-target_link_libraries(_ops_optimizer PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_optimizer PRIVATE CUDA::cudart)
 set_target_properties(_ops_optimizer PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -586,87 +567,66 @@ if (WIN32)
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_optimizer)
 
-
 # =========================
-# Python 모듈 (_ops_softmax) — op 전용 독립 바인딩
+# Python 모듈 (_ops_softmax)
 # =========================
 pybind11_add_module(_ops_softmax MODULE
   src/bindings/softmax_pybind.cpp
   backends/cuda/ops/softmax/launcher.cu
   backends/cuda/ops/softmax/kernels.cu
 )
-
 target_compile_definitions(_ops_softmax PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_softmax PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/softmax
 )
-
-target_link_libraries(_ops_softmax PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_softmax PRIVATE CUDA::cudart)
 set_target_properties(_ops_softmax PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_softmax PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_softmax)
 
 # =========================
-# Python 모듈 (_ops_batchnorm) — 독립 바인딩
+# Python 모듈 (_ops_batchnorm)
 # =========================
 pybind11_add_module(_ops_batchnorm MODULE
   src/bindings/batchnorm_pybind.cpp
   backends/cuda/ops/batchnorm/launcher.cu
   backends/cuda/ops/batchnorm/kernels.cu
 )
-
 target_compile_definitions(_ops_batchnorm PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_batchnorm PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/batchnorm
 )
-
-# BatchNorm은 GEMM 의존성이 없으므로 별도 object 링크 불필요
-# (필요 시 공통 유틸 obj 타겟을 여기에 추가)
-
 target_link_libraries(_ops_batchnorm PRIVATE
   CUDA::cudart
-  # CUDA::cublas  # 필요없음
-  # CUDA::cudnn   # 사용 시 주석 해제
 )
-
 set_target_properties(_ops_batchnorm PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_batchnorm PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_batchnorm)
 
 # =========================
@@ -698,80 +658,131 @@ if (WIN32)
 endif()
 apply_win_warnings(_ops_embedding)
 
-
 # =========================
-# Python 모듈 (_ops_layernorm) — op 전용 독립 바인딩
+# Python 모듈 (_ops_layernorm)
 # =========================
 pybind11_add_module(_ops_layernorm MODULE
   src/bindings/layernorm_pybind.cpp
   backends/cuda/ops/layernorm/launcher.cu
   backends/cuda/ops/layernorm/kernels.cu
 )
-
 target_compile_definitions(_ops_layernorm PRIVATE BUILD_STANDALONE_OPS=1)
-
 target_include_directories(_ops_layernorm PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/layernorm
 )
-
-target_link_libraries(_ops_layernorm PRIVATE
-  CUDA::cudart
-)
-
+target_link_libraries(_ops_layernorm PRIVATE CUDA::cudart)
 set_target_properties(_ops_layernorm PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-
 if (WIN32)
   set_target_properties(_ops_layernorm PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-
 apply_win_warnings(_ops_layernorm)
 
-
-# ✅ REGEMM standalone 객체 포함 (conv2d와 동일)
-target_sources(_ops_rnn PRIVATE
-  $<TARGET_OBJECTS:ge2_regemm_standalone>
+# =========================
+# Python 모듈 (_ops_concat)
+# =========================
+pybind11_add_module(_ops_concat MODULE
+  src/bindings/concat_pybind.cpp
+  backends/cuda/ops/concat/launcher.cu
+  backends/cuda/ops/concat/kernels.cu
 )
-
-target_link_libraries(_ops_rnn PRIVATE
-  CUDA::cudart
-  CUDA::cublas
+target_compile_definitions(_ops_concat PRIVATE BUILD_STANDALONE_OPS=1)
+target_include_directories(_ops_concat PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/concat
 )
-
-set_target_properties(_ops_rnn PROPERTIES
+target_link_libraries(_ops_concat PRIVATE CUDA::cudart)
+set_target_properties(_ops_concat PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
 if (WIN32)
-  set_target_properties(_ops_rnn PROPERTIES
+  set_target_properties(_ops_concat PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
   )
 endif()
-apply_win_warnings(_ops_rnn)
+apply_win_warnings(_ops_concat)
 
-# _ops_common 이 먼저 빌드되도록(공용 타입/헬퍼)
-if (TARGET _ops_rnn AND TARGET _ops_common)
-  add_dependencies(_ops_rnn _ops_common)
+# =========================
+# Python 모듈 (_ops_slice)
+# =========================
+pybind11_add_module(_ops_slice MODULE
+  src/bindings/slice_pybind.cpp
+  backends/cuda/ops/slice/launcher.cu
+  backends/cuda/ops/slice/kernels.cu
+)
+target_compile_definitions(_ops_slice PRIVATE BUILD_STANDALONE_OPS=1)
+target_include_directories(_ops_slice PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/slice
+)
+target_link_libraries(_ops_slice PRIVATE CUDA::cudart)
+set_target_properties(_ops_slice PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_slice PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
 endif()
-
-
+apply_win_warnings(_ops_slice)
 
 # =========================
-# _ops_common 선행 의존성 일괄 추가 (안전 가드)
+# Python 모듈 (_ops_view) — (커널/런처 사용)
 # =========================
-set(_ops_modules _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn _ops_optimizer _ops_memory _ops_batchnorm _ops_embedding)
+pybind11_add_module(_ops_view MODULE
+  src/bindings/view_pybind.cpp
+  backends/cuda/ops/view/launcher.cu
+  backends/cuda/ops/view/kernels.cu
+)
+target_compile_definitions(_ops_view PRIVATE BUILD_STANDALONE_OPS=1)
+target_include_directories(_ops_view PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  backends/cuda/ops/_common/shim
+  backends/cuda/ops/view
+)
+target_link_libraries(_ops_view PRIVATE CUDA::cudart)
+set_target_properties(_ops_view PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+if (WIN32)
+  set_target_properties(_ops_view PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+apply_win_warnings(_ops_view)
+
+# =========================
+# _ops_common 선행 의존성 일괄 추가
+# =========================
+set(_ops_modules
+  _ops_gemm _ops_conv2d _ops_pool2d _ops_pad _ops_dropout _ops_rnn
+  _ops_optimizer _ops_memory _ops_batchnorm _ops_embedding _ops_layernorm
+  _ops_softmax _ops_cross_entropy _ops_rmsnorm
+  _ops_concat _ops_slice _ops_view
+)
 foreach(mod IN LISTS _ops_modules)
   if (TARGET ${mod} AND TARGET _ops_common)
     add_dependencies(${mod} _ops_common)
