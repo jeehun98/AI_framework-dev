@@ -1,75 +1,64 @@
+// backends/cuda/ops/concat/launcher.cu
 #include <cuda_runtime.h>
-#include <stdint.h>
-#include <vector>
+#include <algorithm>
 #include "backends/cuda/ops/concat/api.hpp"
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/op_schema.hpp"
+#endif
 
 namespace ai {
 
-// 도우미: s[b:e) 곱
-static inline int64_t prod(const std::vector<int64_t>& s, int b, int e){
-  int64_t p=1; for (int i=b;i<e;++i) p*=s[i]; return p;
+static inline bool is_f32_cuda_row(const Tensor& t){
+  return t.device==Device::CUDA && t.desc.dtype==DType::F32 && t.desc.layout==Layout::RowMajor;
 }
+static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
 
-Status ConcatCudaLaunch(const std::vector<Tensor>& Xs,
-                        Tensor& Y,
-                        const ConcatAttrs& a,
-                        StreamHandle stream)
+// kernel 선언 (kernels.cu)
+void concat_copy_launcher(const float* const* in_ptrs,
+                          const int64_t* sizes_axis,
+                          int n_inputs,
+                          float* out,
+                          const int64_t* shape, int rank,
+                          int axis,
+                          cudaStream_t s);
+
+Status ConcatCudaLaunch(const Tensor* inputs, int n_inputs, Tensor& output,
+                        const ConcatAttrs& a, StreamHandle stream)
 {
-  const int n = (int)Xs.size();
-  if (n<=0) return Status::Invalid;
+  if (n_inputs <= 0) return Status::Invalid;
+  if (!is_f32_cuda_row(output)) return Status::Invalid;
 
-  const auto& yshape = Y.desc.shape;
-  const int nd = (int)yshape.size();
-  if (a.axis<0 || a.axis>=nd) return Status::Invalid;
+  const int rank = (int)output.desc.shape.size();
+  if (rank < 1 || rank > 4) return Status::Invalid;
+  if (a.axis < 0 || a.axis >= rank) return Status::Invalid;
 
-  // 검증: dtype/레이아웃/디바이스/nd 일치 및 non-concat dims 동일
-  for (int i=0;i<n;i++){
-    const auto& Xi = Xs[i];
-    if (Xi.device!=Device::CUDA || Xi.desc.dtype!=DType::F32 || Xi.desc.layout!=Layout::RowMajor)
-      return Status::Invalid;
-    if ((int)Xi.desc.shape.size()!=nd) return Status::ShapeMismatch;
-    for (int d=0; d<nd; ++d){
+  // 기준 shape = output.shape, 단 axis 제외 동일 검증
+  std::vector<int64_t> base = output.desc.shape;
+  std::vector<int64_t> in_axis_sizes(n_inputs);
+  std::vector<const float*> ptrs(n_inputs);
+
+  for (int i=0; i<n_inputs; ++i){
+    if (!is_f32_cuda_row(inputs[i])) return Status::Invalid;
+    if ((int)inputs[i].desc.shape.size()!=rank) return Status::ShapeMismatch;
+    for (int d=0; d<rank; ++d){
       if (d==a.axis) continue;
-      if (Xi.desc.shape[d]!=yshape[d]) return Status::ShapeMismatch;
+      if (inputs[i].desc.shape[d] != base[d]) return Status::ShapeMismatch;
     }
+    in_axis_sizes[i] = inputs[i].desc.shape[a.axis];
+    ptrs[i] = static_cast<const float*>(inputs[i].data);
   }
 
-  // axis 길이/합, outer/inner, prefix_axis
-  std::vector<int64_t> axis_len(n);
-  int64_t total_axis=0;
-  for (int i=0;i<n;i++){ axis_len[i]=Xs[i].desc.shape[a.axis]; total_axis+=axis_len[i]; }
-  if (total_axis!=yshape[a.axis]) return Status::ShapeMismatch;
+  // 출력 axis 합산 체크
+  int64_t sum_axis = 0;
+  for (auto v: in_axis_sizes) sum_axis += v;
+  if (sum_axis != base[a.axis]) return Status::ShapeMismatch;
 
-  const int64_t outer = prod(yshape, 0, a.axis);
-  const int64_t inner = prod(yshape, a.axis+1, nd);
-
-  std::vector<int64_t> prefix_axis(n,0);
-  for (int i=1;i<n;i++) prefix_axis[i]=prefix_axis[i-1]+axis_len[i-1];
-
-  // 0-size 빠른 종료
-  int64_t y_elems=1; for (auto v: yshape) y_elems*=v;
-  if (y_elems==0) return Status::Ok;
-
-  auto s = (cudaStream_t)stream;
-
-  // D2D memcpy 루프: 입력 k, 각 outer 슬라이스 o에서 연속 블록 복사
-  for (int k=0;k<n;k++){
-    const size_t bytes = (size_t)(axis_len[k] * inner) * sizeof(float);
-    const float* X = static_cast<const float*>(Xs[k].data);
-    float*       Yp = static_cast<float*>(Y.data);
-
-    for (int64_t o=0;o<outer;o++){
-      const int64_t src_off = o * (axis_len[k] * inner);
-      const int64_t dst_off = o * (total_axis * inner) + (prefix_axis[k] * inner);
-      auto err = cudaMemcpyAsync(Yp + dst_off, X + src_off, bytes,
-                                 cudaMemcpyDeviceToDevice, s);
-      if (err != cudaSuccess) return Status::Invalid;
-    }
-  }
-
-  // 복사 완료 보장
-  auto serr = cudaStreamSynchronize(s);
-  return (serr==cudaSuccess) ? Status::Ok : Status::Invalid;
+  auto s = to_cuda(stream);
+  concat_copy_launcher(ptrs.data(), in_axis_sizes.data(), n_inputs,
+                       static_cast<float*>(output.data), base.data(), rank, a.axis, s);
+  return Status::Ok;
 }
 
 } // namespace ai
