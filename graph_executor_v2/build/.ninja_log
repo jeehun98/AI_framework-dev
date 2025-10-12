@@ -1,8 +1,17 @@
 # ninja log v5
-27	2227	7819425929764479	CMakeFiles/_ops_batchnorm.dir/src/bindings/batchnorm_pybind.cpp.obj	2e3afebb684b9fde
-23	2536	7819425932879054	CMakeFiles/_ops_common.dir/src/bindings/ops_common_pybind.cpp.obj	c97074ec65e6e2fc
-33	3791	7819425944561678	CMakeFiles/_ops_batchnorm.dir/backends/cuda/ops/batchnorm/kernels.cu.obj	557d07817ed82d19
-2536	4184	7819425948708384	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_common.pyd	d6889d2a3e55296e
-30	4219	7819425949564982	CMakeFiles/_ops_batchnorm.dir/backends/cuda/ops/batchnorm/launcher.cu.obj	909fdd5815e794c6
 4220	6454	7819425968312171	CMakeFiles/_ops_batchnorm.dir/cmake_device_link.obj	37568e71329e2984
+33	3791	7819425944561678	CMakeFiles/_ops_batchnorm.dir/backends/cuda/ops/batchnorm/kernels.cu.obj	557d07817ed82d19
+23	2536	7819425932879054	CMakeFiles/_ops_common.dir/src/bindings/ops_common_pybind.cpp.obj	c97074ec65e6e2fc
+27	2227	7819425929764479	CMakeFiles/_ops_batchnorm.dir/src/bindings/batchnorm_pybind.cpp.obj	2e3afebb684b9fde
+30	4219	7819425949564982	CMakeFiles/_ops_batchnorm.dir/backends/cuda/ops/batchnorm/launcher.cu.obj	909fdd5815e794c6
+2536	4184	7819425948708384	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_common.pyd	d6889d2a3e55296e
 6457	7642	7819425983694301	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_batchnorm.pyd	f7503a00001d16db
+20	992	7819443313874775	build.ninja	5c517ba7c577102e
+20	992	7819443313874775	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build/cmake_install.cmake	5c517ba7c577102e
+26	2010	7819443334379535	CMakeFiles/_ops_embedding.dir/src/bindings/embedding_pybind.cpp.obj	8055edbcf64b34cb
+32	3042	7819443344573822	CMakeFiles/_ops_embedding.dir/backends/cuda/ops/embedding/kernels.cu.obj	7135552bfb5cd9b3
+24	2992	7819445367220344	CMakeFiles/_ops_embedding.dir/backends/cuda/ops/embedding/kernels.cu.obj	7135552bfb5cd9b3
+21	3566	7819445372885941	CMakeFiles/_ops_embedding.dir/backends/cuda/ops/embedding/launcher.cu.obj	6f9d95c0b44398e5
+19	1713	7819446184082685	CMakeFiles/_ops_embedding.dir/src/bindings/embedding_pybind.cpp.obj	8055edbcf64b34cb
+1714	3958	7819446202404739	CMakeFiles/_ops_embedding.dir/cmake_device_link.obj	4c4a2bc0c2332e63
+3959	5070	7819446217408055	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_embedding.pyd	991752a23d93e45c

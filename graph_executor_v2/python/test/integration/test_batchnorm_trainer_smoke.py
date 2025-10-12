@@ -28,34 +28,31 @@ def make_model_with_bn(
     *,
     act: str = "relu",
     with_affine: bool = True,
-    channels_last: bool = False,   # 현재 예제는 NCHW로만 사용
+    channels_last: bool = False,   # 본 테스트는 NCHW 기준
     N=8, Cin=3, H=16, W=16, hidden=32, classes=5
 ):
     """
-    Conv → BN → Act → Flatten → Dense → Act → Dense
-    - Conv/Dense는 activation="none"
-    - BN은 2D 버전 (N,C,H,W 입력 가정)
+    Conv → BN → Act → Conv → BN → Act → Flatten → Dense → Act → Dense
+    Conv/Dense는 activation="none" 고정. BN은 2D(NCHW) 가정.
     """
     if BatchNorm2d is None:
         raise RuntimeError("BatchNorm2d layer not available — skipping test.")
 
-    # 활성화 레이어는 별도로 삽입 (BN의 활성화는 아님)
     act1 = ActivationLayer(act=act, save_y=True, name=f"Act1({act})")
     act2 = ActivationLayer(act=act, save_y=True, name=f"Act2({act})")
+    act3 = ActivationLayer(act=act, save_y=True, name=f"Act3({act})")
 
     m = Sequential(
-        Pad(before=(1, 1), after=(1, 1), value=0.0),
+        Pad(before=(1, 1), after=(1, 1), value=0.0),              # H/W에 1씩 패딩
         Conv2D(out_channels=8, kernel_size=3, padding=(0, 0), activation="none"),
-        BatchNorm2d(eps=1e-5, momentum=0.1,
-                    affine=with_affine, channels_last=channels_last, name="BN1"),
+        BatchNorm2d(eps=1e-5, momentum=0.1, affine=with_affine, channels_last=channels_last, name="BN1"),
         act1,
         Conv2D(out_channels=8, kernel_size=3, padding=(1, 1), activation="none"),
-        BatchNorm2d(eps=1e-5, momentum=0.1,
-                    affine=with_affine, channels_last=channels_last, name="BN2"),
+        BatchNorm2d(eps=1e-5, momentum=0.1, affine=with_affine, channels_last=channels_last, name="BN2"),
         act2,
         Flatten(),
-        Dense(hidden, activation="none", initializer="he", use_native_bwd=True),
-        ActivationLayer(act=act, save_y=True, name=f"Act3({act})"),
+        Dense(hidden,  activation="none", initializer="he",     use_native_bwd=True),
+        act3,
         Dense(classes, activation="none", initializer="xavier", use_native_bwd=True),
     )
     m.build((N, Cin, H, W))
@@ -100,9 +97,9 @@ def run_smoke_for_bn(config_name: str, *, with_affine: bool, channels_last: bool
 
 def main():
     print("== Integrated trainer smoke with BatchNorm2d inserted ==")
-    # 두 가지 모드만 간단 확인 (Affine on/off). channels_last=False(NCHW)로 고정.
+    # 두 모드만 간단 확인 (Affine on/off). channels_last=False(NCHW)로 고정.
     cases = [
-        ("affine", True, False),
+        ("affine",   True,  False),
         ("noaffine", False, False),
     ]
     for name, affine, ch_last in cases:

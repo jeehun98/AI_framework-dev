@@ -333,6 +333,58 @@ if _BN2d is not None:
         ws = None
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
+# --- 7) Embedding ------------------------------------------------------------
+try:
+    from graph_executor_v2.layers.embedding import Embedding  # type: ignore
+except Exception:
+    Embedding = None  # type: ignore
+
+if Embedding is not None:
+    @register_planner(Embedding)  # type: ignore[misc]
+    def _plan_embedding(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
+        """
+        Embedding 플래너:
+          - 입력: int32 indices, shape = (N, L) 또는 (L,)
+          - 출력: float32, shape = (N, L, D) 또는 (L, D)  (D=embedding_dim)
+          - backward:
+              * gA: 상류 체인용 dummy(float32) 버퍼 (입력과 동일 shape). Embedding은 입력 grad가 없으므로 0으로 채움.
+              * gW: (V, D)  (V=num_embeddings)
+              * gB: 없음
+          - work: 없음
+        """
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+
+        # 입력 shape(cur) 검증 및 출력 shape 계산
+        if len(cur) not in (1, 2):
+            raise RuntimeError(f"{lname}: Embedding expects 1D/2D indices, got {cur}")
+
+        V = int(getattr(lyr, "num_embeddings"))
+        D = int(getattr(lyr, "embedding_dim"))
+
+        if len(cur) == 2:
+            N, L = map(int, cur)
+            out_shp = (N, L, D)
+        else:
+            L = int(cur[0])
+            out_shp = (L, D)
+
+        # forward 버퍼
+        y = cp.empty(out_shp, dtype=cp.float32)
+        z = None  # pre-activation 개념 없음
+
+        # backward 버퍼
+        #  - gA: 입력과 동일 shape(float32) — 그래프 체인 정합(Embedding은 실제 grad 없음)
+        gA = cp.empty(cur, dtype=cp.float32)
+        #  - gW: 파라미터 grad (V,D)
+        gW = cp.empty((V, D), dtype=cp.float32)
+        gB = None
+        ws = None
+
+        return PerLayerBufs(
+            name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws
+        ), tuple(out_shp)
+
+
 
 # ============================================================
 # Public API
