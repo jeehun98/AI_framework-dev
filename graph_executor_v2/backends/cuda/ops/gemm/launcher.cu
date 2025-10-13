@@ -1,148 +1,269 @@
-// backends/cuda/ops/gemm/launcher.cu
-//
-// 역할:
-//  - 상위 ai::Tensor/GemmAttrs를 regemm::GemmBiasActParamsEx로 매핑
-//  - (현재) f32, row-major, 비전치 경로 지원
-//  - Bias 1D 축 판정: Scalar(1) > PerN(len==N) > PerM(len==M)
-//    * M==N인 경우 PerN을 기본으로 우선
-//    * N==1 또는 M==1일 때도 Scalar가 먼저 잡히도록 순서가 중요!
-//
-// 반환: ai::Status (Ok/Invalid/…)
-//  - DeviceMismatch          : 디바이스가 CUDA가 아님
-//  - DtypeMismatch           : dtype(f32) 불일치
-//  - LayoutMismatch          : 레이아웃(row-major) 불일치
-//  - TransposeNotSupported   : transpose 경로 미지원
-//  - ShapeMismatch           : shape 차원/크기 불일치
-//  - StrideMismatch          : leading dim(ld*) 유효성 실패
-//  - Invalid                 : (예) int32 범위 초과 등 기타 잘못된 인자
-//
-// 주의:
-//  - stream은 상위에서 void*로 전달되며 여기서 cudaStream_t로 재해석.
-//  - regemm EX 파라미터는 Z-stash도 지원하지만, 현재 save_preact=0으로 비활성.
-//
-
+// backends/cuda/ops/gemm/launcher.cu  (FWD+BWD 통합, workspace 지원)
 #include <cuda_runtime.h>
 #include <cstring>
 #include <stdexcept>
 #include <limits>
 
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
-#include "ai/op_schema.hpp"
-
-#include "regemm/api.h"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#include "backends/cuda/ops/gemm/gemm_common.hpp"
+#include "backends/cuda/ops/gemm/api.hpp"       // <- GemmWorkspace, GemmCudaLaunch/Backward
+#include "regemm/api.h"                         // <- regemm params/launchers (Ex 포함)
 
 namespace {
+using namespace ai::gemm_common;
 
-// --- 유틸: row-major 2D 텐서의 leading dimension 추론 ---
-// 우선 stride[0]이 있으면 그 값을 사용, 없으면 기본 contiguous로 shape[1].
-inline int64_t infer_ld_rowmajor_2d(const ai::Tensor& t) {
-  if (t.desc.shape.size() != 2) return 0;
-  if (t.desc.stride.size() >= 2) return t.desc.stride[0];
-  return t.desc.shape[1];
+// 기존 infer_bias_kind_1d_lenMN가 너무 보수적일 수 있어
+// (N,), (1,N), (M,), (M,1), (1,1) 모두를 관대히 매칭하는 fallback 버전
+inline regemm::BiasKind infer_bias_kind_fallback(const ai::Tensor* Bias, int64_t M, int64_t N) {
+  using BK = regemm::BiasKind;
+  if (!Bias || !Bias->data) return BK::None;
+
+  const auto& s = Bias->desc.shape;  // 허용: 1D 또는 2D
+  int64_t numel = 1;
+  for (auto v : s) numel *= v;
+  if (numel <= 0) return BK::None;
+
+  // 우선 정확 매칭
+  if (s.size()==2 && s[0]==1 && s[1]==N) return BK::PerN;
+  if (s.size()==1 && s[0]==N)            return BK::PerN;
+
+  if (s.size()==2 && s[0]==M && s[1]==1) return BK::PerM;
+  if (s.size()==1 && s[0]==M)            return BK::PerM;
+
+  if ((s.size()==2 && s[0]==1 && s[1]==1) ||
+      (s.size()==1 && s[0]==1))          return BK::Scalar;
+
+  // 느슨한 보정: numel 기준
+  if (numel == N) return BK::PerN;
+  if (numel == M) return BK::PerM;
+  if (numel == 1) return BK::Scalar;
+
+  return BK::None;
 }
 
-// --- ai::ActKind → regemm::ActKind 매핑 ---
-inline regemm::ActKind to_regemm_act(ai::ActKind a) {
-  using A = ai::ActKind;
-  using R = regemm::ActKind;
-  switch (a) {
-    case A::None:      return R::None;
-    case A::ReLU:      return R::ReLU;
-    case A::LeakyReLU: return R::LeakyReLU;
-    case A::GELU:      return R::GELU;
-    case A::Sigmoid:   return R::Sigmoid;
-    case A::Tanh:      return R::Tanh;
-  }
-  return R::None;
-}
-
-// --- Bias 축 판정 규칙 ---
-//  * 길이 1 ⇒ Scalar (항상 최우선; N==1/M==1 케이스 보호)
-//  * 길이==N ⇒ PerN (M==N 동률인 경우에도 PerN 우선)
-//  * 길이==M ⇒ PerM
-//  * 그 외/2D 이상 ⇒ None (보수적 무시)
-inline regemm::BiasKind infer_bias_kind(const ai::Tensor* Bias, int64_t M, int64_t N) {
-  if (!Bias || !Bias->data) return regemm::BiasKind::None;
-  const auto& d = Bias->desc;
-  if (d.shape.size() != 1) return regemm::BiasKind::None;
-
-  const int64_t len = d.shape[0];
-  if (len == 1) return regemm::BiasKind::Scalar; // ★ scalar 먼저!
-  if (len == N) return regemm::BiasKind::PerN;   // ★ M==N이면 PerN 우선
-  if (len == M) return regemm::BiasKind::PerM;
-  return regemm::BiasKind::None;
-}
-
-// --- int64→int32 안전 변환 체크 ---
-// regemm 파라미터는 int32 필드이므로 범위를 초과하면 에러로 처리.
-inline bool fits_int32(int64_t x) {
-  return x >= std::numeric_limits<int>::min() && x <= std::numeric_limits<int>::max();
-}
-
-} // anonymous namespace
+} // anonymous
 
 namespace ai {
 
-ai::Status GemmCudaLaunch(const Tensor& A, const Tensor& B, const Tensor* Bias,
-                          Tensor& Y, const GemmAttrs& attrs, StreamHandle stream) {
-  // 1) 기본 가드: 디바이스/타입/레이아웃/transpose 지원여부
-  if (!A.is_cuda() || !B.is_cuda() || !Y.is_cuda()) return ai::Status::DeviceMismatch;
-  if (A.desc.dtype != DType::F32 || B.desc.dtype != DType::F32 || Y.desc.dtype != DType::F32) return ai::Status::DtypeMismatch;
-  if (A.desc.layout != Layout::RowMajor || B.desc.layout != Layout::RowMajor || Y.desc.layout != Layout::RowMajor) return ai::Status::LayoutMismatch;
-  if (attrs.trans_a || attrs.trans_b) return ai::Status::TransposeNotSupported; // 현재 비전치만 지원
+// =========================
+// Forward (save_z + Lt WS 지원)
+// =========================
+ai::Status GemmCudaLaunch(
+    const Tensor& A, const Tensor& B, const Tensor* Bias,
+    Tensor& Y, const GemmAttrs& attrs,
+    StreamHandle stream,
+    Tensor* Z_saved /*=nullptr*/,
+    const GemmWorkspace* ws /*=nullptr*/
+) {
+  // 1) 디바이스/형식/레이아웃 체크
+  if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) || !is_cuda_f32_rowmajor(Y))
+    return ai::Status::DeviceMismatch;
+  if (attrs.trans_a || attrs.trans_b) return ai::Status::TransposeNotSupported;
 
-  // 2) shape 검증
-  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 || Y.desc.shape.size()!=2) return ai::Status::ShapeMismatch;
-  const int64_t M = A.desc.shape[0];
-  const int64_t K = A.desc.shape[1];
-  const int64_t Kb= B.desc.shape[0];
-  const int64_t N = B.desc.shape[1];
+  // 2) shape
+  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 || Y.desc.shape.size()!=2)
+    return ai::Status::ShapeMismatch;
+  const int64_t M  = A.desc.shape[0];
+  const int64_t K  = A.desc.shape[1];
+  const int64_t Kb = B.desc.shape[0];
+  const int64_t N  = B.desc.shape[1];
   if (K!=Kb || Y.desc.shape[0]!=M || Y.desc.shape[1]!=N) return ai::Status::ShapeMismatch;
 
-  // 3) leading dim 추론 및 유효성 체크
+  // 3) leading dims
   const int64_t lda = infer_ld_rowmajor_2d(A);
   const int64_t ldb = infer_ld_rowmajor_2d(B);
   const int64_t ldd = infer_ld_rowmajor_2d(Y);
   if (lda < K || ldb < N || ldd < N) return ai::Status::StrideMismatch;
 
-  // 4) regemm 파라미터의 int32 제한 확인
+  // 4) int32 범위
   if (!fits_int32(M) || !fits_int32(N) || !fits_int32(K) ||
       !fits_int32(lda) || !fits_int32(ldb) || !fits_int32(ldd)) {
     return ai::Status::Invalid;
   }
 
-  // 5) regemm 확장 파라미터 구성
+  // 5) Z 저장 여부 및 검증
+  // NOTE: Z_saved may alias Y. EX 커널은 Z(pre)를 먼저 쓰고, 다음에 D=act(pre)를 계산하므로 안전.
+  if (attrs.save_z && Z_saved == nullptr) {
+    return ai::Status::MissingOutput; // 명시적으로 에러 리턴
+  }
+  const bool want_save_z = attrs.save_z && (Z_saved != nullptr);
+
+  int   ldZ_i = 0;
+  void* Z_ptr = nullptr;
+  if (want_save_z) {
+    if (!is_cuda_f32_rowmajor(*Z_saved)) return ai::Status::DeviceMismatch;
+    if (Z_saved->desc.shape.size()!=2 ||
+        Z_saved->desc.shape[0]!=M || Z_saved->desc.shape[1]!=N) {
+      return ai::Status::ShapeMismatch;
+    }
+    const int64_t ldZ = infer_ld_rowmajor_2d(*Z_saved);
+    if (ldZ < N) return ai::Status::StrideMismatch;
+    if (!fits_int32(ldZ)) return ai::Status::Invalid;
+    ldZ_i = static_cast<int>(ldZ);
+    Z_ptr = Z_saved->data;
+  }
+
+  // 6) regemm 파라미터
   regemm::GemmBiasActParamsEx p{};
   p.M = static_cast<int>(M);
   p.N = static_cast<int>(N);
   p.K = static_cast<int>(K);
 
-  // A, B, (C 미사용), D
   p.A   = A.data; p.lda = static_cast<int>(lda);
   p.B   = B.data; p.ldb = static_cast<int>(ldb);
-  p.C   = nullptr; p.ldc = 0;          // C는 현재 미사용 (beta=0)
+  p.C   = nullptr; p.ldc = 0;                // C는 사용 안 함
   p.D   = Y.data; p.ldd = static_cast<int>(ldd);
 
-  // 스케일 (상위에서 alpha/beta 노출 X → alpha=1, beta=0)
   p.alpha = 1.0f;
   p.beta  = 0.0f;
 
-  // Bias 포인터 + 축 판정
+  // ---- bias 전달 + kind 추론(관대) ----
   p.bias      = (Bias && Bias->data) ? Bias->data : nullptr;
-  p.bias_kind = infer_bias_kind(Bias, M, N); // ★ 규칙 반영 (Scalar > PerN > PerM)
+  p.bias_kind = infer_bias_kind_fallback(Bias, M, N);
 
-  // Activation
-  p.act         = to_regemm_act(attrs.act);
+  // ---- activation / leaky slope ----
+  p.act         = static_cast<regemm::ActKind>(attrs.act);
   p.leaky_slope = attrs.leaky_slope;
 
-  // Z stash (EX 기능) — 현재 비활성. 오토그래드 연동 시 여기 활성화.
-  p.Z           = nullptr;
-  p.ldZ         = 0;    // 0이면 내부에서 ldd로 간주
-  p.save_preact = 0;    // 1이면 pre-activation(Z) 저장
+  // ---- Z 저장: pre-activation을 단일 패스로 저장 ----
+  p.Z           = want_save_z ? Z_ptr : nullptr;
+  p.ldZ         = want_save_z ? ldZ_i : 0;   // 0이면 내부에서 ldd로 간주 가능
+  p.save_preact = want_save_z ? 1      : 0;
 
-  // 6) 실행 — stream은 void* → cudaStream_t 재해석
+  // ---- Lt workspace (있으면 전달) ----
+  p.lt_workspace       = ws ? ws->lt_workspace       : nullptr;
+  p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
+
+  // 7) 실행
   regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
+  return ai::Status::Ok;
+}
+
+// =========================
+/* Backward (dZ scratch + Lt WS 지원)
+
+수식:
+  Z = alpha*(A@B) + beta*C + bias,    Y = act(Z)
+  gZ = dAct(Z, gY)
+  gA = gZ @ B^T
+  gB = A^T @ gZ
+  gC = beta * gZ  (C 사용 시)
+  gBias: Scalar -> sum(gZ), PerM -> sum(gZ, axis=1), PerN -> sum(gZ, axis=0)
+
+캡처-세이프:
+  ws && ws->scratch != nullptr 일 때, 해당 버퍼를 gZ로 사용(크기 >= M*N)
+  내부에서 malloc/free 금지 경로로 실행
+*/
+// =========================
+ai::Status GemmCudaBackward(
+    const Tensor& A, const Tensor& B, const Tensor* C,
+    const Tensor& gY, const Tensor& Z,
+    Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
+    const GemmAttrs& attrs,
+    StreamHandle stream,
+    const GemmWorkspace* ws /*=nullptr*/
+) {
+  // 1) 디바이스/타입/레이아웃/transpose
+  if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) ||
+      !is_cuda_f32_rowmajor(gY) || !is_cuda_f32_rowmajor(Z))
+    return ai::Status::DeviceMismatch;
+  if (gA && !is_cuda_f32_rowmajor(*gA)) return ai::Status::DeviceMismatch;
+  if (gB && !is_cuda_f32_rowmajor(*gB)) return ai::Status::DeviceMismatch;
+  if (gC && !is_cuda_f32_rowmajor(*gC)) return ai::Status::DeviceMismatch;
+  if (C  && !is_cuda_f32_rowmajor(*C))  return ai::Status::DeviceMismatch;
+  if (attrs.trans_a || attrs.trans_b)   return ai::Status::TransposeNotSupported;
+
+  // 2) shape
+  if (A.desc.shape.size()!=2 || B.desc.shape.size()!=2 ||
+      gY.desc.shape.size()!=2 || Z.desc.shape.size()!=2)
+    return ai::Status::ShapeMismatch;
+
+  const int64_t M  = A.desc.shape[0];
+  const int64_t K  = A.desc.shape[1];
+  const int64_t Kb = B.desc.shape[0];
+  const int64_t N  = B.desc.shape[1];
+  if (K != Kb) return ai::Status::ShapeMismatch;
+
+  if (gY.desc.shape[0]!=M || gY.desc.shape[1]!=N) return ai::Status::ShapeMismatch;
+  if (Z .desc.shape[0]!=M || Z .desc.shape[1]!=N) return ai::Status::ShapeMismatch;
+
+  if (gA && (gA->desc.shape.size()!=2 || gA->desc.shape[0]!=M || gA->desc.shape[1]!=K)) return ai::Status::ShapeMismatch;
+  if (gB && (gB->desc.shape.size()!=2 || gB->desc.shape[0]!=K || gB->desc.shape[1]!=N)) return ai::Status::ShapeMismatch;
+  if (gC) {
+    if (!C) return ai::Status::MissingInput;
+    if (gC->desc.shape.size()!=2 || gC->desc.shape[0]!=M || gC->desc.shape[1]!=N) return ai::Status::ShapeMismatch;
+  }
+
+  // 3) leading dims
+  const int64_t lda  = infer_ld_rowmajor_2d(A);
+  const int64_t ldb  = infer_ld_rowmajor_2d(B);
+  const int64_t ldgY = infer_ld_rowmajor_2d(gY);
+  const int64_t ldZ  = infer_ld_rowmajor_2d(Z);
+  if (lda < K || ldb < N || ldgY < N || ldZ < N) return ai::Status::StrideMismatch;
+
+  int64_t ldgA = 0, ldgB = 0, ldgC = 0;
+  if (gA) { ldgA = infer_ld_rowmajor_2d(*gA); if (ldgA < K) return ai::Status::StrideMismatch; }
+  if (gB) { ldgB = infer_ld_rowmajor_2d(*gB); if (ldgB < N) return ai::Status::StrideMismatch; }
+  if (gC) { ldgC = infer_ld_rowmajor_2d(*gC); if (ldgC < N) return ai::Status::StrideMismatch; }
+
+  // (추가) int32 범위 가드
+  if (!fits_int32(M) || !fits_int32(N) || !fits_int32(K) ||
+      !fits_int32(lda) || !fits_int32(ldb) || !fits_int32(ldgY) || !fits_int32(ldZ) ||
+      (gA && !fits_int32(ldgA)) || (gB && !fits_int32(ldgB)) || (gC && !fits_int32(ldgC))) {
+    return ai::Status::Invalid;
+  }
+
+  // 4) bias kind (gBias가 있을 때만 의미 있음)
+  regemm::BiasKind bk = regemm::BiasKind::None;
+  if (gBias && gBias->data) {
+    // gBias shape 기반 PerN/PerM/Scalar 판정
+    bk = infer_bias_kind_fallback(gBias, M, N);
+  }
+
+  // 4.5) (선택) 캡처-세이프 dZ scratch 준비
+  float* dZ = nullptr;
+  if (ws && ws->scratch) {
+    dZ = reinterpret_cast<float*>(ws->scratch);
+    // 필요 시 크기 점검: (M*N*sizeof(float)) 이상 — 내부(regemm)에서도 shape로 재검증 권장
+    // size_t need = static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(float);
+    // if (ws->scratch_bytes && ws->scratch_bytes < need) return ai::Status::Invalid;
+  }
+
+  // 5) 파라미터
+  regemm::GemmBiasActBwdParams p{};
+  p.M = static_cast<int>(M);
+  p.N = static_cast<int>(N);
+  p.K = static_cast<int>(K);
+
+  p.A   = A.data;  p.lda  = static_cast<int>(lda);
+  p.B   = B.data;  p.ldb  = static_cast<int>(ldb);
+  p.C   = C ? C->data : nullptr;
+  p.ldc = C ? static_cast<int>(infer_ld_rowmajor_2d(*C)) : 0;
+
+  p.gY  = gY.data; p.ldgY = static_cast<int>(ldgY);
+  p.Z   = Z.data;  p.ldZ  = static_cast<int>(ldZ);
+
+  p.gA  = gA ? gA->data : nullptr;  p.ldgA = gA ? static_cast<int>(ldgA) : 0;
+  p.gB  = gB ? gB->data : nullptr;  p.ldgB = gB ? static_cast<int>(ldgB) : 0;
+  p.gC  = gC ? gC->data : nullptr;  p.ldgC = gC ? static_cast<int>(ldgC) : 0;
+  p.gBias = gBias ? gBias->data : nullptr;
+
+  // 6) 스케일/에필로그
+  p.alpha = 1.0f;
+  p.beta  = (C && gC) ? 1.0f : 0.0f;
+
+  p.bias_kind   = bk;
+  p.act         = static_cast<regemm::ActKind>(attrs.act);
+  p.leaky_slope = attrs.leaky_slope;
+
+  // 6.5) dZ scratch + Lt WS 전달
+  p.gZ_scratch       = dZ;                                  // 외부 제공 시 malloc-free 없음
+  p.ldgZ             = (dZ ? static_cast<int>(N) : 0);      // 제공 시 반드시 N
+  p.lt_workspace     = ws ? ws->lt_workspace       : nullptr;
+  p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
+
+  // 7) 실행 (확장 버전, 이름은 호환 유지)
+  regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
   return ai::Status::Ok;
 }
 

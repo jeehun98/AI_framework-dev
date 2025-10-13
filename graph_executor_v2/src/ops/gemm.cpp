@@ -1,16 +1,31 @@
 // src/ops/gemm.cpp
-#include "ai/dispatch.hpp"
-#include "ai/op_schema.hpp"
 #include "ai/tensor.hpp"
+#include "ai/op_schema.hpp"
+#include "ai/dispatch.hpp"
 
 namespace ai { namespace ops {
 
-// 간단한 유효성 검사만 하고 Registry로 디스패치
-int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
-             Tensor& Y, const GemmAttrs& attrs, StreamHandle stream)
+// 내부: ai::Status -> int 매핑(필요 시 확장)
+static inline int status_to_errno(ai::Status st) {
+  switch (st) {
+    case ai::Status::Ok:                   return 0;
+    case ai::Status::DeviceMismatch:       return -2;
+    case ai::Status::ShapeMismatch:        return -5;
+    case ai::Status::StrideMismatch:       return -7;
+    case ai::Status::TransposeNotSupported:return -11;
+    case ai::Status::MissingInput:         return -12;
+    case ai::Status::MissingOutput:        return -13;
+    default:                               return -7; // generic
+  }
+}
+
+// 확장: Z(pre-activation) 저장 버퍼를 선택적으로 받는 실행 함수
+int gemm_run_ex(const Tensor& A, const Tensor& B, const Tensor* Bias,
+                Tensor& Y, const GemmAttrs& attrs, StreamHandle stream,
+                Tensor* Z_saved)  // NEW: nullable
 {
   // (0) 널 포인터 방어
-  if (!A.data || !B.data || !Y.data) return -1;         // 빈 텐서 방지
+  if (!A.data || !B.data || !Y.data) return -1;
   // (0.1) 아직 미지원: 전치 경로
   if (attrs.trans_a || attrs.trans_b) return -11;
 
@@ -26,8 +41,8 @@ int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
   if (K != Kb) return -6;
   if (Y.desc.shape[0] != M || Y.desc.shape[1] != N) return -7;
 
-  // (3) Bias는 1D (1|M|N) 혹은 None만 허용 (상위 바인딩도 체크하지만 안전하게)
-  const Tensor* effBias = nullptr; // 비어있으면 nullptr로 정규화
+  // (3) Bias는 1D (1|M|N) 혹은 None만 허용
+  const Tensor* effBias = nullptr;
   if (Bias && Bias->data) {
     if (Bias->desc.dtype != DType::F32) return -8;
     if (Bias->desc.shape.size() != 1) return -9;
@@ -36,13 +51,34 @@ int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
     effBias = Bias;
   }
 
+  // (3.1) save_z 요청 시 Z_saved 검증(형식/디바이스/shape 대략 체크)
+  if (attrs.save_z) {
+    if (Z_saved == nullptr) return -13; // MissingOutput
+    if (!Z_saved->data) return -13;
+    if (Z_saved->desc.dtype != DType::F32) return -2;
+    if (Z_saved->desc.layout != Layout::RowMajor) return -3;
+    if (Z_saved->device != Device::CUDA) return -4;
+    if (Z_saved->desc.shape.size()!=2 ||
+        Z_saved->desc.shape[0]!=M || Z_saved->desc.shape[1]!=N) return -5;
+  }
+
   // (4) 디스패치
+  // NOTE: KernelFn 시그니처는 반드시 Tensor* Z_saved를 마지막 인자로 포함해야 함.
+  //   using KernelFn = ai::Status(*)(const Tensor&, const Tensor&, const Tensor*, Tensor&,
+  //                                  const GemmAttrs&, StreamHandle, Tensor*);
   OpQuery q{OpKind::GEMM, A, B, effBias, Y, attrs};
   ai::KernelFn fn = OpRegistry::inst().find_best(q);
-  if (!fn) return -100;  // 등록 누락/미지원 조합
+  if (!fn) return -100;
 
-  ai::Status st = fn(A, B, effBias, Y, attrs, stream);
-  return (st == ai::Status::Ok) ? 0 : -7; // 필요 시 상세 매핑
+  ai::Status st = fn(A, B, effBias, Y, attrs, stream, /*Z_saved=*/attrs.save_z ? Z_saved : nullptr);
+  return status_to_errno(st);
+}
+
+// 레거시 API: 기존 호출부 호환용(= Z 저장 없음)
+int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
+             Tensor& Y, const GemmAttrs& attrs, StreamHandle stream)
+{
+  return gemm_run_ex(A, B, Bias, Y, attrs, stream, /*Z_saved=*/nullptr);
 }
 
 }} // namespace ai::ops
