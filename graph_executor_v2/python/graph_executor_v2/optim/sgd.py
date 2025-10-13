@@ -1,54 +1,80 @@
 # graph_executor_v2/optim/sgd.py
-from __future__ import annotations
-from typing import Any, Dict
-from .base import Optimizer
+import cupy as cp
+ParamTriplet = tuple[cp.ndarray, cp.ndarray, bool]
 
-class SGD(Optimizer):
-    """
-    옵션:
-      - lr, momentum=0.0, nesterov=False
-      - weight_decay: L2 (coupled) 또는 decoupled=True 시 AdamW식
-      - decoupled: True면 p -= lr*wd*p 를 'step별'로 분리 적용(권장)
-    """
-    def __init__(self, params, lr: float=1e-2, momentum: float=0.0,
-                 nesterov: bool=False, weight_decay: float=0.0, decoupled: bool=True):
-        super().__init__(params, lr=lr, momentum=momentum,
-                         nesterov=nesterov, weight_decay=weight_decay, decoupled=decoupled)
+_sgd_fused_fp32 = cp.ElementwiseKernel(
+    in_params='''
+      float32 p, float32 g, float32 v,
+      float32 lr, float32 momentum, float32 damp, int32 nesterov,
+      float32 wd, int32 exempt, float32 grad_scale
+    ''',
+    out_params='float32 p_out, float32 v_out',
+    operation=r'''
+      float ge = grad_scale * g;
+      // decoupled wd
+      float decay = (exempt==0) ? (lr * wd * p) : 0.f;
+      // velocity update with (1-damp)
+      float v_new = momentum * v + (1.f - damp) * ge;
+      float step_vec = (nesterov ? (momentum * v_new + (1.f - damp) * ge) : v_new);
+      float w = p - lr * step_vec - decay;
+      p_out = w; v_out = v_new;
+    ''',
+    name='sgd_fused_fp32'
+)
 
-    def step(self):
-        for group in self.param_groups:
-            lr = group["lr"]; mom = group["momentum"]
-            nesterov = group["nesterov"]; wd = group["weight_decay"]; dec = group["decoupled"]
-            for p in group["params"]:
-                g = getattr(p, "grad", None)
-                if g is None: continue
+_sgd_fused_fp16 = cp.ElementwiseKernel(
+    in_params='''
+      float16 p, float16 g, float32 v,
+      float32 lr, float32 momentum, float32 damp, int32 nesterov,
+      float32 wd, int32 exempt, float32 grad_scale
+    ''',
+    out_params='float16 p_out, float32 v_out',
+    operation=r'''
+      float pf = (float)p, gf = (float)g;
+      float ge = grad_scale * gf;
+      float decay = (exempt==0) ? (lr * wd * pf) : 0.f;
+      float v_new = momentum * v + (1.f - damp) * ge;
+      float step_vec = (nesterov ? (momentum * v_new + (1.f - damp) * ge) : v_new);
+      float w = pf - lr * step_vec - decay;
+      p_out = (float16)w; v_out = v_new;
+    ''',
+    name='sgd_fused_fp16'
+)
 
-                # decoupled weight decay (AdamW-style) 권장
-                if wd and dec:
-                    p[...] = p - lr * wd * p
+def _sgd_update(p,g,v,*,lr,momentum,damp,nesterov,wd,exempt,grad_scale):
+    ex = cp.int32(1 if exempt else 0)
+    ne = cp.int32(1 if nesterov else 0)
+    if p.dtype == cp.float16:
+        p_out, v_out = _sgd_fused_fp16(p,g,v,lr,momentum,damp,ne,wd,ex,grad_scale)
+    else:
+        p_out, v_out = _sgd_fused_fp32(p,g,v,lr,momentum,damp,ne,wd,ex,grad_scale)
+    p[...] = p_out; v[...] = v_out
 
-                sid = id(p)
-                st: Dict[str, Any] = self.state.setdefault(sid, {})
-                if mom > 0:
-                    v = st.get("v")
-                    if v is None:
-                        # v = zeros_like(p)
-                        try:
-                            v = p * 0  # ndarray-like
-                        except Exception:
-                            import numpy as np
-                            v = np.zeros_like(p)
-                    v[...] = mom * v + g
-                    if nesterov:
-                        update = g + mom * v
-                    else:
-                        update = v
-                    st["v"] = v
-                else:
-                    update = g
+class SGDOpt:
+    def __init__(self, params, *, lr=1e-2, momentum=0.9, nesterov=True, damp=0.0, wd=0.0):
+        self.groups = []
+        for (p,g,ex) in params:
+            assert g.dtype == p.dtype
+            self.groups.append({"p":p, "g":g, "exempt":bool(ex), "v":cp.zeros(p.shape, cp.float32)})
+        self.lr = cp.array(lr, cp.float32)
+        self.momentum = cp.array(momentum, cp.float32)
+        self.nesterov = bool(nesterov)
+        self.damp = cp.array(damp, cp.float32)
+        self.wd = cp.array(wd, cp.float32)
+        self.grad_scale = cp.array(1.0, cp.float32)
+        self.t = cp.array(0, cp.int32)
 
-                # coupled L2
-                if wd and not dec:
-                    update = update + wd * p
+    def _apply(self):
+        cp.add(self.t, 1, out=self.t)
+        for s in self.groups:
+            _sgd_update(s["p"], s["g"], s["v"],
+                        lr=self.lr, momentum=self.momentum, damp=self.damp,
+                        nesterov=self.nesterov, wd=self.wd, exempt=s["exempt"],
+                        grad_scale=self.grad_scale)
 
-                p[...] = p - lr * update
+    step = step_into = _apply
+    def rebind_grads(self, params): 
+        assert len(params)==len(self.groups)
+        for s,(p,g,ex) in zip(self.groups, params):
+            assert s["p"] is p; assert g.shape==p.shape and g.dtype==p.dtype
+            s["g"]=g; s["exempt"]=bool(ex)
