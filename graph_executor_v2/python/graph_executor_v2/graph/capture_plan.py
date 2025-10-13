@@ -20,10 +20,14 @@ class PerLayerBufs:
     z: Optional[cp.ndarray]              # pre-activation (optional)
     # backward
     gA: cp.ndarray                       # grad w.r.t input (required)
-    gW: Optional[cp.ndarray]             # grad w.r.t weight (optional)
+    gW: Optional[cp.ndarray]             # grad w.r.t weight (optional, single tensor)
     gB: Optional[cp.ndarray]             # grad w.r.t bias (optional)
     # backend-specific workspaces (e.g., GEMM/Conv/Pool indices)
     work: Any
+    # ---- RNN extensions (optional; keep defaults for backward-compat) ----
+    gWx: Optional[cp.ndarray] = None     # grad w.r.t input weight Wx (I,H)
+    gWh: Optional[cp.ndarray] = None     # grad w.r.t recurrent weight Wh (H,H)
+    dh0: Optional[cp.ndarray] = None     # grad w.r.t initial hidden state h0 (N,H)
 
 @dataclass
 class LossBufs:
@@ -107,6 +111,9 @@ def _generic_paramless_planner(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: in
 #   4) Activation (cupy-only)
 #   5) Pad
 #   6) BatchNorm2d
+#   7) Embedding
+#   8) Dropout
+#   9) RNN (Elman)
 # ============================================================
 
 # 1) Dense
@@ -333,7 +340,7 @@ if _BN2d is not None:
         ws = None
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
-# --- 7) Embedding ------------------------------------------------------------
+# 7) Embedding
 try:
     from graph_executor_v2.layers.embedding import Embedding  # type: ignore
 except Exception:
@@ -411,7 +418,79 @@ if _DropLayer is not None:
         ws = _DropoutWork(out_shp)
         return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
 
+# 9) RNN (Elman)
+try:
+    from graph_executor_v2.layers.rnn import RNN  # type: ignore
+except Exception:
+    RNN = None  # type: ignore
 
+if RNN is not None:
+    @register_planner(RNN)  # type: ignore[misc]
+    def _plan_rnn(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: int):
+        """
+        RNN(Elman) 플래너:
+          - 입력: X (N,T,I)
+          - 출력: y (N,T,H), z(optional) = pre-activation (act=='none'이면 y와 alias)
+          - backward 버퍼:
+              * gA: dX (N,T,I)
+              * gWx: (I,H), gWh: (H,H), gB: (H,) (with_bias가 True일 때)
+              * dh0: (N,H)
+          - work: RnnWorkspaces (forward/backward 공용 버퍼)
+        """
+        import cupy as cp
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+
+        # 입력 형태 확인
+        if len(cur) != 3:
+            raise RuntimeError(f"{lname}: RNN expects 3D input (N,T,I), got {cur}")
+        N, T, I = map(int, cur)
+        H = int(getattr(lyr, "hidden_size"))
+
+        # 출력/보조 버퍼
+        out_shp = (N, T, H)
+        y = cp.empty(out_shp, dtype=cp.float32)
+
+        act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "tanh")
+        need_z = (str(act_name).lower() != "none")
+        z = y if not need_z else cp.empty_like(y)
+
+        # grads
+        gA  = cp.empty((N, T, I), dtype=cp.float32)      # dX
+        gW  = None                                       # 단일 weight grad는 사용 안 함 (RNN은 Wx/Wh로 분리)
+        gWx = cp.empty((I, H),     dtype=cp.float32)     # dWx
+        gWh = cp.empty((H, H),     dtype=cp.float32)     # dWh
+
+        with_bias = bool(getattr(lyr, "with_bias", False)) or \
+                    (getattr(lyr, "b", None) is not None) or \
+                    (getattr(lyr, "bias", None) is not None)
+        gB  = cp.empty((H,), dtype=cp.float32) if with_bias else None
+        dh0 = cp.empty((N, H), dtype=cp.float32)         # ∂L/∂h0
+
+        # 워크스페이스
+        from graph_executor_v2.ops.rnn import RnnWorkspaces  # type: ignore
+        ws = RnnWorkspaces()
+        # forward workspaces
+        ws.XH_cat   = cp.empty((N, I+H), dtype=cp.float32)
+        ws.Y_rows   = cp.empty((N, H),   dtype=cp.float32)
+        ws.W_cat    = cp.empty((I+H, H), dtype=cp.float32)
+        ws.Z_rows_f = cp.empty((N, H),   dtype=cp.float32) if need_z else None
+        # backward workspaces
+        ws.XH_cat_b = cp.empty((N, I+H), dtype=cp.float32)
+        ws.G_rows   = cp.empty((N, H),   dtype=cp.float32)
+        ws.Z_rows_b = cp.empty((N, H),   dtype=cp.float32)
+        ws.W_cat_b  = cp.empty((I+H, H), dtype=cp.float32)
+        ws.dXH_cat  = cp.empty((N, I+H), dtype=cp.float32)
+        ws.dWcat    = cp.empty((I+H, H), dtype=cp.float32)
+        ws.TmpW     = cp.empty((I+H, H), dtype=cp.float32)
+
+        return (
+            PerLayerBufs(
+                name=lname, y=y, z=z,
+                gA=gA, gW=gW, gB=gB, work=ws,
+                gWx=gWx, gWh=gWh, dh0=dh0,
+            ),
+            out_shp
+        )
 
 # ============================================================
 # Public API

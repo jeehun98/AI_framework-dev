@@ -1,198 +1,202 @@
-// backends/cuda/ops/rnn/kernels.cu
 #include <cuda_runtime.h>
-#include <cmath>
-#include "backends/cuda/ops/rnn/api.hpp"
+#include <cstdint>
+#include <float.h>
 
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/tensor.hpp"
-#endif
+namespace { // ---- TU-local device/templated kernels ----
 
-namespace ai {
-
-// ========================= device kernels =========================
-__global__ void kfill_zero(float* p, int64_t n){
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < n) p[i] = 0.f;
-}
-
-__global__ void kadd_bias_rowwise(float* __restrict__ Y,
-                                  const float* __restrict__ b,
-                                  int B, int H) {
-  const int i = blockIdx.y * blockDim.y + threadIdx.y; // row
-  const int j = blockIdx.x * blockDim.x + threadIdx.x; // col
-  if (i < B && j < H) {
-    Y[static_cast<int64_t>(i) * H + j] += b[j];
+  
+__device__ __forceinline__ float act_eval(int act, float z, float slope){
+  enum { None=0, ReLU=1, LeakyReLU=2, Sigmoid=3, Tanh=4, GELU=5 };
+  switch (act) {
+    case None:      return z;
+    case ReLU:      return z > 0.f ? z : 0.f;
+    case LeakyReLU: return z > 0.f ? z : slope * z;
+    case Sigmoid:   return 1.f / (1.f + __expf(-z));
+    case Tanh:      return tanhf(z);
+    case GELU: {
+      const float c = sqrtf(2.f / 3.1415926535f);
+      float z3 = z*z*z;
+      float th = tanhf(c*(z + 0.044715f*z3));
+      return 0.5f * z * (1.f + th);
+    }
+    default: return z;
   }
 }
 
-__global__ void kadd_out(const float* __restrict__ A,
-                         const float* __restrict__ B,
-                         float* __restrict__ C,
-                         int64_t n){
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < n) C[i] = A[i] + B[i];
+template<int BSX, int BSY>
+__global__ void apply_act_rows_kernel(const float* __restrict__ Z_rows,
+                                      float* __restrict__ H_rows,
+                                      int M, int N, int act, float slope)
+{
+  int n = blockIdx.x * blockDim.x + threadIdx.x;
+  int m = blockIdx.y * blockDim.y + threadIdx.y;
+  if (m < M && n < N) {
+    size_t idx = (size_t)m * N + n;
+    H_rows[idx] = act_eval(act, Z_rows[idx], slope);
+  }
+}
+// --- dact ---
+__device__ __forceinline__ float dact(int act, float z, float gy, float slope) {
+  // ai::ActKind 값을 정수로 전달 (header 의존 최소화)
+  enum { None=0, ReLU=1, LeakyReLU=2, Sigmoid=3, Tanh=4, GELU=5 };
+  switch (act) {
+    case None:      return gy;
+    case ReLU:      return (z > 0.f) ? gy : 0.f;
+    case LeakyReLU: return (z > 0.f) ? gy : slope * gy;
+    case Sigmoid: {
+      float s = 1.f / (1.f + __expf(-z));
+      return gy * s * (1.f - s);
+    }
+    case Tanh: {
+      float t = tanhf(z);
+      return gy * (1.f - t*t);
+    }
+    case GELU: {
+      const float c = sqrtf(2.f / 3.1415926535f);
+      float z3 = z*z*z;
+      float th = tanhf(c*(z + 0.044715f*z3));
+      float dtanh = (1 - th*th) * c * (1 + 0.134145f*z*z);
+      return gy * (0.5f*(1 + th) + 0.5f*z*dtanh);
+    }
+    default: return gy;
+  }
 }
 
-__global__ void kadd_inplace(float* __restrict__ A,
-                             const float* __restrict__ B,
-                             int64_t n){
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+template<int BSX, int BSY>
+__global__ void apply_dact_rows_kernel(const float* __restrict__ gy_post,
+                                       const float* __restrict__ Z_rows,
+                                       float* __restrict__ gy_rows,
+                                       int M, int N, int act, float slope)
+{
+  int n = blockIdx.x * blockDim.x + threadIdx.x; // col
+  int m = blockIdx.y * blockDim.y + threadIdx.y; // row
+  if (m < M && n < N) {
+    size_t idx = (size_t)m * N + n;
+    gy_rows[idx] = dact(act, Z_rows[idx], gy_post[idx], slope);
+  }
+}
+
+template<int BSX, int BSY>
+__global__ void add_rows_strided_kernel(float* __restrict__ A,        // [M,N]
+                                        const float* __restrict__ B,  // [M,strideB]
+                                        int M, int N, int strideB, int offsetB)
+{
+  int n = blockIdx.x * blockDim.x + threadIdx.x;
+  int m = blockIdx.y * blockDim.y + threadIdx.y;
+  if (m < M && n < N) {
+    A[(size_t)m*N + n] += B[(size_t)m*strideB + offsetB + n];
+  }
+}
+
+template<int BS>
+__global__ void reduce_db_rows_kernel(const float* __restrict__ G, // [M,N]
+                                      float* __restrict__ db,      // [N]
+                                      int M, int N)
+{
+  int idx = blockIdx.x * blockDim.x + threadIdx.x; // over M*N
+  int total = M * N;
+  if (idx >= total) return;
+  int n = idx % N;
+  atomicAdd(&db[n], G[idx]);
+}
+
+template<int BS>
+__global__ void kadd_vec_kernel(float* __restrict__ A, const float* __restrict__ B, int n){
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) A[i] += B[i];
 }
 
-__global__ void ktanh_out(const float* __restrict__ X,
-                          float* __restrict__ Y,
-                          int64_t n){
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < n) Y[i] = tanhf(X[i]);
+template<int BS>
+__global__ void transpose_kernel(const float* __restrict__ A, float* __restrict__ AT,
+                                 int M, int N)
+{
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = M * N;
+  if (idx >= total) return;
+  int n = idx % N;
+  int m = idx / N;
+  AT[(size_t)n * M + m] = A[(size_t)m * N + n];
 }
 
-__global__ void ktanh_bwd_from_out(const float* __restrict__ Y,
-                                   const float* __restrict__ dY,
-                                   float* __restrict__ dZ,
-                                   int64_t n){
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < n) {
-    const float y = Y[i];
-    dZ[i] = dY[i] * (1.f - y * y);
+__global__ void pack_wcat_from_wx_wh_kernel(const float* __restrict__ Wx, // [I,H]
+                                            const float* __restrict__ Wh, // [H,H]
+                                            float* __restrict__ Wcat,     // [I+H,H]
+                                            int I, int H)
+{
+  int h = blockIdx.x * blockDim.x + threadIdx.x; // 0..H-1
+  int r = blockIdx.y * blockDim.y + threadIdx.y; // 0..I+H-1
+  if (h >= H) return;
+  if (r < I) {
+    Wcat[(size_t)r*H + h] = Wx[(size_t)r*H + h];
+  } else if (r < I + H) {
+    int rr = r - I;
+    Wcat[(size_t)r*H + h] = Wh[(size_t)rr*H + h];
   }
 }
 
-// 열(j)마다 하나의 쓰레드가 모든 행(B)을 누적 → 경쟁 없음, atomic 불필요
-__global__ void krowwise_sum_accum(const float* __restrict__ M,
-                                   float* __restrict__ out,
-                                   int B, int H){
-  const int j = blockIdx.x * blockDim.x + threadIdx.x;
-  if (j >= H) return;
-  float acc = 0.f;
-  #pragma unroll 4
-  for (int i = 0; i < B; ++i) {
-    acc += M[static_cast<int64_t>(i) * H + j];
-  }
-  out[j] += acc; // out이 사전에 0으로 초기화되어 있지 않다면 누적 용도로 사용 가능
+} // anonymous
+
+
+namespace ai { // ---- public launchers ----
+
+void apply_act_rows_launcher(const float* Z_rows, float* H_rows,
+                             int M, int N, int act_code, float slope, cudaStream_t s)
+{
+  constexpr int BSX = 128, BSY = 1;
+  dim3 block(BSX, BSY);
+  dim3 grid((N + BSX - 1)/BSX, (M + BSY - 1)/BSY);
+  apply_act_rows_kernel<BSX,BSY><<<grid, block, 0, s>>>(Z_rows, H_rows, M, N, act_code, slope);
 }
 
-// in[M,N] (row-major) -> out[N,M] (row-major)
-// 타일 기반 전치(공유메모리 사용)로 글로벌 메모리 접근 효율 개선
-#ifndef RNN_TPT_TILE
-#define RNN_TPT_TILE 32
-#endif
-#ifndef RNN_TPT_BLOCK_ROWS
-#define RNN_TPT_BLOCK_ROWS 8
-#endif
-__global__ void transpose2d_kernel_tiled(const float* __restrict__ A,
-                                         float* __restrict__ AT,
-                                         int M, int N) {
-  __shared__ float tile[RNN_TPT_TILE][RNN_TPT_TILE + 1]; // bank conflict 회피용 +1
 
-  int x = blockIdx.x * RNN_TPT_TILE + threadIdx.x; // col in A
-  int y = blockIdx.y * RNN_TPT_TILE + threadIdx.y; // row in A
-
-  // Load tile from A(y, x) → tile[ty + r, tx]
-  for (int r = 0; r < RNN_TPT_TILE; r += RNN_TPT_BLOCK_ROWS) {
-    int yy = y + r;
-    if (x < N && yy < M) {
-      tile[threadIdx.y + r][threadIdx.x] = A[static_cast<int64_t>(yy) * N + x];
-    }
-  }
-
-  __syncthreads();
-
-  // Write tile^T to AT: (x,y) swapped
-  int xt = blockIdx.y * RNN_TPT_TILE + threadIdx.x; // col in AT
-  int yt = blockIdx.x * RNN_TPT_TILE + threadIdx.y; // row in AT
-  for (int r = 0; r < RNN_TPT_TILE; r += RNN_TPT_BLOCK_ROWS) {
-    int yyt = yt + r;
-    if (xt < M && yyt < N) {
-      AT[static_cast<int64_t>(yyt) * M + xt] = tile[threadIdx.x][threadIdx.y + r];
-    }
-  }
+void apply_dact_rows_launcher(const float* gy_post, const float* Z_rows, float* gy_rows,
+                              int M, int N, int act_code, float slope, cudaStream_t s)
+{
+  constexpr int BSX = 128, BSY = 1;
+  dim3 block(BSX, BSY);
+  dim3 grid((N + BSX - 1) / BSX, (M + BSY - 1) / BSY);
+  apply_dact_rows_kernel<BSX,BSY><<<grid, block, 0, s>>>(gy_post, Z_rows, gy_rows, M, N, act_code, slope);
 }
 
-// ========================= host helpers =========================
-
-static inline int div_up_int(int n, int d){ return (n + d - 1) / d; }
-
-static inline int64_t numel_of(const Tensor& t){
-  int64_t n = 1;
-  for (auto v : t.desc.shape) n *= v;
-  return n;
+void add_rows_strided_launcher(float* A_MN, const float* B_Mstride,
+                               int M, int N, int strideB, int offsetB, cudaStream_t s)
+{
+  constexpr int BSX = 128, BSY = 1;
+  dim3 block(BSX, BSY);
+  dim3 grid((N + BSX - 1) / BSX, (M + BSY - 1) / BSY);
+  add_rows_strided_kernel<BSX,BSY><<<grid, block, 0, s>>>(A_MN, B_Mstride, M, N, strideB, offsetB);
 }
 
-static inline float* as_f32(Tensor& t){ return static_cast<float*>(t.data); }
-static inline const float* as_cf32(const Tensor& t){ return static_cast<const float*>(t.data); }
-static inline cudaStream_t to_cuda(StreamHandle s){ return reinterpret_cast<cudaStream_t>(s); }
-
-// ========================= host wrappers (public) =========================
-
-Status fill_zero(Tensor& t, StreamHandle s){
-  const int64_t n = numel_of(t);
-  if (n <= 0) return Status::Ok;
-  dim3 bs(256), gs(div_up_int(static_cast<int>(n), 256));
-  kfill_zero<<<gs, bs, 0, to_cuda(s)>>>(as_f32(t), n);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+void reduce_db_rows_kernel_launcher(const float* G_MN, float* db_N,
+                                    int M, int N, cudaStream_t s)
+{
+  const int total = M * N;
+  constexpr int BS = 256;
+  dim3 block(BS), grid((total + BS - 1)/BS);
+  reduce_db_rows_kernel<BS><<<grid, block, 0, s>>>(G_MN, db_N, M, N);
 }
 
-Status add_bias_rowwise(Tensor& Y, const Tensor& b, int B, int H, StreamHandle s){
-  if (B <= 0 || H <= 0) return Status::Ok;
-  dim3 bs(32, 8);
-  dim3 gs(div_up_int(H, bs.x), div_up_int(B, bs.y));
-  kadd_bias_rowwise<<<gs, bs, 0, to_cuda(s)>>>(as_f32(Y), as_cf32(b), B, H);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+void kadd_vec_launcher(float* A, const float* B, int n, cudaStream_t s){
+  constexpr int BS = 256;
+  dim3 block(BS), grid((n + BS - 1)/BS);
+  kadd_vec_kernel<BS><<<grid, block, 0, s>>>(A, B, n);
 }
 
-Status add_out(const Tensor& A, const Tensor& B, Tensor& C, StreamHandle s){
-  const int64_t n = numel_of(A);
-  if (n <= 0) return Status::Ok;
-  dim3 bs(256), gs(div_up_int(static_cast<int>(n), 256));
-  kadd_out<<<gs, bs, 0, to_cuda(s)>>>(as_cf32(A), as_cf32(B), as_f32(C), n);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStream_t s)
+{
+  const int total = M * N;
+  constexpr int BS = 256;
+  dim3 block(BS), grid((total + BS - 1) / BS);
+  transpose_kernel<BS><<<grid, block, 0, s>>>(A, AT, M, N);
 }
 
-Status add_inplace(Tensor& A, const Tensor& B, StreamHandle s){
-  const int64_t n = numel_of(A);
-  if (n <= 0) return Status::Ok;
-  dim3 bs(256), gs(div_up_int(static_cast<int>(n), 256));
-  kadd_inplace<<<gs, bs, 0, to_cuda(s)>>>(as_f32(A), as_cf32(B), n);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
-}
-
-Status tanh_out(const Tensor& X, Tensor& Y, StreamHandle s){
-  const int64_t n = numel_of(X);
-  if (n <= 0) return Status::Ok;
-  dim3 bs(256), gs(div_up_int(static_cast<int>(n), 256));
-  ktanh_out<<<gs, bs, 0, to_cuda(s)>>>(as_cf32(X), as_f32(Y), n);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
-}
-
-Status tanh_bwd_from_out(const Tensor& Y, const Tensor& dY, Tensor& dZ, StreamHandle s){
-  const int64_t n = numel_of(Y);
-  if (n <= 0) return Status::Ok;
-  dim3 bs(256), gs(div_up_int(static_cast<int>(n), 256));
-  ktanh_bwd_from_out<<<gs, bs, 0, to_cuda(s)>>>(as_cf32(Y), as_cf32(dY), as_f32(dZ), n);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
-}
-
-Status rowwise_sum_accum(const Tensor& M, Tensor& out, int B, int H, StreamHandle s){
-  if (H <= 0) return Status::Ok;
-  dim3 bs(256), gs(div_up_int(H, 256));
-  krowwise_sum_accum<<<gs, bs, 0, to_cuda(s)>>>(as_cf32(M), as_f32(out), B, H);
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
-}
-
-// in[M,N] -> out[N,M]
-Status transpose_2d(const Tensor& A, Tensor& AT, int M, int N, StreamHandle s){
-  const float* src = as_cf32(A);
-  float* dst       = as_f32(AT);
-
-  // 타일 기반 전치
-  dim3 block(RNN_TPT_TILE, RNN_TPT_BLOCK_ROWS);
-  dim3 grid(div_up_int(N, RNN_TPT_TILE), div_up_int(M, RNN_TPT_TILE));
-  transpose2d_kernel_tiled<<<grid, block, 0, to_cuda(s)>>>(src, dst, M, N);
-
-  return (cudaPeekAtLastError()==cudaSuccess) ? Status::Ok : Status::RuntimeError;
+void pack_wcat_from_wx_wh_launcher(const float* Wx, const float* Wh, float* Wcat,
+                                   int I, int H, cudaStream_t s)
+{
+  constexpr int BSX = 128, BSY = 4;
+  dim3 block(BSX, BSY);
+  dim3 grid((H + BSX - 1)/BSX, (I + H + BSY - 1)/BSY);
+  pack_wcat_from_wx_wh_kernel<<<grid, block, 0, s>>>(Wx, Wh, Wcat, I, H);
 }
 
 } // namespace ai
