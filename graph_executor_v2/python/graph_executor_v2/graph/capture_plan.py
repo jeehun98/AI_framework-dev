@@ -384,6 +384,33 @@ if Embedding is not None:
             name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws
         ), tuple(out_shp)
 
+# 8) Dropout (mask만 마련하는 소형 work)
+try:
+    from graph_executor_v2.layers.dropout import Dropout as _DropLayer  # type: ignore
+except Exception:
+    _DropLayer = None  # type: ignore
+
+if _DropLayer is not None:
+    class _DropoutWork:
+        __slots__ = ("mask", "counter_base")
+        def __init__(self, shape):
+            self.mask = cp.empty(shape, dtype=cp.int32)  # fwd에서 채워지고 bwd에서 재사용
+            self.counter_base = 0                        # 필요하면 외부에서 증가시켜 다른 마스크 생성
+
+    @register_planner(_DropLayer)  # type: ignore[misc]
+    def _plan_dropout(lyr, cur, idx, lt_bytes):
+        lname = f"L{idx}:{lyr.__class__.__name__}"
+        out_shp = tuple(map(int, cur))  # shape 보존형 레이어
+
+        y  = cp.empty(out_shp, dtype=cp.float32)
+        z  = None
+        gA = cp.empty(cur, dtype=cp.float32)  # 입력 grad 버퍼(항등 or dropout bwd 결과)
+        gW = None
+        gB = None
+
+        ws = _DropoutWork(out_shp)
+        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), out_shp
+
 
 
 # ============================================================
