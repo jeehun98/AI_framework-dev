@@ -1,68 +1,72 @@
-#include "backends/cuda/ops/view/api.hpp"
-#include <numeric>
+#include <cuda_runtime.h>
+#include <vector>
 #include <algorithm>
+
+#include "backends/cuda/ops/view/api.hpp"
+
+extern "C" void view_copy_kernel_launcher(const float*, float*, int64_t, cudaStream_t);
+extern "C" void view_add_kernel_launcher (const float*, float*, int64_t, cudaStream_t);
 
 namespace ai {
 
-Status PermuteMakeView(const TensorDesc& in, const std::vector<int>& perm, TensorDesc& out) {
-  const int r = (int)in.shape.size();
-  if ((int)perm.size() != r) return Status::Invalid;
+static inline bool is_f32_cuda_nd(const Tensor& t, int max_rank=4){
+  return t.device==Device::CUDA &&
+         t.desc.dtype==DType::F32 &&
+         t.desc.layout==Layout::RowMajor &&
+         (int)t.desc.shape.size()<=max_rank;
+}
 
-  std::vector<int> seen(r,0);
-  for (int i=0;i<r;++i){
-    if (perm[i] < 0 || perm[i] >= r) return Status::Invalid;
-    if (seen[perm[i]]) return Status::Invalid;
-    seen[perm[i]] = 1;
-  }
+static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
 
-  out = in;
-  out.shape.resize(r);
-  out.stride.resize(r);
-  for (int i=0;i<r;++i){
-    out.shape[i]  = in.shape[perm[i]];
-    out.stride[i] = in.stride[perm[i]];
+Status ViewAliasCheck(const Tensor& X, const Tensor& Y, const ViewAttrs& a){
+  const int xr = (int)X.desc.shape.size();
+  const int yr = (int)Y.desc.shape.size();
+  if (xr!=yr || xr<1 || xr>4) return Status::Invalid;
+
+  // 총 원소 수 동일성 검사
+  int64_t nx=1, ny=1;
+  for (int d=0; d<xr; ++d){ nx *= X.desc.shape[d]; ny *= Y.desc.shape[d]; }
+  if (nx!=ny) return Status::ShapeMismatch;
+
+  // attrs.shape가 지정되었다면 Y.shape와도 맞는지 확인(옵션)
+  if (a.rank==yr){
+    for (int d=0; d<yr; ++d){
+      if (a.shape[d]>0 && a.shape[d] != (int)Y.desc.shape[d]) return Status::ShapeMismatch;
+    }
   }
   return Status::Ok;
 }
 
-Status Transpose2DMakeView(const TensorDesc& in, int d0, int d1, TensorDesc& out) {
-  const int r = (int)in.shape.size();
-  if (r < 2) return Status::Invalid;
-  if (d0<0) d0 += r; if (d1<0) d1 += r;
-  if (d0<0||d0>=r||d1<0||d1>=r||d0==d1) return Status::Invalid;
+Status ViewCudaLaunch(const Tensor& X, Tensor& Y, const ViewAttrs& a, StreamHandle stream)
+{
+  if (!is_f32_cuda_nd(X) || !is_f32_cuda_nd(Y)) return Status::Invalid;
+  Status st = ViewAliasCheck(X, Y, a);
+  if (st != Status::Ok) return st;
 
-  std::vector<int> perm(r);
-  std::iota(perm.begin(), perm.end(), 0);
-  std::swap(perm[d0], perm[d1]);
-  return PermuteMakeView(in, perm, out);
+  // 보통 alias(no-copy). 포인터가 다르면 안전 복사(선택).
+  if (X.data != Y.data){
+    int64_t total = 1;
+    for (auto v: Y.desc.shape) total *= v;
+    view_copy_kernel_launcher(static_cast<const float*>(X.data),
+                              static_cast<float*>(Y.data),
+                              total, to_cuda(stream));
+  }
+  return Status::Ok;
 }
 
-Status ExpandMakeView(const TensorDesc& in, const std::vector<int64_t>& out_shape, TensorDesc& out) {
-  const int rin  = (int)in.shape.size();
-  const int rout = (int)out_shape.size();
-  const int r = std::max(rin, rout);
+Status ViewCudaBackwardLaunch(const Tensor& gY, Tensor& gX, const ViewAttrs& a, StreamHandle stream)
+{
+  if (!is_f32_cuda_nd(gY) || !is_f32_cuda_nd(gX)) return Status::Invalid;
+  // 동일 원소 수 확인
+  int64_t ny=1, nx=1;
+  for (auto v: gY.desc.shape) ny *= v;
+  for (auto v: gX.desc.shape) nx *= v;
+  if (nx!=ny) return Status::ShapeMismatch;
 
-  // 뒤축 정렬
-  std::vector<int64_t> ish(r,1), istr(r,0), osh(r,1);
-  for (int i=0;i<rin;++i){  ish[r-rin+i]  = in.shape[i]; istr[r-rin+i] = in.stride[i]; }
-  for (int i=0;i<rout;++i){ osh[r-rout+i] = out_shape[i]; }
-
-  std::vector<int64_t> oshape(r), ostride(r);
-  for (int i=0;i<r;++i){
-    if (osh[i] == ish[i]) {           // 동일 크기 → stride 유지
-      oshape[i]  = osh[i];
-      ostride[i] = istr[i];
-    } else if (ish[i] == 1 && osh[i] > 1) { // broadcast → stride=0 뷰
-      oshape[i]  = osh[i];
-      ostride[i] = 0;
-    } else {
-      return Status::ShapeMismatch;
-    }
-  }
-
-  out = in;
-  out.shape = std::move(oshape);
-  out.stride= std::move(ostride);
+  // gX += gY
+  view_add_kernel_launcher(static_cast<const float*>(gY.data),
+                           static_cast<float*>(gX.data),
+                           ny, to_cuda(stream));
   return Status::Ok;
 }
 

@@ -19,6 +19,11 @@ struct GemmAttrs {
   ActKind  act{ActKind::None};
   bool     with_bias{false};
   float    leaky_slope{0.01f}; // LeakyReLU용 (regemm와 동일 기본값)
+
+  // NEW: Forward에서 (A*B + Bias) 를 Z로 저장할지 여부
+  // - true: Z 버퍼에 pre-activation을 써두고, Y는 별도 activation pass로 생성
+  // - false: 기존 fused 경로 사용 (성능 유지)
+  bool     save_z{false};
 };
 
 } // namespace ai

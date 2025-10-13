@@ -3,48 +3,62 @@
 
 namespace ai {
 
-static inline bool is_cuda_f32(const Tensor& t){
-  return t.device==Device::CUDA && t.desc.dtype==DType::F32;
-}
-static inline cudaStream_t to_cuda(StreamHandle h){ return (cudaStream_t)h; }
-
-// 커널 선언
-void contiguous_copy_kernel_launcher(
-    const float* src, float* dst,
-    const int64_t* shape_h, const int64_t* stride_h,
-    int nd, int64_t total, cudaStream_t stream);
-
-Status ContiguousCopyCudaLaunch(const Tensor& src, Tensor& dst, StreamHandle stream)
-{
-  if (!is_cuda_f32(src) || !is_cuda_f32(dst)) return Status::Invalid;
-  if (src.desc.shape != dst.desc.shape)       return Status::ShapeMismatch;
-  if (src.desc.shape.empty())                 return Status::Invalid;
-
-  const int nd = (int)src.desc.shape.size();
-  if (nd > 8) return Status::Invalid; // MEM_MAX_NDIMS 초과 방지
-
-  // 총 요소 수
-  int64_t total = 1;
-  for (auto s : src.desc.shape) total *= s;
-
-  // host 배열 준비
-  int64_t shape_h[8], stride_h[8];
-  for (int i = 0; i < nd; ++i) {
-    shape_h[i]  = src.desc.shape[i];
-    stride_h[i] = src.desc.stride[i]; // 요소 단위 stride (프레임워크 일관성 가정)
+static inline bool is_cuda_rowmajor_contig(const Tensor& t) {
+  if (t.device != Device::CUDA) return false;
+  if (t.desc.layout != Layout::RowMajor) return false;
+  if (!t.data) return false;
+  // 연속성: 마지막 축 stride=1, 등등 — 간단 검증
+  const auto& shape = t.desc.shape;
+  const auto& stride= t.desc.stride;
+  if (shape.empty()) return true; // 스칼라 텐서
+  if (stride.size() != shape.size()) return false;
+  if (stride.back() != 1) return false;
+  for (int i=(int)shape.size()-2;i>=0;--i){
+    if (stride[(size_t)i] != stride[(size_t)i+1] * shape[(size_t)i+1]) return false;
   }
+  return true;
+}
 
-  contiguous_copy_kernel_launcher(
-    static_cast<const float*>(src.data),
-    static_cast<float*>(dst.data),
-    shape_h, stride_h,
-    nd, total, to_cuda(stream)
-  );
+static inline int64_t numel_of(const Tensor& t) {
+  int64_t n=1;
+  for (auto d: t.desc.shape) n *= d;
+  return n;
+}
 
-  // 커널 런치 에러 확인
+static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
+
+// raw kernel launchers (in kernels.cu)
+void fill_scalar_f32_kernel_launcher(void* dst, int64_t N, float   value, cudaStream_t s);
+void fill_scalar_i32_kernel_launcher(void* dst, int64_t N, int32_t value, cudaStream_t s);
+
+// -------- float32 --------
+Status FillScalarF32CudaLaunch(Tensor& dst,
+                               float value,
+                               StreamHandle stream)
+{
+  if (!is_cuda_rowmajor_contig(dst)) return Status::Invalid;
+  if (dst.desc.dtype != DType::F32)  return Status::Invalid;
+
+  const int64_t N = numel_of(dst);
+  fill_scalar_f32_kernel_launcher(dst.data, N, value, to_cuda(stream));
+
   auto e = cudaPeekAtLastError();
-  if (e != cudaSuccess) return Status::RuntimeError;
-  return Status::Ok;
+  return (e==cudaSuccess)? Status::Ok : Status::RuntimeError;
+}
+
+// -------- int32 --------
+Status FillScalarI32CudaLaunch(Tensor& dst,
+                               int32_t value,
+                               StreamHandle stream)
+{
+  if (!is_cuda_rowmajor_contig(dst)) return Status::Invalid;
+  if (dst.desc.dtype != DType::I32)  return Status::Invalid;
+
+  const int64_t N = numel_of(dst);
+  fill_scalar_i32_kernel_launcher(dst.data, N, value, to_cuda(stream));
+
+  auto e = cudaPeekAtLastError();
+  return (e==cudaSuccess)? Status::Ok : Status::RuntimeError;
 }
 
 } // namespace ai

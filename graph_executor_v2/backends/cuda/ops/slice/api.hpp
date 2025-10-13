@@ -1,25 +1,31 @@
 #pragma once
-#include <vector>
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
+
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/tensor.hpp"
+  #include "ai/dispatch.hpp"
+#endif
 
 namespace ai {
 
+// rank<=4 고정, I64 미지원 버전: attrs는 int32만 사용
 struct SliceAttrs {
-  // 각 축별 [start, stop) 및 step (step>0)
-  std::vector<int64_t> start, stop, step;
+  int rank{1};
+  int starts[4]{0,0,0,0};
+  int sizes [4]{1,1,1,1};
 };
 
-// CUDA 런처 (정의는 .cu)
-Status SliceCudaLaunch(const Tensor& X, Tensor& Y,
-                       const SliceAttrs& attrs, StreamHandle stream);
+// Forward: Y = X[starts : starts+sizes]  (row-major contiguous, float32, CUDA)
+Status SliceCudaLaunch(const Tensor& X,
+                       Tensor& Y,
+                       const SliceAttrs& attrs,
+                       StreamHandle stream);
+
+// Backward: gX += scatter(gY)  (accumulate-add; slice 특성상 1:1 mapping, atomic 불필요)
+Status SliceCudaBackwardLaunch(const Tensor& gY,
+                               Tensor& gX,
+                               const SliceAttrs& attrs,
+                               StreamHandle stream);
 
 } // namespace ai
-
-// 상위/바인딩이 호출할 엔트리
-namespace ai { namespace ops {
-
-int slice_run(const ai::Tensor& X, ai::Tensor& Y,
-              const ai::SliceAttrs& attrs, StreamHandle s);
-
-}} // namespace ai::ops

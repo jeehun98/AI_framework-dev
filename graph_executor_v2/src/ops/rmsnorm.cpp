@@ -1,5 +1,5 @@
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 #include "backends/cuda/ops/rmsnorm/api.hpp"
 
 namespace ai { namespace ops {

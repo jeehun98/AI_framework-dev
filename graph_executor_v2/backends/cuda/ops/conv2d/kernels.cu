@@ -1,8 +1,9 @@
+// backends/cuda/ops/conv2d/kernels.cu
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <float.h>
 
-namespace {
+namespace { // ---- device 템플릿 커널들: TU 내부 전용 ----
 
 // ---------- im2col ----------
 template<int BS>
@@ -51,7 +52,6 @@ __global__ void col2im_kernel(const float* __restrict__ Col, float* __restrict__
                               int dH, int dW,
                               int Ho, int Wo)
 {
-  // Xgrad shape: [Cin,H,W]
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int total = Cin * H * W;
   if (idx >= total) return;
@@ -60,7 +60,6 @@ __global__ void col2im_kernel(const float* __restrict__ Col, float* __restrict__
   int h = t % H;   int c = t / H;
 
   float acc = 0.f;
-  // 역탐색: (h,w)가 어떤 (h_out,w_out,kh,kw)에 의해 쓰였는지
   for (int kh=0; kh<Kh; ++kh){
     int h_out_nom = h + pH - kh * dH;
     if (h_out_nom % sH) continue;
@@ -80,13 +79,13 @@ __global__ void col2im_kernel(const float* __restrict__ Col, float* __restrict__
       acc += Col[hw * K + k];
     }
   }
-  Xgrad[idx] += acc; // 누적
+  Xgrad[idx] += acc;
 }
 
 // ---------- row-major 2D transpose ----------
 template<int BS>
 __global__ void transpose_kernel(const float* __restrict__ A, float* __restrict__ AT,
-                                 int M, int N) // A[M,N] -> AT[N,M]
+                                 int M, int N)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int total = M * N;
@@ -96,7 +95,7 @@ __global__ void transpose_kernel(const float* __restrict__ A, float* __restrict_
   AT[n * M + m] = A[m * N + n];
 }
 
-// ---------- dB reduction: sum over [Hout*Wout] with atomics, batch-accum ----------
+// ---------- dB reduction ----------
 template<int BS>
 __global__ void reduce_db_kernel(const float* __restrict__ dY, float* __restrict__ dB,
                                  int HWo, int Cout)
@@ -109,11 +108,66 @@ __global__ void reduce_db_kernel(const float* __restrict__ dY, float* __restrict
   atomicAdd(&dB[co], dY[hw * Cout + co]);
 }
 
-} // anonymous
+} // anonymous TU-local
 
-namespace ai {
+namespace ai { // ---- 외부에서 보이는 심볼들 ----
 
-// 런처들
+// ===== pack/unpack 정의 (외부 링크 필요: __global__ 심볼을 ai 네임스페이스로) =====
+__global__ void pack_w_oihw_to_KC(const float* __restrict__ W,
+                                  float* __restrict__ out_KC,
+                                  int Cout, int Cin, int Kh, int Kw)
+{
+  const int K = Cin * Kh * Kw;
+  int k  = blockIdx.x * blockDim.x + threadIdx.x; // 0..K-1
+  int co = blockIdx.y;                             // 0..Cout-1
+  if (k >= K || co >= Cout) return;
+
+  int tmp = k;
+  int kw = tmp % Kw; tmp /= Kw;
+  int kh = tmp % Kh; tmp /= Kh;
+  int c  = tmp;
+
+  size_t off = (((size_t)co * Cin + c) * Kh + kh) * Kw + kw; // OIHW
+  out_KC[(size_t)k * Cout + co] = W[off];                    // [K, Cout]
+}
+
+__global__ void pack_w_oihw_to_CK(const float* __restrict__ W,
+                                  float* __restrict__ out_CK,
+                                  int Cout, int Cin, int Kh, int Kw)
+{
+  const int K = Cin * Kh * Kw;
+  int k  = blockIdx.x * blockDim.x + threadIdx.x;
+  int co = blockIdx.y;
+  if (k >= K || co >= Cout) return;
+
+  int tmp = k;
+  int kw = tmp % Kw; tmp /= Kw;
+  int kh = tmp % Kh; tmp /= Kh;
+  int c  = tmp;
+
+  size_t off = (((size_t)co * Cin + c) * Kh + kh) * Kw + kw; // OIHW
+  out_CK[(size_t)co * K + k] = W[off];                       // [Cout, K]
+}
+
+__global__ void unpack_ck_to_oihw_add(const float* __restrict__ dWpack,
+                                      float* __restrict__ dW,
+                                      int Cout, int Cin, int Kh, int Kw)
+{
+  const int K = Cin * Kh * Kw;
+  int k  = blockIdx.x * blockDim.x + threadIdx.x;
+  int co = blockIdx.y;
+  if (k >= K || co >= Cout) return;
+
+  int tmp = k;
+  int kw = tmp % Kw; tmp /= Kw;
+  int kh = tmp % Kh; tmp /= Kh;
+  int c  = tmp;
+
+  size_t off = (((size_t)co * Cin + c) * Kh + kh) * Kw + kw; // OIHW
+  dW[off] += dWpack[(size_t)co * K + k];                     // 누적
+}
+
+// ===== 런처들 =====
 void im2col_kernel_launcher(const float* X, float* Col,
                             int Cin, int H, int W,
                             int Kh, int Kw,
@@ -154,12 +208,14 @@ void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStre
   transpose_kernel<BS><<<grid, block, 0, s>>>(A, AT, M, N);
 }
 
-void reduce_db_kernel_launcher(const float* dY, float* dB, int HWo, int Cout, cudaStream_t s)
+// 호출처(launcher.cu)와 이름/인자 순서 맞춤!
+void reduce_db_rows_kernel_launcher(const float* gy, float* db, int Cout, int HWo, cudaStream_t s)
 {
   const int total = HWo * Cout;
   constexpr int BS = 256;
   dim3 block(BS), grid((total + BS - 1) / BS);
-  reduce_db_kernel<BS><<<grid, block, 0, s>>>(dY, dB, HWo, Cout);
+  // reduce_db_kernel은 (dY, dB, HWo, Cout) 순으로 받음
+  reduce_db_kernel<BS><<<grid, block, 0, s>>>(gy, db, HWo, Cout);
 }
 
 } // namespace ai

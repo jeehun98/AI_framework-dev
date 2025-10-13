@@ -1,28 +1,31 @@
 #pragma once
-#include <vector>
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
+
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/tensor.hpp"
+  #include "ai/dispatch.hpp"
+#endif
 
 namespace ai {
 
+// I64 미지원: attrs는 int32
 struct ConcatAttrs {
-  int axis{0};
+  int rank{1};
+  int axis{0};  // 0..rank-1
 };
 
-// CUDA 런처: D2D memcpy 기반 concat (정의는 .cu)
-Status ConcatCudaLaunch(const std::vector<Tensor>& Xs,
+// Forward: Y = concat(Xs, axis)
+//   - Xs: 길이 n의 텐서 배열, 모두 float32 CUDA row-major, rank 동일, axis 제외 dims 동일
+Status ConcatCudaLaunch(const Tensor* Xs, int n,
                         Tensor& Y,
                         const ConcatAttrs& attrs,
                         StreamHandle stream);
 
+// Backward: 각 gX_i += slice(gY, axis, offset_i, size_i)
+Status ConcatCudaBackwardLaunch(const Tensor& gY,
+                                Tensor* gXs, int n,
+                                const ConcatAttrs& attrs,
+                                StreamHandle stream);
+
 } // namespace ai
-
-// 상위/바인딩이 호출할 엔트리 (slice_run과 동일 패턴)
-namespace ai { namespace ops {
-
-int concat_run(const std::vector<ai::Tensor>& Xs,
-               ai::Tensor& Y,
-               const ai::ConcatAttrs& attrs,
-               StreamHandle s);
-
-}} // namespace ai::ops

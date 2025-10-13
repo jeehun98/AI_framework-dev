@@ -1,27 +1,35 @@
 #pragma once
-#include "ai/tensor.hpp"
-#include "ai/dispatch.hpp"
-#include <vector>
+
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/tensor.hpp"
+  #include "ai/dispatch.hpp"
+#endif
 
 namespace ai {
 
-// in_desc의 데이터(포인터/디바이스)는 그대로 공유하고
-// shape/stride만 permute/expand 결과로 채워 out_desc에 반환합니다.
-Status PermuteMakeView(const TensorDesc& in_desc,
-                       const std::vector<int>& perm,
-                       TensorDesc& out_desc);
+// 단순 view(reshape/alias) 검사용, I64 미지원: int32 shape
+struct ViewAttrs {
+  int rank{1};
+  int shape[4]{1,1,1,1}; // 기대 shape (옵션)
+};
 
-Status Transpose2DMakeView(const TensorDesc& in_desc,
-                           int dim0, int dim1,
-                           TensorDesc& out_desc);
+// Forward: 보통 no-op. (필요시 검증만 수행)
+Status ViewCudaLaunch(const Tensor& X,
+                      Tensor& Y,
+                      const ViewAttrs& attrs,
+                      StreamHandle stream);
 
-Status ExpandMakeView(const TensorDesc& in_desc,
-                      const std::vector<int64_t>& out_shape,
-                      TensorDesc& out_desc);
+// Backward: gX += gY  (alias일 때 누적)
+Status ViewCudaBackwardLaunch(const Tensor& gY,
+                              Tensor& gX,
+                              const ViewAttrs& attrs,
+                              StreamHandle stream);
 
-// 선택: out_desc로 바로 Tensor 핸들 조립할 때 쓰는 도우미
-inline Tensor MakeViewTensor(void* data, const TensorDesc& desc, Device dev, int device_id=0) {
-  return Tensor{data, desc, dev, device_id};
-}
+// 선택: alias 체크 유틸 (원하면 유지)
+Status ViewAliasCheck(const Tensor& X,
+                      const Tensor& Y,
+                      const ViewAttrs& attrs);
 
 } // namespace ai
