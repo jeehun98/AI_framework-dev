@@ -1,104 +1,87 @@
 #pragma once
+
 #ifdef BUILD_STANDALONE_OPS
   #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #else
   #include "ai/tensor.hpp"
-  #include "ai/op_schema.hpp"
   #include "ai/dispatch.hpp"
 #endif
 
 namespace ai {
 
-struct RNNAttrs {
-  int T{0}, B{0}, I{0}, H{0};
-  bool save_z{true};     // true: Z를 [TB,H]로 저장, false: 즉시 tanh(Z)로 H만 저장(필요 시 ws.TMP_Z로 임시)
-  // 선택: bidirectional, num_layers 등 확장 여지 (미사용이면 1/false 가정)
+// ========== 속성 ==========
+struct RnnAttrs {
+  ai::ActKind act{ai::ActKind::None};
+  float       leaky_slope{0.01f};
+  bool        with_bias{false};
+  bool        save_z{false};
 };
 
-// ===== 캡처-세이프 워크스페이스 =====
-// 모든 포인터는 "이미 device 메모리로 할당되어 있어야" 하며 런처는 절대 cudaMalloc/cudaFree 하지 않는다.
-struct RNNWorkspaceFwd {
-  // [필수] 크기: TB=T*B, BH=B*H
-  float* PreZ_all{nullptr}; // [TB, H] — save_z=true일 때 결과 보관; false면 scratch로 사용 가능
-  float* TMP_H   {nullptr}; // [B, H]   — 타임스텝 간 임시
-  float* TMP_Z   {nullptr}; // [B, H]   — save_z=false일 때 tanh 이전 값 임시
-};
-
-struct RNNWorkspaceBwd {
+// ========== 캡처-세이프 워크스페이스 (Forward) ==========
+struct RnnWorkspaceFwd {
+  // shapes assume: X:[N,T,I], Wx:[I,H], Wh:[H,H], Y:[N,T,H]
   // [필수]
-  float* dHsum     {nullptr}; // [B, H]
-  float* dh_next   {nullptr}; // [B, H]
-  float* dZ_all    {nullptr}; // [TB, H] — save_z=true면 Z에서 바로 미분, false면 fwd에서 저장된 H로부터 dZ 재구성해 채워야 함
-  float* Hprev_all {nullptr}; // [TB, H] — (선택) 필요 시 제공. 없으면 bwd에서 시퀀스 재스캔이 필요.
+  float* XH_cat {nullptr}; // [N, I+H] : concat([X_t, h_{t-1}])
+  float* Y_rows {nullptr}; // [N, H]   : GEMM output per time
+  float* W_cat  {nullptr}; // [I+H, H] : packed [Wx; Wh] (런타임 pack)
+  // [옵션] save_z==true
+  float* Z_rows {nullptr}; // [N, H]   : pre-activation rows
 };
 
-// ========== [새로 추가] 워크스페이스 크기 질의(메모리 계획/그래프 캡처용) ==========
-struct RNNWorkspaceSizes {
-  size_t bytes_PreZ_all{0};
-  size_t bytes_TMP_H{0};
-  size_t bytes_TMP_Z{0};
-  size_t bytes_dHsum{0};
-  size_t bytes_dh_next{0};
-  size_t bytes_dZ_all{0};
-  size_t bytes_Hprev_all{0};
+// ========== 캡처-세이프 워크스페이스 (Backward) ==========
+struct RnnWorkspaceBwd {
+  // [필수]
+  float* XH_cat {nullptr}; // [N, I+H] : concat buffer per time
+  float* G_rows {nullptr}; // [N, H]   : gy_post ⊙ act'(Z)
+  float* Z_rows {nullptr}; // [N, H]   : Z slice
+  float* W_cat  {nullptr}; // [I+H, H] : [Wx; Wh]
+  float* dXH_cat{nullptr}; // [N, I+H] : dX|dh_prev temp (우측 H는 dh_next 저장에 재사용)
+  float* dWcat  {nullptr}; // [I+H, H] : accumulated dWcat
+  float* TmpW   {nullptr}; // [I+H, H] : GEMM 임시 (dWcat step)
 };
 
-inline RNNWorkspaceSizes RNNGetWorkspaceSizes(const RNNAttrs& a) {
-  const long long TB = 1LL * a.T * a.B;
-  const long long BH = 1LL * a.B * a.H;
-  RNNWorkspaceSizes s{};
-  s.bytes_PreZ_all = sizeof(float) * TB * a.H;               // fwd
-  s.bytes_TMP_H    = sizeof(float) * BH;
-  s.bytes_TMP_Z    = sizeof(float) * BH;
+// ========== 커널 런처 (kernels.cu 에서 제공) ==========
+void apply_dact_rows_launcher(const float* gy_post, const float* Z_rows, float* gy_rows,
+                              int M, int N, int act_code, float slope, cudaStream_t s);
+void add_rows_strided_launcher(float* A_MN, const float* B_Mstride,
+                               int M, int N, int strideB, int offsetB, cudaStream_t s);
+void reduce_db_rows_kernel_launcher(const float* G_MN, float* db_N,
+                                    int M, int N, cudaStream_t s);
+void kadd_vec_launcher(float* A, const float* B, int n, cudaStream_t s);
+void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStream_t s);
+void pack_wcat_from_wx_wh_launcher(const float* Wx, const float* Wh, float* Wcat,
+                                   int I, int H, cudaStream_t s); // (선택: memcpy 2회로 대체 가능)
+// 커널 런처 선언부에 추가
+void apply_act_rows_launcher(const float* Z_rows, float* H_rows,
+                             int M, int N, int act_code, float slope, cudaStream_t s);
 
-  s.bytes_dHsum     = sizeof(float) * BH;                     // bwd
-  s.bytes_dh_next   = sizeof(float) * BH;
-  s.bytes_dZ_all    = sizeof(float) * TB * a.H;
-  s.bytes_Hprev_all = sizeof(float) * TB * a.H;
-  return s;
-}
+// ========== Forward ==========
+Status RnnCudaLaunch(const Tensor& X,   // [N,T,I]
+                     const Tensor& Wx,  // [I,H]
+                     const Tensor& Wh,  // [H,H]
+                     const Tensor* B,   // [H] (optional)
+                     const Tensor& h0,  // [N,H]
+                     Tensor& Y,         // [N,T,H]
+                     const RnnAttrs& attrs,
+                     StreamHandle stream,
+                     Tensor* Z_saved /*=nullptr*/,              // [N,T,H]
+                     const RnnWorkspaceFwd* ws_fwd /*=nullptr*/);
 
-// ========== [새로 추가] 런처의 고정 그리드/분기 계약 안내를 위해 “준비” 함수(선택) ==========
-struct RNNLaunchPlan {
-  // 런타임 분기 없는 그리드/블록 등 커널 메타 (필요 시 확장)
-  dim3 grid_preZ, block_preZ;
-  dim3 grid_tanh, block_tanh;
-  // … Wx/Wh GEMM 런처가 별도면 거기 메타도 포함 가능
-};
-Status RNNMakeLaunchPlan(const RNNAttrs& attrs, RNNLaunchPlan* plan);
-
-// ===== 연산 유틸 (그대로 유지) =====
-Status fill_zero(Tensor& t, StreamHandle s);
-Status add_bias_rowwise(Tensor& Y, const Tensor& b, int B, int H, StreamHandle s);
-Status add_out(const Tensor& A, const Tensor& B, Tensor& C, StreamHandle s);
-Status add_inplace(Tensor& A, const Tensor& B, StreamHandle s);
-Status tanh_out(const Tensor& X, Tensor& Y, StreamHandle s);
-Status tanh_bwd_from_out(const Tensor& Y, const Tensor& dY, Tensor& dZ, StreamHandle s);
-Status rowwise_sum_accum(const Tensor& M, Tensor& out, int B, int H, StreamHandle s);
-Status transpose_2d(const Tensor& A, Tensor& AT, int M, int N, StreamHandle s);
-
-// ===== Forward =====
-// 계약:
-//  - 내부에서 어떤 cudaMalloc/cudaFree도 하지 않음
-//  - 디폴트 스트림 사용 금지; 반드시 인자로 받은 s만 사용
-//  - save_z=true면 Zbuf가 nullptr이면 오류 반환(ai::Status::InvalidArgument)
-//  - ws_fwd가 nullptr이면 "임시 없이도 가능한 경로"만 사용 (추천: 캡처 시 반드시 제공)
-Status RNNCudaLaunch(const Tensor& X, const Tensor& h0,
-                     const Tensor& Wx, const Tensor& Wh,
-                     const Tensor* b, Tensor& Hout, Tensor* Zbuf,
-                     const RNNAttrs& attrs, StreamHandle s,
-                     const RNNWorkspaceFwd* ws_fwd /*=nullptr*/);
-
-// ===== Backward =====
-// 계약:
-//  - dX/dh0/dWx/dWh/dB는 nullptr일 수 있음(해당 그라디언트 스킵)
-//  - save_z=true면 Zbuf가 nullptr이면 오류 (Z로부터 dZ 계산)
-//  - save_z=false면 ws_bwd->dZ_all이 필수(혹은 내부에서 H로부터 재구성) — 캡처용으론 사전할당 권장
-Status RNNCudaBackwardLaunch(const Tensor& X, const Tensor& Hout, const Tensor* Zbuf,
-                             const Tensor& h0, const Tensor& Wx, const Tensor& Wh,
-                             const Tensor& dHout,
-                             Tensor* dX, Tensor* dh0, Tensor* dWx, Tensor* dWh, Tensor* dB,
-                             const RNNAttrs& attrs, StreamHandle s,
-                             const RNNWorkspaceBwd* ws_bwd /*=nullptr*/);
+// ========== Backward ==========
+Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
+                             const Tensor& Wx,      // [I,H]
+                             const Tensor& Wh,      // [H,H]
+                             const Tensor* B,       // [H] (optional)
+                             const Tensor& h0,      // [N,H]
+                             const Tensor& dY_post, // [N,T,H]
+                             const Tensor& Z,       // [N,T,H]
+                             Tensor* dWx,           // [I,H]
+                             Tensor* dWh,           // [H,H]
+                             Tensor* dB,            // [H]
+                             Tensor* dh0,           // [N,H]
+                             Tensor* dX,            // [N,T,I]
+                             const RnnAttrs& attrs,
+                             StreamHandle stream,
+                             const RnnWorkspaceBwd* ws_bwd /*=nullptr*/);
 
 } // namespace ai
