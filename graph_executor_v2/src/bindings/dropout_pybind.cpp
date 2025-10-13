@@ -2,43 +2,52 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#ifdef BUILD_STANDALONE_OPS
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#else
+  #include "ai/tensor.hpp"
+  #include "ai/dispatch.hpp"
+#endif
+
 #include "backends/cuda/ops/dropout/api.hpp"
 
 namespace py = pybind11;
 using namespace ai;
 
-static Tensor make_tensor_nd(uintptr_t ptr_u64,
+static Tensor make_tensor_rm(uintptr_t ptr_u64,
                              const std::vector<int64_t>& shape,
-                             DType dtype = DType::F32,
-                             Device dev  = Device::CUDA)
-{
+                             DType dtype, Device dev=Device::CUDA) {
   Tensor t;
   t.data = reinterpret_cast<void*>(ptr_u64);
-  t.device = dev;
-  t.device_index = 0;
-  t.desc.dtype  = dtype;
+  t.device = dev; t.device_index = 0;
+  t.desc.dtype = dtype;
   t.desc.layout = Layout::RowMajor;
-  t.desc.shape  = shape;
-  const size_t R = shape.size();
-  t.desc.stride.resize(R);
-  if (R) {
-    t.desc.stride[R-1] = 1;
-    for (int i=(int)R-2;i>=0;--i)
-      t.desc.stride[(size_t)i] = t.desc.stride[(size_t)i+1]*shape[(size_t)i+1];
+  t.desc.shape = shape;
+  // contiguous row-major
+  t.desc.stride.resize(shape.size());
+  if (!shape.empty()) {
+    t.desc.stride.back() = 1;
+    for (int i = (int)shape.size()-2; i >= 0; --i) {
+      t.desc.stride[i] = shape[i+1] * t.desc.stride[i+1];
+    }
   }
   return t;
 }
 
 static void throw_if_bad(Status st, const char* where) {
   if (st != Status::Ok) {
-    throw std::runtime_error(std::string(where) + " failed with Status=" +
+    throw std::runtime_error(std::string("[_ops_dropout::") + where +
+                             "] failed with Status=" +
                              std::to_string(static_cast<int>(st)));
   }
 }
 
 PYBIND11_MODULE(_ops_dropout, m) {
-  m.doc() = "Independent CUDA Dropout (stateless RNG, capture-safe)";
+  m.attr("__package__") = "graph_executor_v2.ops";
+  m.doc() = "CUDA dropout (stateless RNG; graph-capture safe)";
+
+  // 재사용 타입
+  py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
 
   py::class_<DropoutAttrs>(m, "DropoutAttrs")
     .def(py::init<>())
@@ -47,65 +56,51 @@ PYBIND11_MODULE(_ops_dropout, m) {
     .def_readwrite("scale_in_train", &DropoutAttrs::scale_in_train)
     .def_readwrite("counter_base", &DropoutAttrs::counter_base);
 
-  // forward
+  // forward(x, x_shape, y, y_shape, mask or None, attrs, stream)
   m.def("forward",
     [](uintptr_t x_ptr, const std::vector<int64_t>& x_shape,
        uintptr_t y_ptr, const std::vector<int64_t>& y_shape,
-       py::object mask_ptr_or_none, const std::vector<int64_t>& mask_shape,
-       const DropoutAttrs& attrs, uintptr_t stream_ptr) {
+       py::object mask_ptr_obj,
+       DropoutAttrs attrs, uintptr_t stream_ptr) {
 
-        if (x_shape.size()!=2 || y_shape.size()!=2)
-          throw std::invalid_argument("X and Y must be rank-2 [M,N]");
-        if (x_shape != y_shape)
-          throw std::invalid_argument("X and Y shapes must match");
-
-        Tensor X = make_tensor_nd(x_ptr, x_shape, DType::F32);
-        Tensor Y = make_tensor_nd(y_ptr, y_shape, DType::F32);
-
-        Tensor maskT{}; Tensor* mask = nullptr;
-        if (!mask_ptr_or_none.is_none()) {
-          if (mask_shape.size()!=2 || mask_shape!=y_shape)
-            throw std::invalid_argument("mask must be [M,N] (int32) matching Y shape");
-          auto mptr = mask_ptr_or_none.cast<uintptr_t>();
-          maskT = make_tensor_nd(mptr, mask_shape, DType::I32);
-          mask = &maskT;
-        }
-
-        StreamHandle s = reinterpret_cast<StreamHandle>(stream_ptr);
-        auto st = DropoutCudaLaunch(X, Y, mask, attrs, s);
-        throw_if_bad(st, "DropoutCudaLaunch");
-      },
+      Tensor X = make_tensor_rm(x_ptr, x_shape, DType::F32);
+      Tensor Y = make_tensor_rm(y_ptr, y_shape, DType::F32);
+      Tensor* Mptr = nullptr;
+      Tensor M;
+      if (!mask_ptr_obj.is_none()) {
+        auto mptr = mask_ptr_obj.cast<uintptr_t>();
+        M = make_tensor_rm(mptr, x_shape, DType::I32); // mask shape == X/Y
+        Mptr = &M;
+      }
+      StreamHandle stream = reinterpret_cast<StreamHandle>(stream_ptr);
+      auto st = DropoutCudaLaunch(X, Y, Mptr, attrs, stream);
+      throw_if_bad(st, "forward");
+    },
     py::arg("x_ptr"), py::arg("x_shape"),
     py::arg("y_ptr"), py::arg("y_shape"),
-    py::arg("mask_ptr") = py::none(), py::arg("mask_shape") = std::vector<int64_t>{},
-    py::arg("attrs"),
-    py::arg("stream") = static_cast<uintptr_t>(0)
+    py::arg("mask_ptr") = py::none(),
+    py::arg("attrs") = DropoutAttrs{},
+    py::arg("stream") = (uintptr_t)0
   );
 
-  // backward
+  // backward(dy, dy_shape, mask, mask_shape, dx, dx_shape, attrs, stream)
   m.def("backward",
     [](uintptr_t dy_ptr, const std::vector<int64_t>& dy_shape,
        uintptr_t mask_ptr, const std::vector<int64_t>& mask_shape,
        uintptr_t dx_ptr, const std::vector<int64_t>& dx_shape,
-       const DropoutAttrs& attrs, uintptr_t stream_ptr) {
+       DropoutAttrs attrs, uintptr_t stream_ptr) {
 
-        if (dy_shape.size()!=2 || dx_shape.size()!=2 || mask_shape.size()!=2)
-          throw std::invalid_argument("dY, dX, mask must be rank-2 [M,N]");
-        if (dy_shape!=dx_shape || dy_shape!=mask_shape)
-          throw std::invalid_argument("dY, dX, mask shapes must match [M,N]");
-
-        Tensor dY = make_tensor_nd(dy_ptr,   dy_shape, DType::F32);
-        Tensor M  = make_tensor_nd(mask_ptr, mask_shape, DType::I32);
-        Tensor dX = make_tensor_nd(dx_ptr,   dx_shape, DType::F32);
-
-        StreamHandle s = reinterpret_cast<StreamHandle>(stream_ptr);
-        auto st = DropoutCudaBackwardLaunch(dY, M, dX, attrs, s);
-        throw_if_bad(st, "DropoutCudaBackwardLaunch");
-      },
-    py::arg("dy_ptr"),   py::arg("dy_shape"),
+      Tensor dY = make_tensor_rm(dy_ptr, dy_shape, DType::F32);
+      Tensor M  = make_tensor_rm(mask_ptr, mask_shape, DType::I32);
+      Tensor dX = make_tensor_rm(dx_ptr, dx_shape, DType::F32);
+      StreamHandle stream = reinterpret_cast<StreamHandle>(stream_ptr);
+      auto st = DropoutCudaBackwardLaunch(dY, M, dX, attrs, stream);
+      throw_if_bad(st, "backward");
+    },
+    py::arg("dy_ptr"), py::arg("dy_shape"),
     py::arg("mask_ptr"), py::arg("mask_shape"),
-    py::arg("dx_ptr"),   py::arg("dx_shape"),
-    py::arg("attrs"),
-    py::arg("stream") = static_cast<uintptr_t>(0)
+    py::arg("dx_ptr"), py::arg("dx_shape"),
+    py::arg("attrs") = DropoutAttrs{},
+    py::arg("stream") = (uintptr_t)0
   );
 }

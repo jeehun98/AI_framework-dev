@@ -1,97 +1,109 @@
-// backends/cuda/ops/dropout/kernels.cu
 #include <cuda_runtime.h>
 #include <cstdint>
-#include <math_constants.h>
+#include <cstddef>
 
-// Stateless RNG: splitmix64 -> xorshift32 변형으로 U(0,1)
-static __device__ __forceinline__ uint64_t splitmix64(uint64_t x){
+// ===== 내부 커널/유틸 =====
+namespace {
+
+__device__ __forceinline__ uint64_t splitmix64(uint64_t x) {
   x += 0x9e3779b97f4a7c15ull;
   uint64_t z = x;
   z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
   z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
-  return z ^ (z >> 31);
-}
-static __device__ __forceinline__ float u01_from_u64(uint64_t u){
-  // take high 23 bits to mantissa (0,1)
-  const uint32_t mant = (uint32_t)((u >> 41) | 1); // avoid exact 0
-  // scale to (0,1): mant / 2^23
-  return (float)mant * (1.0f / 8388608.0f);
+  z = z ^ (z >> 31);
+  return z;
 }
 
-template<int BS>
-__global__ void dropout_fwd_kernel(const float* __restrict__ X,
-                                   float* __restrict__ Y,
-                                   int32_t* __restrict__ Mask,
-                                   int M, int N,
-                                   float p, bool scale_in_train,
-                                   uint64_t seed, uint64_t counter_base)
+__device__ __forceinline__ float u01_from_u32(uint32_t u) {
+  return (float)(u) * (1.0f / 4294967296.0f); // 2^-32
+}
+
+__device__ __forceinline__ float rand_uniform(uint64_t seed, uint64_t ctr) {
+  uint64_t v = splitmix64(seed ^ ctr);
+  uint32_t u = (uint32_t)(v & 0xFFFFFFFFu);
+  return u01_from_u32(u);
+}
+
+// grid-stride loop로 큰 n 안전 처리
+__global__ void dropout_forward_kernel(const float* __restrict__ x,
+                                       float* __restrict__ y,
+                                       int32_t* __restrict__ mask, // nullable
+                                       size_t n,
+                                       float p,
+                                       bool scale_in_train,
+                                       uint64_t seed,
+                                       uint64_t counter_base)
 {
-  const int row = blockIdx.x;
-  if (row >= M) return;
+  for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+       i < n;
+       i += (size_t)blockDim.x * gridDim.x)
+  {
+    float r = rand_uniform(seed, counter_base + i); // stateless
+    int m = (r >= p) ? 1 : 0;                        // keep prob = 1-p
 
-  const int64_t base = (int64_t)row * N;
-  const float scale = (scale_in_train && p < 1.0f) ? (1.0f / (1.0f - p)) : 1.0f;
-
-  for (int col = threadIdx.x; col < N; col += BS) {
-    const int64_t idx = base + col;
-
-    // Stateless RNG: per-element counter = counter_base + idx
-    const uint64_t ctr = counter_base + (uint64_t)idx;
-    const uint64_t rnd = splitmix64(seed ^ ctr);
-    const float r = u01_from_u64(rnd); // (0,1)
-
-    const bool keep = (r >= p);
-    const float x = X[idx];
-    const float y = keep ? (x * scale) : 0.0f;
-
-    Y[idx] = y;
-    if (Mask) Mask[idx] = keep ? 1 : 0;
+    float v = x[i] * (float)m;
+    if (scale_in_train && (1.0f - p) > 0.f) {
+      v *= (1.0f / (1.0f - p));
+    }
+    y[i] = v;
+    if (mask) mask[i] = m;
   }
 }
 
-template<int BS>
-__global__ void dropout_bwd_kernel(const float* __restrict__ dY,
-                                   const int32_t* __restrict__ Mask,
-                                   float* __restrict__ dX,
-                                   int M, int N,
-                                   float p, bool scale_in_train)
+__global__ void dropout_backward_kernel(const float* __restrict__ gy,
+                                        const int32_t* __restrict__ mask,
+                                        float* __restrict__ gx,
+                                        size_t n,
+                                        float p,
+                                        bool scale_in_train)
 {
-  (void)p; // not needed
-  const int row = blockIdx.x;
-  if (row >= M) return;
-
-  const int64_t base = (int64_t)row * N;
-  const float scale = (scale_in_train && p < 1.0f) ? (1.0f / (1.0f - p)) : 1.0f;
-
-  for (int col = threadIdx.x; col < N; col += BS) {
-    const int64_t idx = base + col;
-    dX[idx] = (Mask[idx] != 0) ? (dY[idx] * scale) : 0.0f;
+  for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+       i < n;
+       i += (size_t)blockDim.x * gridDim.x)
+  {
+    int m = mask[i];
+    float v = gy[i] * (float)m;
+    if (scale_in_train && (1.0f - p) > 0.f) {
+      v *= (1.0f / (1.0f - p));
+    }
+    gx[i] = v;
   }
 }
 
-namespace ai {
+} // anonymous
 
-void dropout_fwd_kernel_launcher(const float* x, float* y, int32_t* mask,
-                                 int M, int N,
-                                 float p, bool scale_in_train,
-                                 uint64_t seed, uint64_t counter_base,
-                                 cudaStream_t s)
+// ===== 외부로 노출되는 C-링크 런처 (host 함수) =====
+extern "C" void dropout_forward_kernel_launcher(
+    const float* x, float* y, int32_t* mask,
+    size_t n,
+    float p, bool scale_in_train,
+    uint64_t seed, uint64_t counter_base,
+    cudaStream_t s)
 {
+  if (n == 0) return;
   constexpr int BS = 256;
-  dim3 grid(M), block(BS);
-  dropout_fwd_kernel<BS><<<grid, block, 0, s>>>(
-      x, y, mask, M, N, p, scale_in_train, seed, counter_base);
+  int grid = (int)((n + BS - 1) / BS);
+  grid = grid > 0 ? grid : 1;
+  grid = grid > 65535 ? 65535 : grid; // 보수적 상한
+
+  dropout_forward_kernel<<<grid, BS, 0, s>>>(
+      x, y, mask, n, p, scale_in_train, seed, counter_base
+  );
 }
 
-void dropout_bwd_kernel_launcher(const float* dy, const int32_t* mask, float* dx,
-                                 int M, int N,
-                                 float p, bool scale_in_train,
-                                 cudaStream_t s)
+extern "C" void dropout_backward_kernel_launcher(
+    const float* gy, const int32_t* mask, float* gx,
+    size_t n,
+    float p, bool scale_in_train,
+    cudaStream_t s)
 {
+  if (n == 0) return;
   constexpr int BS = 256;
-  dim3 grid(M), block(BS);
-  dropout_bwd_kernel<BS><<<grid, block, 0, s>>>(
-      dy, mask, dx, M, N, p, scale_in_train);
-}
+  int grid = (int)((n + BS - 1) / BS);
+  grid = grid > 0 ? grid : 1;
+  grid = grid > 65535 ? 65535 : grid;
 
-} // namespace ai
+  dropout_backward_kernel<<<grid, BS, 0, s>>>(
+      gy, mask, gx, n, p, scale_in_train
+  );
+}
