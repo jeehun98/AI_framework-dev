@@ -1,19 +1,20 @@
 #include <cuda_runtime.h>
 #include <cstdint>
-#include <float.h>
+#include <math.h>
 
-namespace { // ---- TU-local device/templated kernels ----
+namespace ai {
 
-  
+// ===== RNN-local activation & derivative (PyTorch와 정합) =====
 __device__ __forceinline__ float act_eval(int act, float z, float slope){
-  enum { None=0, ReLU=1, LeakyReLU=2, Sigmoid=3, Tanh=4, GELU=5 };
+  // 호출부에서 ai::ActKind를 int로 전달(값 호환 보장)
+  enum { None=0, ReLU=1, LeakyReLU=2, GELU=3, Sigmoid=4, Tanh=5 };
   switch (act) {
-    case None:      return z;
-    case ReLU:      return z > 0.f ? z : 0.f;
-    case LeakyReLU: return z > 0.f ? z : slope * z;
-    case Sigmoid:   return 1.f / (1.f + __expf(-z));
-    case Tanh:      return tanhf(z);
-    case GELU: {
+    case 0:  return z;                              // None
+    case 1:  return z > 0.f ? z : 0.f;              // ReLU
+    case 2:  return z > 0.f ? z : slope * z;        // LeakyReLU
+    case 4:  return 1.f / (1.f + __expf(-z));       // Sigmoid
+    case 5:  return tanhf(z);                       // Tanh
+    case 3: {                                       // GELU (approx="tanh")
       const float c = sqrtf(2.f / 3.1415926535f);
       float z3 = z*z*z;
       float th = tanhf(c*(z + 0.044715f*z3));
@@ -23,180 +24,154 @@ __device__ __forceinline__ float act_eval(int act, float z, float slope){
   }
 }
 
-template<int BSX, int BSY>
-__global__ void apply_act_rows_kernel(const float* __restrict__ Z_rows,
-                                      float* __restrict__ H_rows,
-                                      int M, int N, int act, float slope)
-{
-  int n = blockIdx.x * blockDim.x + threadIdx.x;
-  int m = blockIdx.y * blockDim.y + threadIdx.y;
-  if (m < M && n < N) {
-    size_t idx = (size_t)m * N + n;
-    H_rows[idx] = act_eval(act, Z_rows[idx], slope);
-  }
-}
-// --- dact ---
-__device__ __forceinline__ float dact(int act, float z, float gy, float slope) {
-  // ai::ActKind 값을 정수로 전달 (header 의존 최소화)
-  enum { None=0, ReLU=1, LeakyReLU=2, Sigmoid=3, Tanh=4, GELU=5 };
+__device__ __forceinline__ float dact_eval(int act, float z, float gy, float slope){
+  enum { None=0, ReLU=1, LeakyReLU=2, GELU=3, Sigmoid=4, Tanh=5 };
   switch (act) {
-    case None:      return gy;
-    case ReLU:      return (z > 0.f) ? gy : 0.f;
-    case LeakyReLU: return (z > 0.f) ? gy : slope * gy;
-    case Sigmoid: {
+    case 0:  return gy;                               // None
+    case 1:  return (z > 0.f) ? gy : 0.f;             // ReLU
+    case 2:  return (z > 0.f) ? gy : slope * gy;      // LeakyReLU
+    case 4: {                                         // Sigmoid
       float s = 1.f / (1.f + __expf(-z));
       return gy * s * (1.f - s);
     }
-    case Tanh: {
+    case 5: {                                         // Tanh
       float t = tanhf(z);
       return gy * (1.f - t*t);
     }
-    case GELU: {
+    case 3: {                                         // GELU (approx="tanh")
       const float c = sqrtf(2.f / 3.1415926535f);
-      float z3 = z*z*z;
-      float th = tanhf(c*(z + 0.044715f*z3));
-      float dtanh = (1 - th*th) * c * (1 + 0.134145f*z*z);
-      return gy * (0.5f*(1 + th) + 0.5f*z*dtanh);
+      float z2 = z*z;
+      float u  = c * (z + 0.044715f * z2 * z);
+      float th = tanhf(u);
+      float sech2 = 1.f - th*th;
+      float du = c * (1.f + 0.134145f * z2);
+      float dgelu = 0.5f*(1.f + th) + 0.5f*z*sech2*du;
+      return gy * dgelu;
     }
     default: return gy;
   }
 }
 
-template<int BSX, int BSY>
-__global__ void apply_dact_rows_kernel(const float* __restrict__ gy_post,
-                                       const float* __restrict__ Z_rows,
-                                       float* __restrict__ gy_rows,
-                                       int M, int N, int act, float slope)
+// [N,H] : Y = act(Z)
+__global__ void k_apply_act_rows_local(const float* __restrict__ Z,
+                                       float* __restrict__ Y,
+                                       int N, int H,
+                                       int act, float slope)
 {
-  int n = blockIdx.x * blockDim.x + threadIdx.x; // col
-  int m = blockIdx.y * blockDim.y + threadIdx.y; // row
-  if (m < M && n < N) {
-    size_t idx = (size_t)m * N + n;
-    gy_rows[idx] = dact(act, Z_rows[idx], gy_post[idx], slope);
+  int h = blockIdx.x * blockDim.x + threadIdx.x;
+  int n = blockIdx.y * blockDim.y + threadIdx.y;
+  if (n < N && h < H) {
+    size_t idx = (size_t)n * (size_t)H + (size_t)h;
+    Y[idx] = act_eval(act, Z[idx], slope);
   }
 }
 
-template<int BSX, int BSY>
-__global__ void add_rows_strided_kernel(float* __restrict__ A,        // [M,N]
-                                        const float* __restrict__ B,  // [M,strideB]
-                                        int M, int N, int strideB, int offsetB)
+void apply_act_rows_local_launcher(const float* Z, float* Y,
+                                   int N, int H, int act, float slope,
+                                   cudaStream_t s)
 {
-  int n = blockIdx.x * blockDim.x + threadIdx.x;
-  int m = blockIdx.y * blockDim.y + threadIdx.y;
-  if (m < M && n < N) {
-    A[(size_t)m*N + n] += B[(size_t)m*strideB + offsetB + n];
+  dim3 block(128, 1), grid((H + block.x - 1)/block.x, N);
+  k_apply_act_rows_local<<<grid, block, 0, s>>>(Z, Y, N, H, act, slope);
+}
+
+// [N,H] : gZ = dact(Z, gY_post)
+__global__ void k_apply_dact_rows_local(const float* __restrict__ gy_post,
+                                        const float* __restrict__ Z,
+                                        float* __restrict__ gy,    // out = gZ
+                                        int N, int H,
+                                        int act, float slope)
+{
+  int h = blockIdx.x * blockDim.x + threadIdx.x;
+  int n = blockIdx.y * blockDim.y + threadIdx.y;
+  if (n < N && h < H) {
+    size_t idx = (size_t)n * (size_t)H + (size_t)h;
+    gy[idx] = dact_eval(act, Z[idx], gy_post[idx], slope);
   }
 }
 
-template<int BS>
-__global__ void reduce_db_rows_kernel(const float* __restrict__ G, // [M,N]
-                                      float* __restrict__ db,      // [N]
-                                      int M, int N)
+void apply_dact_rows_local_launcher(const float* gy_post, const float* Z, float* gy,
+                                    int N, int H, int act, float slope,
+                                    cudaStream_t s)
 {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x; // over M*N
-  int total = M * N;
-  if (idx >= total) return;
-  int n = idx % N;
-  atomicAdd(&db[n], G[idx]);
+  dim3 block(128, 1), grid((H + block.x - 1)/block.x, N);
+  k_apply_dact_rows_local<<<grid, block, 0, s>>>(gy_post, Z, gy, N, H, act, slope);
 }
 
-template<int BS>
-__global__ void kadd_vec_kernel(float* __restrict__ A, const float* __restrict__ B, int n){
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n) A[i] += B[i];
+// G_rows += dXH[:, I:]
+__global__ void k_add_dhnext_into_grows(const float* __restrict__ dXH,
+                                        float* __restrict__ dG,
+                                        int N, int I, int H)
+{
+  int h = blockIdx.x * blockDim.x + threadIdx.x;
+  int n = blockIdx.y * blockDim.y + threadIdx.y;
+  if (n < N && h < H) {
+    const size_t ldXH = (size_t)(I + H);
+    const size_t off  = (size_t)n * ldXH + (size_t)I + (size_t)h;
+    const size_t idxG = (size_t)n * (size_t)H + (size_t)h;
+    dG[idxG] += dXH[off];
+  }
 }
 
-template<int BS>
-__global__ void transpose_kernel(const float* __restrict__ A, float* __restrict__ AT,
-                                 int M, int N)
+void add_dhnext_into_grows_launcher(const float* dXH, float* dG,
+                                    int N, int I, int H, cudaStream_t s)
 {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int total = M * N;
-  if (idx >= total) return;
-  int n = idx % N;
-  int m = idx / N;
-  AT[(size_t)n * M + m] = A[(size_t)m * N + n];
+  dim3 block(128, 1), grid((H + block.x - 1)/block.x, N);
+  k_add_dhnext_into_grows<<<grid, block, 0, s>>>(dXH, dG, N, I, H);
 }
 
-__global__ void pack_wcat_from_wx_wh_kernel(const float* __restrict__ Wx, // [I,H]
-                                            const float* __restrict__ Wh, // [H,H]
-                                            float* __restrict__ Wcat,     // [I+H,H]
-                                            int I, int H)
+// row-major transpose: in[M,N] -> out[N,M]
+__global__ void k_transpose_MN(const float* __restrict__ A, float* __restrict__ AT,
+                               int M, int N)
 {
-  int h = blockIdx.x * blockDim.x + threadIdx.x; // 0..H-1
-  int r = blockIdx.y * blockDim.y + threadIdx.y; // 0..I+H-1
+  int x = blockIdx.x * blockDim.x + threadIdx.x; // col in A
+  int y = blockIdx.y * blockDim.y + threadIdx.y; // row in A
+  if (y < M && x < N) {
+    AT[(size_t)x * (size_t)M + (size_t)y] = A[(size_t)y * (size_t)N + (size_t)x];
+  }
+}
+
+void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStream_t s){
+  dim3 block(32, 8);
+  dim3 grid((N + block.x - 1)/block.x, (M + block.y - 1)/block.y);
+  k_transpose_MN<<<grid, block, 0, s>>>(A, AT, M, N);
+}
+
+// dWcat[I+H,H] += (Tmp[H,I+H])^T
+__global__ void k_add_transpose_into(float* __restrict__ dWcat,
+                                     const float* __restrict__ Tmp_H_IpH,
+                                     int IpH, int H)
+{
+  int j = blockIdx.x * blockDim.x + threadIdx.x; // col in dWcat (0..H-1)
+  int i = blockIdx.y * blockDim.y + threadIdx.y; // row in dWcat (0..IpH-1)
+  if (i < IpH && j < H) {
+    dWcat[(size_t)i*(size_t)H + (size_t)j] += Tmp_H_IpH[(size_t)j*(size_t)IpH + (size_t)i];
+  }
+}
+
+void add_transpose_into_launcher(float* dWcat, const float* Tmp_H_IpH,
+                                 int IpH, int H, cudaStream_t s){
+  dim3 block(32, 8);
+  dim3 grid((H + block.x - 1)/block.x, (IpH + block.y - 1)/block.y);
+  k_add_transpose_into<<<grid, block, 0, s>>>(dWcat, Tmp_H_IpH, IpH, H);
+}
+
+// db[h] += sum_{n=0..N-1} G[n,h]
+__global__ void k_reduce_db_rows_NH(const float* __restrict__ G, float* __restrict__ db,
+                                    int N, int H)
+{
+  int h = blockIdx.x * blockDim.x + threadIdx.x;
   if (h >= H) return;
-  if (r < I) {
-    Wcat[(size_t)r*H + h] = Wx[(size_t)r*H + h];
-  } else if (r < I + H) {
-    int rr = r - I;
-    Wcat[(size_t)r*H + h] = Wh[(size_t)rr*H + h];
+  float acc = 0.f;
+  for (int n = 0; n < N; ++n) {
+    acc += G[(size_t)n * (size_t)H + (size_t)h];
   }
+  atomicAdd(&db[h], acc);
 }
 
-} // anonymous
-
-
-namespace ai { // ---- public launchers ----
-
-void apply_act_rows_launcher(const float* Z_rows, float* H_rows,
-                             int M, int N, int act_code, float slope, cudaStream_t s)
-{
-  constexpr int BSX = 128, BSY = 1;
-  dim3 block(BSX, BSY);
-  dim3 grid((N + BSX - 1)/BSX, (M + BSY - 1)/BSY);
-  apply_act_rows_kernel<BSX,BSY><<<grid, block, 0, s>>>(Z_rows, H_rows, M, N, act_code, slope);
-}
-
-
-void apply_dact_rows_launcher(const float* gy_post, const float* Z_rows, float* gy_rows,
-                              int M, int N, int act_code, float slope, cudaStream_t s)
-{
-  constexpr int BSX = 128, BSY = 1;
-  dim3 block(BSX, BSY);
-  dim3 grid((N + BSX - 1) / BSX, (M + BSY - 1) / BSY);
-  apply_dact_rows_kernel<BSX,BSY><<<grid, block, 0, s>>>(gy_post, Z_rows, gy_rows, M, N, act_code, slope);
-}
-
-void add_rows_strided_launcher(float* A_MN, const float* B_Mstride,
-                               int M, int N, int strideB, int offsetB, cudaStream_t s)
-{
-  constexpr int BSX = 128, BSY = 1;
-  dim3 block(BSX, BSY);
-  dim3 grid((N + BSX - 1) / BSX, (M + BSY - 1) / BSY);
-  add_rows_strided_kernel<BSX,BSY><<<grid, block, 0, s>>>(A_MN, B_Mstride, M, N, strideB, offsetB);
-}
-
-void reduce_db_rows_kernel_launcher(const float* G_MN, float* db_N,
-                                    int M, int N, cudaStream_t s)
-{
-  const int total = M * N;
+void reduce_db_rows_NH_launcher(const float* G, float* db, int N, int H, cudaStream_t s){
   constexpr int BS = 256;
-  dim3 block(BS), grid((total + BS - 1)/BS);
-  reduce_db_rows_kernel<BS><<<grid, block, 0, s>>>(G_MN, db_N, M, N);
-}
-
-void kadd_vec_launcher(float* A, const float* B, int n, cudaStream_t s){
-  constexpr int BS = 256;
-  dim3 block(BS), grid((n + BS - 1)/BS);
-  kadd_vec_kernel<BS><<<grid, block, 0, s>>>(A, B, n);
-}
-
-void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStream_t s)
-{
-  const int total = M * N;
-  constexpr int BS = 256;
-  dim3 block(BS), grid((total + BS - 1) / BS);
-  transpose_kernel<BS><<<grid, block, 0, s>>>(A, AT, M, N);
-}
-
-void pack_wcat_from_wx_wh_launcher(const float* Wx, const float* Wh, float* Wcat,
-                                   int I, int H, cudaStream_t s)
-{
-  constexpr int BSX = 128, BSY = 4;
-  dim3 block(BSX, BSY);
-  dim3 grid((H + BSX - 1)/BSX, (I + H + BSY - 1)/BSY);
-  pack_wcat_from_wx_wh_kernel<<<grid, block, 0, s>>>(Wx, Wh, Wcat, I, H);
+  dim3 block(BS), grid((H + BS - 1)/BS);
+  k_reduce_db_rows_NH<<<grid, block, 0, s>>>(G, db, N, H);
 }
 
 } // namespace ai
