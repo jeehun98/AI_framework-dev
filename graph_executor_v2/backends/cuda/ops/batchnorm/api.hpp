@@ -1,5 +1,6 @@
 #pragma once
 
+// ----------------------- Build-time includes -----------------------
 #ifdef BUILD_STANDALONE_OPS
   #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #else
@@ -7,82 +8,156 @@
   #include "ai/dispatch.hpp"
 #endif
 
-// BatchNorm CUDA API (NCHW/NHWC 지원)
-// - training: 채널별 평균/분산 감소 + running_* 업데이트 + save_* 출력
-// - inference: running_* 고정 사용, 감소 없음
-// - 혼합정밀: 입력/출력은 FP16/FP32 허용, 내부 축적은 FP32 가정
-// - CUDA Graph 캡처 세이프: attrs와 텐서 shape 고정, ws 크기 고정 시 capture-safe
+// ==================================================================
+// Batch Normalization CUDA API (NCHW / NHWC)
+// ------------------------------------------------------------------
+// - Training: per-channel mean/var reduction + running_* EMA update
+//             + save_* (mean, invstd) outputs for backward.
+// - Inference: uses running_* as fixed stats; no reduction/update.
+// - Mixed Precision: inputs/outputs may be FP16/FP32; internal
+//                   accumulation is FP32 by design.
+// - CUDA Graph: capture-safe IF tensor shapes, attrs, and workspace
+//               sizes remain invariant and no dynamic allocations.
+// ==================================================================
 
 namespace ai {
 
-// ========== 속성 ==========
-// Conv2DAttrs 스타일을 참고한 BatchNorm 속성 세트
+// ================================ Attributes ================================
+/**
+ * \brief Attributes for BatchNorm (BN). Compatible with PyTorch semantics.
+ *
+ * \note Momentum definition follows PyTorch:
+ *       running = (1 - momentum) * running + momentum * batch_stat
+ * \note Epsilon is added in the denominator: invstd = rsqrt(var + eps)
+ * \note Layout: channels_last=false → NCHW, true → NHWC
+ */
 struct BatchNormAttrs {
-  // 데이터 레이아웃
-  bool channels_last{false};   // false: NCHW, true: NHWC
+  // Data layout
+  bool  channels_last{false};   ///< false:NCHW, true:NHWC
 
-  // 알고리즘/수치
-  float eps{1e-5f};            // 분산 안정화 epsilon
-  float momentum{0.1f};        // running_mean/var 업데이트 계수 (PyTorch 호환)
-  bool  training{true};        // true: 학습 경로, false: 추론 경로
+  // Numerical / algorithmic knobs
+  float eps{1e-5f};             ///< variance stabilization epsilon
+  float momentum{0.1f};         ///< EMA coef for running stats (PyTorch style)
+  bool  training{true};         ///< true: training path, false: inference
 
-  // 선택 사항
-  bool  with_affine{true};     // gamma/beta 사용 여부 (false면 정규화만)
-  bool  use_welford{true};     // 감소 시 Welford 사용 (수치 안정)
-  int   num_groups{1};         // (확장 포인트) GroupNorm 호환용, BN은 1 고정 사용
+  // Optional affine parameters
+  bool  with_affine{true};      ///< use gamma/beta (false → pure normalization)
+
+  // Reduction algorithm
+  bool  use_welford{true};      ///< use Welford for improved numeric stability
+
+  // Extension hook (GroupNorm compatibility). For BN, must be 1.
+  int   num_groups{1};
 };
 
-// ========== 캡처-세이프 워크스페이스 ==========
-// BN은 큰 워크스페이스가 필요하진 않지만, 안정적인 capture와
-// 대규모 텐서에서의 분할 감소를 위해 선택적 버퍼를 둡니다.
+// ============================ Workspace (Forward) ============================
+/**
+ * \brief Optional forward workspace for capture-safety and scalable reductions.
+ *
+ * If provided, buffers must be preallocated by the caller and remain
+ * valid for the kernel duration. Sizes must match queries from
+ * GetFwdWorkspaceBytes(). Nullptrs are allowed if the implementation
+ * does not need them for given shapes/attrs.
+ */
 struct BatchNormWorkspaceFwd {
-  // 채널 축 감소의 부분합/카운트 보관 버퍼 (선택)
-  //   sums:   Σ x,  Σ x^2  (layout: [2, C]) 혹은 분리 버퍼 2개 중 하나 사용
-  float* partial_sums{nullptr};   // [2 * C]  (0..C-1: sum(x), C..2C-1: sum(x^2))
-  int    partial_sums_stride{0};  // 0이면 [2*C] 일렬, 아니면 row-stride
+  // Partial sums for per-channel reduction:
+  //   [0..C-1] : sum(x), [C..2C-1] : sum(x^2)
+  float* partial_sums{nullptr};  ///< size: 2*C in contiguous layout
+  int    partial_sums_stride{0}; ///< row stride if using 2xC matrix view (0=contiguous)
 
-  // (옵션) 타일 분할 시 블록별 중간 결과 보관
-  float* blockbuf{nullptr};       // 구현체 정의용 (크기 고정 시 capture-safe)
+  // Optional block-level temporary buffer for tiled reductions
+  float* blockbuf{nullptr};
   size_t blockbuf_elems{0};
-
-  // NOTE: save_mean/invstd는 API 출력 텐서로 외부에서 제공
 };
 
+// ============================ Workspace (Backward) ===========================
+/**
+ * \brief Optional backward workspace.
+ *
+ * Holds partial sums for dgamma/dbeta reductions and (optionally)
+ * temporary buffers for dX path (e.g., sums of dY, dY*X_hat).
+ */
 struct BatchNormWorkspaceBwd {
-  // 채널 축 감소의 부분합 버퍼 (dgamma/dbeta용)
-  float* partial_sums{nullptr};    // [2 * C] (0..C-1: dbeta(=Σ dY), C..2C-1: dgamma_part=Σ (X-μ)*invstd*dY)
+  // [0..C-1] : dbeta = Σ dY
+  // [C..2C-1]: dgamma_partial = Σ (X-μ)*invstd*dY
+  float* partial_sums{nullptr};  ///< size: 2*C
   int    partial_sums_stride{0};
 
-  // (옵션) dX 계산용 중간 버퍼 (예: Σ dY, Σ dY*X_hat)
   float* tempbuf{nullptr};
   size_t tempbuf_elems{0};
 };
 
-// ========== Forward ==========
-// X: [N,C,H,W] or [N,H,W,C]
-// gamma/beta: [C] (with_affine=false면 nullptr 허용)
-// running_mean/var: [C] (학습 시 갱신, 추론 시 read-only)
-// save_mean/save_invstd: [C] (학습 시 bwd용으로 출력, 추론 시 선택적/무시)
-// Y: X와 동일 shape
+// ================================ Contracts =================================
+// Shapes:
+//   X, Y: [N,C,H,W] if !channels_last, else [N,H,W,C]
+//   gamma, beta, running_mean, running_var, save_mean, save_invstd: [C]
+// DTypes:
+//   X/Y: f16 or f32. gamma/beta/running_*: f32.
+//   Internal accumulation: f32.
+// Aliasing:
+//   Y must not alias X. running_* may be updated in-place during training.
+// Affine:
+//   if with_affine==false → gamma/beta must be nullptr; backward dgamma/dbeta nullptr recommended.
+// Save tensors:
+//   training=true → save_mean/save_invstd must be provided (non-null); used by backward.
+//   training=false → ignored (nullptr allowed).
+// CUDA Graph:
+//   No dynamic allocations; fixed workspace sizes; deterministic shapes/attrs.
+
+// ================================ Forward API ================================
+/**
+ * \brief BatchNorm forward.
+ * \param X             Input tensor (NCHW or NHWC).
+ * \param gamma         Scale [C] (nullable if !with_affine).
+ * \param beta          Shift [C] (nullable if !with_affine).
+ * \param running_mean  Running mean [C] (in/out if training; in if inference).
+ * \param running_var   Running variance [C] (in/out if training; in if inference).
+ * \param Y             Output tensor (same shape/layout as X).
+ * \param attrs         Attributes controlling BN behavior.
+ * \param stream        CUDA stream.
+ * \param save_mean     [C] (required iff attrs.training==true; else may be nullptr).
+ * \param save_invstd   [C] (required iff attrs.training==true; else may be nullptr).
+ * \param ws_fwd        Optional forward workspace (capture-safe).
+ * \return Status::OK on success, else InvalidArgument/NotSupported/CudaError/Unimplemented.
+ *
+ * \details
+ * Training path:
+ *   - Compute batch mean/var per channel (Welford if enabled).
+ *   - Update running_* with EMA: run = (1 - m)*run + m*batch.
+ *   - save_mean/save_invstd are written for backward.
+ * Inference path:
+ *   - Use running_* to normalize. No reductions or updates.
+ */
 Status BatchNormCudaLaunch(const Tensor& X,
-                           const Tensor* gamma,         // [C] or nullptr if !with_affine
-                           const Tensor* beta,          // [C] or nullptr if !with_affine
-                           Tensor* running_mean,        // [C] (in/out when training, else in)
-                           Tensor* running_var,         // [C] (in/out when training, else in)
-                           Tensor& Y,                   // out: same shape as X
+                           const Tensor* gamma,          // [C] or nullptr if !with_affine
+                           const Tensor* beta,           // [C] or nullptr if !with_affine
+                           Tensor* running_mean,         // [C] (in/out when training, else in)
+                           Tensor* running_var,          // [C] (in/out when training, else in)
+                           Tensor& Y,                    // out: same shape as X
                            const BatchNormAttrs& attrs,
                            StreamHandle stream,
-                           Tensor* save_mean /*=nullptr*/,     // [C] (training일 때 out)
-                           Tensor* save_invstd /*=nullptr*/,   // [C] (training일 때 out)
+                           Tensor* save_mean /*=nullptr*/,     // [C] (required in training)
+                           Tensor* save_invstd /*=nullptr*/,   // [C] (required in training)
                            const BatchNormWorkspaceFwd* ws_fwd /*=nullptr*/);
 
-// ========== Backward ==========
-// dY: [N,C,H,W] or [N,H,W,C]
-// X:  forward 입력(학습 시 저장해둔 텐서 또는 동일 값 필요)
-// gamma: [C] (with_affine=false면 nullptr 허용 → dgamma/dbeta도 nullptr 권장)
-// save_mean/save_invstd: [C] (fwd(training)에서 저장된 값 필요)
-// dX:  [N,C,H,W] or [N,H,W,C] (선택적, nullptr이면 생략)
-// dgamma, dbeta: [C] (선택적, nullptr이면 생략)
+// ================================ Backward API ===============================
+/**
+ * \brief BatchNorm backward.
+ * \param dY         Upstream gradient (same shape/layout as Y).
+ * \param X          Forward input (or saved copy).
+ * \param gamma      Scale [C] (nullable if !with_affine).
+ * \param save_mean  From forward training pass [C].
+ * \param save_invstd From forward training pass [C].
+ * \param dX         (out, optional) gradient wrt X (nullable to skip).
+ * \param dgamma     (out, optional) gradient wrt gamma [C] (nullable).
+ * \param dbeta      (out, optional) gradient wrt beta  [C] (nullable).
+ * \param attrs      Must match forward attrs except training must have been true.
+ * \param stream     CUDA stream.
+ * \param ws_bwd     Optional backward workspace.
+ * \return Status::OK or an error status.
+ *
+ * \note If with_affine==false, dgamma/dbeta are meaningless and may be nullptr.
+ */
 Status BatchNormCudaBackwardLaunch(const Tensor& dY,
                                    const Tensor& X,
                                    const Tensor* gamma,           // [C] or nullptr if !with_affine
@@ -94,5 +169,18 @@ Status BatchNormCudaBackwardLaunch(const Tensor& dY,
                                    const BatchNormAttrs& attrs,
                                    StreamHandle stream,
                                    const BatchNormWorkspaceBwd* ws_bwd /*=nullptr*/);
+
+// ============================== Workspace Queries ===========================
+/**
+ * \brief Return required forward workspace size in bytes for given tensors/attrs.
+ *        Returns 0 if no extra workspace is needed.
+ */
+size_t GetFwdWorkspaceBytes(const Tensor& X, const BatchNormAttrs& attrs);
+
+/**
+ * \brief Return required backward workspace size in bytes for given tensors/attrs.
+ *        Returns 0 if no extra workspace is needed.
+ */
+size_t GetBwdWorkspaceBytes(const Tensor& dY, const Tensor& X, const BatchNormAttrs& attrs);
 
 } // namespace ai

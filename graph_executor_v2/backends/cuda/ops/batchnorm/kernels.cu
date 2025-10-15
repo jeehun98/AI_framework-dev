@@ -1,4 +1,66 @@
 // backends/cuda/ops/batchnorm/kernels.cu
+
+/* ========================================================================== *
+ *  BatchNorm CUDA kernels (NCHW / NHWC)
+ *  Files: backends/cuda/ops/batchnorm/kernels.cu
+ *
+ *  Provided kernels (TU-local):
+ *    - reduce_mean_var_kernel<CHANNELS_LAST>
+ *        Computes per-channel Σx and Σx^2 over M = N*H*W (biased variance: 1/M).
+ *        One CTA per channel. Local accumulate in FP64, shared reduce in FP32.
+ *
+ *    - bn_forward_norm_affine_kernel<CHANNELS_LAST>
+ *        y = ((x - mean[c]) * invstd[c]) * gamma[c] + beta[c]   (affine opt.)
+ *        One CTA per channel; grid-stride loop over M.
+ *
+ *    - bn_bwd_dbeta_dgamma_kernel<CHANNELS_LAST>
+ *        dbeta[c]  += Σ dY
+ *        dgamma[c] += Σ dY * x_hat,   x_hat = (x - mean[c]) * invstd[c]
+ *        One CTA per channel; caller must zero dbeta/dgamma before launch.
+ *
+ *    - bn_bwd_dx_kernel<CHANNELS_LAST>
+ *        Let dyγ = dY * (gamma or 1), S1 = Σ dyγ, S2 = Σ dyγ * x_hat.
+ *        dX = (1/M) * invstd * (M*dyγ - S1 - x_hat*S2)
+ *        One CTA per channel; two-phase: reduce → write dX.
+ *
+ *  Launchers (visible symbols in namespace ai):
+ *    - welford_reduce_meanvar_launcher         (shmem: 2*BS*sizeof(float))
+ *    - bn_forward_normalize_affine_launcher    (shmem: 0)
+ *    - bn_backward_reduce_dbeta_dgamma_launcher(shmem: 2*BS*sizeof(float))
+ *    - bn_backward_dx_launcher                 (shmem: 2*BS*sizeof(float))
+ *
+ *  Contracts / Constraints:
+ *    - Layout: channels_last==false → NCHW, true → NHWC.
+ *    - Types : All kernel pointers are float*. Mixed-precision is handled at API:
+ *              upcast input half/bfloat16 → float, internal accum in float/double,
+ *              output cast handled by API/launcher if needed.
+ *    - Aliasing: dY/X/Y must not alias when writing.
+ *    - Initialization: dbeta/dgamma must be zeroed by caller (+= semantics).
+ *    - Epsilon: invstd must be precomputed as rsqrt(var + eps) by the caller.
+ *    - Momentum / running_* updates are not here; handled at launcher/API.
+ *    - Graph capture safe: no dynamic allocation; fixed shmem sizes.
+ *
+ *  Determinism:
+ *    - These kernels use a fixed one-CTA-per-channel reduction (no atomics),
+ *      hence deterministic for a given (N,C,H,W,BS) on a fixed SM scheduling.
+ *      If multi-CTA-per-channel is introduced, reductions will require atomics
+ *      or cooperative groups → potential non-determinism.
+ *
+ *  Performance Notes:
+ *    - NCHW: with fixed c, threads stride contiguous H*W → coalesced loads/stores.
+ *    - NHWC: with fixed c, successive elements are spaced by C; this path can be
+ *      bandwidth-limited if C is large. Consider the “NHWC 개선안” 아래 메모 참고.
+ *    - Block size BS=256 with 2*BS floats of shmem per block (reduce kernels).
+ *    - Local partial sums use FP64 to mitigate cancellation on large M.
+ *
+ *  Known Limits / TODO:
+ *    - “Welford” 이름과 달리 현재 구현은 Σx, Σx^2 모멘트 방식(1-pass)입니다.
+ *      진짜 Welford(평균/분산 온라인 갱신)로 바꾸려면 커널 로직 교체 필요.
+ *    - 32-bit int M = N*H*W may overflow if very large; prefer int64 for safety.
+ *    - NHWC path 개선(벡터화/타일링) 여지 있음.
+ * ========================================================================== */
+
+
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <float.h>
