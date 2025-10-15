@@ -13,7 +13,7 @@
 
 namespace ai {
 
-// ===== utils & externs (기존 그대로) =====
+// ===== utils & externs =====
 __global__ void kadd_kernel(float* A, const float* B, int n){
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) A[i] += B[i];
@@ -55,7 +55,7 @@ static inline void reduce_db_rows_kernel_launcher(const float* gy, float* db, in
   reduce_db_rows_kernel<<<grid, block, 0, s>>>(gy, db, Cout, HWo);
 }
 
-// ===== pack/unpack W (기존 커널 시그니처) =====
+// ===== pack/unpack W =====
 __global__ void pack_w_oihw_to_KC(const float* __restrict__ W, float* __restrict__ out_KC,
                                   int Cout, int Cin, int Kh, int Kw);
 __global__ void pack_w_oihw_to_CK(const float* __restrict__ W, float* __restrict__ out_CK,
@@ -130,6 +130,9 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
   if (Y.desc.shape[0]!=N || Y.desc.shape[1]!=Cout || Y.desc.shape[2]!=Ho || Y.desc.shape[3]!=Wo)
     return Status::ShapeMismatch;
 
+  if (N<=0 || Cin<=0 || H<=0 || Wd<=0 || Cout<=0 || Kh<=0 || Kw<=0 || Ho<=0 || Wo<=0)
+    return Status::Invalid;
+
   // Z_saved 체크
   const bool want_z = a.save_z && (Z_saved != nullptr);
   if (want_z) {
@@ -160,10 +163,10 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
 
   // GEMM attrs: epilogue 사용
   ai::GemmAttrs g{};
-  g.act         = a.act;
+  g.act         = a.act;          // Conv2D와 Gemm 모두 ActKind
   g.leaky_slope = a.leaky_slope;
   g.with_bias   = (dB != nullptr);
-  g.save_z      = want_z; // pre-activation 저장
+  g.save_z      = want_z;
 
   for (int n=0; n<N; ++n) {
     const float* x_n = static_cast<const float*>(X.data) + (size_t)n*Cin*H*Wd;
@@ -184,11 +187,11 @@ Status Conv2DCudaLaunch(const Tensor& X, const Tensor& W, const Tensor* B, Tenso
     Tensor tY{Y_tmp, {DType::F32, Layout::RowMajor, {HWo, Cout}, {Cout, 1}},  Device::CUDA, 0};
 
     Tensor tZcap{};  // [HWo,Cout] pre-act rows
+    const ai::Tensor* BiasPtr = nullptr;
+
     if (want_z) {
       tZcap = Tensor{Z_rows, {DType::F32, Layout::RowMajor, {HWo, Cout}, {Cout,1}}, Device::CUDA, 0};
     }
-
-    const ai::Tensor* BiasPtr = nullptr;
     ai::Tensor BiasT;
     if (dB) {
       BiasT.data         = const_cast<float*>(dB);
@@ -258,6 +261,9 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
         dX->desc.shape[2]!=H || dX->desc.shape[3]!=Wd) return Status::ShapeMismatch;
   }
 
+  if (N<=0 || Cin<=0 || H<=0 || Wd<=0 || Cout<=0 || Kh<=0 || Kw<=0 || Ho<=0 || Wo<=0)
+    return Status::Invalid;
+
   const int K   = Cin*Kh*Kw;
   const int HWo = Ho*Wo;
   auto s = to_cuda(stream);
@@ -297,12 +303,11 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
     const float* z_n   = static_cast<const float*>(Z.data)      + (size_t)n*Cout*Ho*Wo;
 
     // NCHW → rows([Cout,HWo])
-    // NCHW는 메모리상 [Cout, HWo]와 동일하므로 전치 불필요. 필요 시 D2D 복사.
-  {
-    size_t rows_bytes = sizeof(float) * (size_t)Cout * HWo;
-    cudaMemcpyAsync(gy_rows, gy_nP, rows_bytes, cudaMemcpyDeviceToDevice, s);
-    cudaMemcpyAsync(Z_rows,  z_n,   rows_bytes, cudaMemcpyDeviceToDevice, s);
-  }
+    {
+      size_t rows_bytes = sizeof(float) * (size_t)Cout * HWo;
+      cudaMemcpyAsync(gy_rows, gy_nP, rows_bytes, cudaMemcpyDeviceToDevice, s);
+      cudaMemcpyAsync(Z_rows,  z_n,   rows_bytes, cudaMemcpyDeviceToDevice, s);
+    }
 
     // gy_rows = gy_post ⊙ act'(Z_rows)
     {
@@ -357,6 +362,7 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
 
   // dWpack[Cout,K] -> dW[O,I,H,W]
   if (dW) {
+    const int K = Cin*Kh*Kw;
     dim3 block(256), grid((K + block.x - 1)/block.x, Cout);
     unpack_ck_to_oihw_add<<<grid, block, 0, s>>>(dWpack, static_cast<float*>(dW->data), Cout, Cin, Kh, Kw);
   }
