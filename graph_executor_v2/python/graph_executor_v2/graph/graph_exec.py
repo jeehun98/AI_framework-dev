@@ -221,6 +221,8 @@ def record_step_graph(
     X_buf: cp.ndarray,
     y_buf: cp.ndarray,
     stream: Optional[cp.cuda.Stream] = None,
+    loss_out: Optional[cp.ndarray] = None,  # ✅ 그래프 내부에서 갱신될 손실 스칼라 버퍼(디바이스, shape=())
+
 ):
     """
     fwd → loss → bwd → opt 한 스텝을 CUDA Graph로 녹화해 실행자 반환.
@@ -237,6 +239,9 @@ def record_step_graph(
         setattr(model, "_graph_input_buf", X_buf)
         cur = _run_fwd(model, plan, X_buf, stream.ptr)
         loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
+        # ✅ 손실값을 고정 버퍼로 복사(있으면)
+        if loss_out is not None:
+            loss_out[...] = loss_dev   
         g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
         if dY is not None:
             dY[...] = dY_tmp
@@ -251,6 +256,9 @@ def record_step_graph(
             with cp.cuda.graph.capture_stream(stream) as cap:
                 cur = _run_fwd(model, plan, X_buf, stream.ptr)
                 loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
+                # ✅ 손실값을 고정 버퍼로 복사(있으면)
+                if loss_out is not None:
+                    loss_out[...] = loss_dev
                 g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
                 if dY is not None:
                     dY[...] = dY_tmp
@@ -264,6 +272,9 @@ def record_step_graph(
     def _one_step():
         cur = _run_fwd(model, plan, X_buf, stream.ptr)
         loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
+        # ✅ 손실값을 고정 버퍼로 복사(있으면)
+        if loss_out is not None:
+            loss_out[...] = loss_dev        
         g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
         if dY is not None:
             dY[...] = dY_tmp
@@ -287,7 +298,8 @@ class TrainGraph:
     def y_buf(self):  return self._io["y"]
     def set_batch(self, X_dev, y_dev):
         xb, yb = self._io["X"], self._io["y"]
-        xb[...] = cp.asarray(X_dev, dtype=xb.dtype)
-        yb[...] = cp.asarray(y_dev, dtype=yb.dtype)
+        with self._stream:  # ✅ 그래프와 동일 스트림에서 H2D/D2D 수행
+            xb[...] = cp.asarray(X_dev, dtype=xb.dtype)
+            yb[...] = cp.asarray(y_dev, dtype=yb.dtype)        
     def launch(self):
         self._gexec.launch(self._stream.ptr)
