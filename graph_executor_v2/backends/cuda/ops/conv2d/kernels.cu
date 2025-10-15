@@ -6,6 +6,8 @@
 namespace { // ---- device 템플릿 커널들: TU 내부 전용 ----
 
 // ---------- im2col ----------
+// in:  X [Cin, H, W] (row-major: c-major 블록, 내부는 H*W)
+// out: Col [HWo, K]  (row-major: row=hw, col=k), K=Cin*Kh*Kw
 template<int BS>
 __global__ void im2col_kernel(const float* __restrict__ X, float* __restrict__ Col,
                               int Cin, int H, int W,
@@ -21,15 +23,15 @@ __global__ void im2col_kernel(const float* __restrict__ X, float* __restrict__ C
   int total = HWo * K;
   if (idx >= total) return;
 
-  int k  = idx % K;         // col index
-  int hw = idx / K;         // row index
+  int k  = idx % K;         // col index (0..K-1)
+  int hw = idx / K;         // row index (0..HWo-1)
 
   int w_out = hw % Wo;
   int h_out = hw / Wo;
 
   int kw = k % Kw; int t = k / Kw;
   int kh = t % Kh; t = t / Kh;
-  int c  = t;
+  int c  = t;              // 0..Cin-1
 
   int h_in = h_out * sH - pH + kh * dH;
   int w_in = w_out * sW - pW + kw * dW;
@@ -39,10 +41,12 @@ __global__ void im2col_kernel(const float* __restrict__ X, float* __restrict__ C
     const float* x_c = X + (size_t)c * H * W;
     v = x_c[h_in * W + w_in];
   }
-  Col[hw * K + k] = v;
+  Col[(size_t)hw * K + k] = v;
 }
 
 // ---------- col2im ----------
+// in:  Col [HWo, K] (row-major)
+// out: Xgrad [Cin, H, W] 누적(add)
 template<int BS>
 __global__ void col2im_kernel(const float* __restrict__ Col, float* __restrict__ Xgrad,
                               int Cin, int H, int W,
@@ -62,7 +66,7 @@ __global__ void col2im_kernel(const float* __restrict__ Col, float* __restrict__
   float acc = 0.f;
   for (int kh=0; kh<Kh; ++kh){
     int h_out_nom = h + pH - kh * dH;
-    if (h_out_nom % sH) continue;
+    if (h_out_nom % sH) continue;           // stride grid 밖
     int h_out = h_out_nom / sH;
     if ((unsigned)h_out >= (unsigned)Ho) continue;
 
@@ -76,13 +80,14 @@ __global__ void col2im_kernel(const float* __restrict__ Col, float* __restrict__
       int K   = Cin * Kh * Kw;
       int k   = (c * Kh + kh) * Kw + kw;
       int hw  = h_out * Wo + w_out;
-      acc += Col[hw * K + k];
+      acc += Col[(size_t)hw * K + k];
     }
   }
   Xgrad[idx] += acc;
 }
 
 // ---------- row-major 2D transpose ----------
+// in:  A [M,N] (row-major) -> AT [N,M]
 template<int BS>
 __global__ void transpose_kernel(const float* __restrict__ A, float* __restrict__ AT,
                                  int M, int N)
@@ -90,12 +95,14 @@ __global__ void transpose_kernel(const float* __restrict__ A, float* __restrict_
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int total = M * N;
   if (idx >= total) return;
-  int n = idx % N;
-  int m = idx / N;
-  AT[n * M + m] = A[m * N + n];
+  int n = idx % N;         // col
+  int m = idx / N;         // row
+  AT[(size_t)n * M + m] = A[(size_t)m * N + n];
 }
 
 // ---------- dB reduction ----------
+// dY: [HWo, Cout] (row-major) or 등가 레이아웃에서 HWo*Cout 선형
+// co별 합산
 template<int BS>
 __global__ void reduce_db_kernel(const float* __restrict__ dY, float* __restrict__ dB,
                                  int HWo, int Cout)
@@ -104,8 +111,8 @@ __global__ void reduce_db_kernel(const float* __restrict__ dY, float* __restrict
   int total = HWo * Cout;
   if (idx >= total) return;
   int co = idx % Cout;
-  int hw = idx / Cout;
-  atomicAdd(&dB[co], dY[hw * Cout + co]);
+  // hw = idx / Cout;  // 실제 인덱싱엔 필요 없음
+  atomicAdd(&dB[co], dY[idx]);
 }
 
 } // anonymous TU-local
@@ -209,12 +216,13 @@ void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStre
 }
 
 // 호출처(launcher.cu)와 이름/인자 순서 맞춤!
+// gy: [Cout, HWo] or 等가 선형 → total=HWo*Cout
 void reduce_db_rows_kernel_launcher(const float* gy, float* db, int Cout, int HWo, cudaStream_t s)
 {
   const int total = HWo * Cout;
   constexpr int BS = 256;
   dim3 block(BS), grid((total + BS - 1) / BS);
-  // reduce_db_kernel은 (dY, dB, HWo, Cout) 순으로 받음
+  // reduce_db_kernel은 (dY, dB, HWo, Cout) 순
   reduce_db_kernel<BS><<<grid, block, 0, s>>>(gy, db, HWo, Cout);
 }
 

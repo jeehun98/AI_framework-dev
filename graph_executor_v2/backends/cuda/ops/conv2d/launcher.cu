@@ -297,8 +297,12 @@ Status Conv2DCudaBackwardLaunch(const Tensor& X, const Tensor& W, const Tensor& 
     const float* z_n   = static_cast<const float*>(Z.data)      + (size_t)n*Cout*Ho*Wo;
 
     // NCHW → rows([Cout,HWo])
-    transpose_kernel_launcher(gy_nP, gy_rows, /*M=*/Ho*Wo, /*N=*/Cout, s); // [HWo,Cout]->[Cout,HWo]
-    transpose_kernel_launcher(z_n,   Z_rows,  /*M=*/Ho*Wo, /*N=*/Cout, s);
+    // NCHW는 메모리상 [Cout, HWo]와 동일하므로 전치 불필요. 필요 시 D2D 복사.
+  {
+    size_t rows_bytes = sizeof(float) * (size_t)Cout * HWo;
+    cudaMemcpyAsync(gy_rows, gy_nP, rows_bytes, cudaMemcpyDeviceToDevice, s);
+    cudaMemcpyAsync(Z_rows,  z_n,   rows_bytes, cudaMemcpyDeviceToDevice, s);
+  }
 
     // gy_rows = gy_post ⊙ act'(Z_rows)
     {
