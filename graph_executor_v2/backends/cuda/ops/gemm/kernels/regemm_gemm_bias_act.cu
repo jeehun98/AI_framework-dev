@@ -1,16 +1,16 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 
-#include "regemm/config.h"
-#include "regemm/api.h"
-#include "regemm/activations.h"
-#include "regemm/bias.h"
-#include "regemm/nvtx_shim.h"
+#include "../detail/config.h"
+#include "../detail/api.h"
+#include "../detail/activations.h"
+#include "../detail/bias.h"
+#include "../detail/nvtx_shim.h"
 
 namespace regemm {
 
 // ====================================================================
-// 기존: Smoke (비타일, 소규모 행렬 최적)  — 이미 정식 스펙 준수
+// Smoke (소규모/비타일) — 정식 스펙 준수
 // ====================================================================
 __global__ void gemm_bias_act_f32_smoke(GemmBiasActParams p) {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
@@ -75,7 +75,7 @@ static_assert(TDY * THR_M == BM, "BM must equal TDY*THR_M");
 #endif
 
 // ====================================================================
-// Tiled kernel (고성능 경로) — 에필로그 수식 고정: pre=alpha*acc + beta*C + bias
+// Tiled kernel (고성능 경로) — 에필로그 고정: pre=alpha*acc + beta*C + bias
 // ====================================================================
 template<int BM_, int BN_, int BK_, ActKind AK>
 __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
@@ -110,10 +110,10 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
     const int tid = ty * TDX + tx;
     const int elems = BM_ * BK_;
     for (int e = tid; e < elems; e += (TDX * TDY)) {
-      int r = e / BK_;
-      int c = e % BK_;
-      int gm = m0 + r;
-      int gk = k0 + c;
+      const int r = e / BK_;
+      const int c = e % BK_;
+      const int gm = m0 + r;
+      const int gk = k0 + c;
       float v = 0.f;
       if (gm < p.M && gk < p.K) v = A[gm * p.lda + gk];
       As[stage][r][c] = v;
@@ -124,10 +124,10 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
     const int tid = ty * TDX + tx;
     const int elems = BK_ * BN_;
     for (int e = tid; e < elems; e += (TDX * TDY)) {
-      int r = e / BN_;
-      int c = e % BN_;
-      int gk = k0 + r;
-      int gn = n0 + c;
+      const int r = e / BN_;
+      const int c = e % BN_;
+      const int gk = k0 + r;
+      const int gn = n0 + c;
       float v = 0.f;
       if (gk < p.K && gn < p.N) v = B[gk * p.ldb + gn];
       Bs[stage][r][c] = v;
@@ -155,14 +155,14 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
       float a_vec[THR_M];
       #pragma unroll
       for (int i = 0; i < THR_M; i++) {
-        int rm = tm0 + i;
+        const int rm = tm0 + i;
         a_vec[i] = (rm < p.M) ? As[stage][rm - m0][kk] : 0.f;
       }
 
       float b_vec[THR_N];
       #pragma unroll
       for (int j = 0; j < THR_N; j++) {
-        int cn = tn0 + j;
+        const int cn = tn0 + j;
         b_vec[j] = (cn < p.N) ? Bs[stage][kk][cn - n0] : 0.f;
       }
 
@@ -179,15 +179,17 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
 #endif
   }
 
+  // PerN bias 프리패치
   float bias_j[THR_N];
   #pragma unroll
   for (int j = 0; j < THR_N; j++) {
-    int n = tn0 + j;
-    bias_j[j] = load_bias(p, 0, (n < p.N ? n : 0));
+    const int n = tn0 + j;
+    bias_j[j] = (n < p.N) ? load_bias(p, 0, n) : 0.f;
   }
 
 #if REGEMM_USE_VECIO
   constexpr int V = REGEMM_VEC_ALIGN_ELEMS;
+  static_assert(V == 4, "Only V=4 (float4) is supported");
   const uintptr_t Cptr = reinterpret_cast<uintptr_t>(C);
   const uintptr_t Dptr = reinterpret_cast<uintptr_t>(D);
   const bool base_ok   = ((tn0 % V) == 0) && ((THR_N % V) == 0);
@@ -204,7 +206,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
 
   #pragma unroll
   for (int i = 0; i < THR_M; i++) {
-    int m = tm0 + i;
+    const int m = tm0 + i;
     if (m >= p.M) continue;
 
     float bias_m_cached = 0.f;
@@ -216,16 +218,23 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
     if (vec_ok_store) {
       #pragma unroll
       for (int j = 0; j < THR_N; j += 4) {
-        int n = tn0 + j;
+        const int n = tn0 + j;
         float4 d4;
+        // C vector load (옵션)
+        float4 c4;
+        const bool can_vec_c = (p.beta != 0.f && C && vec_ok_loadC && (n + 3 < p.N));
+        if (can_vec_c) {
+          c4 = *reinterpret_cast<const float4*>(&C[m * ldc + n]);
+        }
+
         #pragma unroll
         for (int t = 0; t < 4; t++) {
-          int nn = n + t;
-          int jj = j + t;
+          const int nn = n + t;
+          const int jj = j + t;
           if (nn < p.N) {
             float pre = p.alpha * acc[i][jj];
             if (p.beta != 0.f && C) {
-              float cin = C[m * ldc + nn];
+              const float cin = can_vec_c ? (&c4.x)[t] : C[m * ldc + nn];
               pre = fmaf(p.beta, cin, pre);
             }
             if (p.bias) {
@@ -241,8 +250,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
         } else {
           #pragma unroll
           for (int t = 0; t < 4; t++) {
-            int nn = n + t;
-            int jj = j + t;
+            const int nn = n + t;
             if (nn < p.N) D[m * ldd + nn] = (&d4.x)[t];
           }
         }
@@ -250,11 +258,11 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
     } else {
       #pragma unroll
       for (int j = 0; j < THR_N; j++) {
-        int n = tn0 + j;
+        const int n = tn0 + j;
         if (n < p.N) {
           float pre = p.alpha * acc[i][j];
           if (p.beta != 0.f && C) {
-            float cin = C[m * ldc + n];
+            const float cin = C[m * ldc + n];
             pre = fmaf(p.beta, cin, pre);
           }
           if (p.bias) {
@@ -297,10 +305,9 @@ void gemm_bias_act_f32(const GemmBiasActParams& p, cudaStream_t s) {
 }
 
 // ====================================================================
-// ======================  NEW: EX (Z Stash) 경로  =====================
+// ======================  EX (Z Stash) 경로  ==========================
 // ====================================================================
 
-// Smoke EX — 이미 정식 스펙 준수
 __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
   const int n = blockIdx.x * blockDim.x + threadIdx.x;
@@ -321,7 +328,6 @@ __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
     acc = fmaf(a, b, acc);
   }
 
-  // pre = alpha*(A@B) + beta*C + bias
   float pre = p.alpha * acc;
   if (p.beta != 0.f && C) {
     pre = fmaf(p.beta, C[m * p.ldc + n], pre);
@@ -335,7 +341,6 @@ __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
   D[m * p.ldd + n] = apply_act_runtime(pre, p.act, p.leaky_slope);
 }
 
-// Tiled EX — 에필로그 수식 고정 + Z stash
 template<int BM_, int BN_, int BK_, ActKind AK>
 __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
   const int m0 = blockIdx.y * BM_;
@@ -371,10 +376,10 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
     const int tid = ty * TDX + tx;
     const int elems = BM_ * BK_;
     for (int e = tid; e < elems; e += (TDX * TDY)) {
-      int r = e / BK_;
-      int c = e % BK_;
-      int gm = m0 + r;
-      int gk = k0 + c;
+      const int r = e / BK_;
+      const int c = e % BK_;
+      const int gm = m0 + r;
+      const int gk = k0 + c;
       float v = 0.f;
       if (gm < p.M && gk < p.K) v = A[gm * p.lda + gk];
       As[stage][r][c] = v;
@@ -384,10 +389,10 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
     const int tid = ty * TDX + tx;
     const int elems = BK_ * BN_;
     for (int e = tid; e < elems; e += (TDX * TDY)) {
-      int r = e / BN_;
-      int c = e % BN_;
-      int gk = k0 + r;
-      int gn = n0 + c;
+      const int r = e / BN_;
+      const int c = e % BN_;
+      const int gk = k0 + r;
+      const int gn = n0 + c;
       float v = 0.f;
       if (gk < p.K && gn < p.N) v = B[gk * p.ldb + gn];
       Bs[stage][r][c] = v;
@@ -415,14 +420,14 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
       float a_vec[THR_M];
       #pragma unroll
       for (int i = 0; i < THR_M; i++) {
-        int rm = tm0 + i;
+        const int rm = tm0 + i;
         a_vec[i] = (rm < p.M) ? As[stage][rm - m0][kk] : 0.f;
       }
 
       float b_vec[THR_N];
       #pragma unroll
       for (int j = 0; j < THR_N; j++) {
-        int cn = tn0 + j;
+        const int cn = tn0 + j;
         b_vec[j] = (cn < p.N) ? Bs[stage][kk][cn - n0] : 0.f;
       }
 
@@ -439,15 +444,17 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
 #endif
   }
 
+  // PerN bias 프리패치
   float bias_j[THR_N];
   #pragma unroll
   for (int j = 0; j < THR_N; j++) {
-    int n = tn0 + j;
-    bias_j[j] = load_bias(p, 0, (n < p.N ? n : 0));
+    const int n = tn0 + j;
+    bias_j[j] = (n < p.N) ? load_bias(p, 0, n) : 0.f;
   }
 
 #if REGEMM_USE_VECIO
   constexpr int V = REGEMM_VEC_ALIGN_ELEMS;
+  static_assert(V == 4, "Only V=4 (float4) is supported");
   const uintptr_t Cptr = reinterpret_cast<uintptr_t>(C);
   const uintptr_t Dptr = reinterpret_cast<uintptr_t>(D);
   const bool base_ok   = ((tn0 % V) == 0) && ((THR_N % V) == 0);
@@ -464,7 +471,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
 
   #pragma unroll
   for (int i = 0; i < THR_M; i++) {
-    int m = tm0 + i;
+    const int m = tm0 + i;
     if (m >= p.M) continue;
 
     float bias_m_cached = 0.f;
@@ -476,16 +483,23 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
     if (vec_ok_store) {
       #pragma unroll
       for (int j = 0; j < THR_N; j += 4) {
-        int n = tn0 + j;
+        const int n = tn0 + j;
         float4 d4;
+        // C vector load (옵션)
+        float4 c4;
+        const bool can_vec_c = (p.beta != 0.f && C && vec_ok_loadC && (n + 3 < p.N));
+        if (can_vec_c) {
+          c4 = *reinterpret_cast<const float4*>(&C[m * ldc + n]);
+        }
+
         #pragma unroll
         for (int t = 0; t < 4; t++) {
-          int nn = n + t;
-          int jj = j + t;
+          const int nn = n + t;
+          const int jj = j + t;
           if (nn < p.N) {
             float pre = p.alpha * acc[i][jj];
             if (p.beta != 0.f && C) {
-              float cin = C[m * ldc + nn];
+              const float cin = can_vec_c ? (&c4.x)[t] : C[m * ldc + nn];
               pre = fmaf(p.beta, cin, pre);
             }
             if (p.bias) {
@@ -502,7 +516,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
         } else {
           #pragma unroll
           for (int t = 0; t < 4; t++) {
-            int nn = n + t;
+            const int nn = n + t;
             if (nn < p.N) D[m * ldd + nn] = (&d4.x)[t];
           }
         }
@@ -510,11 +524,11 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
     } else {
       #pragma unroll
       for (int j = 0; j < THR_N; j++) {
-        int n = tn0 + j;
+        const int n = tn0 + j;
         if (n < p.N) {
           float pre = p.alpha * acc[i][j];
           if (p.beta != 0.f && C) {
-            float cin = C[m * ldc + n];
+            const float cin = C[m * ldc + n];
             pre = fmaf(p.beta, cin, pre);
           }
           if (p.bias) {

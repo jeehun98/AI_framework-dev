@@ -5,20 +5,18 @@
 #include <limits>
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#include "backends/cuda/ops/gemm/gemm_common.hpp"
-#include "backends/cuda/ops/gemm/api.hpp"       // <- GemmWorkspace, GemmCudaLaunch/Backward
-#include "regemm/api.h"                         // <- regemm params/launchers (Ex 포함)
+#include "backends/cuda/ops/gemm/detail/gemm_common.hpp"
+#include "backends/cuda/ops/gemm/detail/api.h"
+#include "backends/cuda/ops/gemm/api.hpp"  // GemmWorkspace, GemmCudaLaunch/Backward + AI_API
 
 namespace {
 using namespace ai::gemm_common;
 
-// 기존 infer_bias_kind_1d_lenMN가 너무 보수적일 수 있어
-// (N,), (1,N), (M,), (M,1), (1,1) 모두를 관대히 매칭하는 fallback 버전
+// --- 관대 추론(1D/2D, (1,N),(M,1),(1,1) 허용) ---
 inline regemm::BiasKind infer_bias_kind_fallback(const ai::Tensor* Bias, int64_t M, int64_t N) {
   using BK = regemm::BiasKind;
   if (!Bias || !Bias->data) return BK::None;
-
-  const auto& s = Bias->desc.shape;  // 허용: 1D 또는 2D
+  const auto& s = Bias->desc.shape;
   int64_t numel = 1;
   for (auto v : s) numel *= v;
   if (numel <= 0) return BK::None;
@@ -41,6 +39,51 @@ inline regemm::BiasKind infer_bias_kind_fallback(const ai::Tensor* Bias, int64_t
   return BK::None;
 }
 
+// Bias kind 최종 결정: 엄격(1D lenMN) → 실패 시 관대
+inline regemm::BiasKind decide_bias_kind(const ai::Tensor* Bias, int64_t M, int64_t N) {
+  auto strict = infer_bias_kind_1d_lenMN(Bias, M, N);
+  if (strict != regemm::BiasKind::None) return strict;
+  return infer_bias_kind_fallback(Bias, M, N);
+}
+
+// Bias 버퍼 크기/형식 검증(가능하면)
+inline bool validate_bias_buffer(const ai::Tensor* Bias, int64_t M, int64_t N,
+                                 regemm::BiasKind kind) {
+  if (!Bias || !Bias->data || kind == regemm::BiasKind::None) return true;
+  if (Bias->desc.dtype != ai::DType::F32) return false;
+
+  const size_t need = regemm::expected_bias_elems(static_cast<int>(M), static_cast<int>(N), kind);
+  if (need == 0) return false;
+
+  size_t numel = 1;
+  for (auto v : Bias->desc.shape) numel *= static_cast<size_t>(v);
+  if (numel != need) {
+    // (1,N)/(M,1)/(1,1) 관대 허용
+    if (!(Bias->desc.shape.size()==2 &&
+          ((kind==regemm::BiasKind::PerN && Bias->desc.shape[0]==1 && Bias->desc.shape[1]==N) ||
+           (kind==regemm::BiasKind::PerM && Bias->desc.shape[0]==M && Bias->desc.shape[1]==1) ||
+           (kind==regemm::BiasKind::Scalar && Bias->desc.shape[0]==1 && Bias->desc.shape[1]==1)))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline bool validate_ws_lt(const ai::GemmWorkspace* ws) {
+  if (!ws) return true;
+  if (ws->lt_workspace && !regemm::is_workspace_aligned(ws->lt_workspace, 256)) return false;
+  return true;
+}
+
+inline bool validate_ws_scratch(const ai::GemmWorkspace* ws, int64_t M, int64_t N) {
+  if (!ws || !ws->scratch) return true;
+  if (ws->scratch_bytes > 0) {
+    const size_t need = static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(float);
+    if (ws->scratch_bytes < need) return false;
+  }
+  return true;
+}
+
 } // anonymous
 
 namespace ai {
@@ -49,7 +92,7 @@ namespace ai {
 // Forward (save_z + Lt WS 지원)
 // =========================
 ai::Status GemmCudaLaunch(
-    const Tensor& A, const Tensor& B, const Tensor* Bias,
+    const Tensor& A, const Tensor& B, const Tensor* Bias /*=nullptr*/,
     Tensor& Y, const GemmAttrs& attrs,
     StreamHandle stream,
     Tensor* Z_saved /*=nullptr*/,
@@ -82,10 +125,7 @@ ai::Status GemmCudaLaunch(
   }
 
   // 5) Z 저장 여부 및 검증
-  // NOTE: Z_saved may alias Y. EX 커널은 Z(pre)를 먼저 쓰고, 다음에 D=act(pre)를 계산하므로 안전.
-  if (attrs.save_z && Z_saved == nullptr) {
-    return ai::Status::MissingOutput; // 명시적으로 에러 리턴
-  }
+  if (attrs.save_z && Z_saved == nullptr) return ai::Status::MissingOutput;
   const bool want_save_z = attrs.save_z && (Z_saved != nullptr);
 
   int   ldZ_i = 0;
@@ -96,12 +136,16 @@ ai::Status GemmCudaLaunch(
         Z_saved->desc.shape[0]!=M || Z_saved->desc.shape[1]!=N) {
       return ai::Status::ShapeMismatch;
     }
-    const int64_t ldZ = infer_ld_rowmajor_2d(*Z_saved);
+    const bool alias_Y = (Z_saved->data == Y.data);
+    const int64_t ldZ = alias_Y ? ldd : infer_ld_rowmajor_2d(*Z_saved);
     if (ldZ < N) return ai::Status::StrideMismatch;
     if (!fits_int32(ldZ)) return ai::Status::Invalid;
     ldZ_i = static_cast<int>(ldZ);
     Z_ptr = Z_saved->data;
   }
+
+  // 5.5) Workspace 가드(정렬/크기)
+  if (!validate_ws_lt(ws)) return ai::Status::Invalid;
 
   // 6) regemm 파라미터
   regemm::GemmBiasActParamsEx p{};
@@ -117,12 +161,13 @@ ai::Status GemmCudaLaunch(
   p.alpha = 1.0f;
   p.beta  = 0.0f;
 
-  // ---- bias 전달 + kind 추론(관대) ----
+  // ---- bias 전달 + kind 추론(엄격 → 관대) ----
   p.bias      = (Bias && Bias->data) ? Bias->data : nullptr;
-  p.bias_kind = infer_bias_kind_fallback(Bias, M, N);
+  p.bias_kind = decide_bias_kind(Bias, M, N);
+  if (!validate_bias_buffer(Bias, M, N, p.bias_kind)) return ai::Status::Invalid;
 
   // ---- activation / leaky slope ----
-  p.act         = static_cast<regemm::ActKind>(attrs.act);
+  p.act         = to_regemm_act(attrs.act);
   p.leaky_slope = attrs.leaky_slope;
 
   // ---- Z 저장: pre-activation을 단일 패스로 저장 ----
@@ -140,20 +185,7 @@ ai::Status GemmCudaLaunch(
 }
 
 // =========================
-/* Backward (dZ scratch + Lt WS 지원)
-
-수식:
-  Z = alpha*(A@B) + beta*C + bias,    Y = act(Z)
-  gZ = dAct(Z, gY)
-  gA = gZ @ B^T
-  gB = A^T @ gZ
-  gC = beta * gZ  (C 사용 시)
-  gBias: Scalar -> sum(gZ), PerM -> sum(gZ, axis=1), PerN -> sum(gZ, axis=0)
-
-캡처-세이프:
-  ws && ws->scratch != nullptr 일 때, 해당 버퍼를 gZ로 사용(크기 >= M*N)
-  내부에서 malloc/free 금지 경로로 실행
-*/
+// Backward (dZ scratch + Lt WS 지원)
 // =========================
 ai::Status GemmCudaBackward(
     const Tensor& A, const Tensor& B, const Tensor* C,
@@ -206,27 +238,27 @@ ai::Status GemmCudaBackward(
   if (gB) { ldgB = infer_ld_rowmajor_2d(*gB); if (ldgB < N) return ai::Status::StrideMismatch; }
   if (gC) { ldgC = infer_ld_rowmajor_2d(*gC); if (ldgC < N) return ai::Status::StrideMismatch; }
 
-  // (추가) int32 범위 가드
+  // int32 범위
   if (!fits_int32(M) || !fits_int32(N) || !fits_int32(K) ||
       !fits_int32(lda) || !fits_int32(ldb) || !fits_int32(ldgY) || !fits_int32(ldZ) ||
       (gA && !fits_int32(ldgA)) || (gB && !fits_int32(ldgB)) || (gC && !fits_int32(ldgC))) {
     return ai::Status::Invalid;
   }
 
-  // 4) bias kind (gBias가 있을 때만 의미 있음)
+  // 4) gBias kind (gBias 존재 시에만 의미)
   regemm::BiasKind bk = regemm::BiasKind::None;
   if (gBias && gBias->data) {
-    // gBias shape 기반 PerN/PerM/Scalar 판정
-    bk = infer_bias_kind_fallback(gBias, M, N);
+    bk = decide_bias_kind(gBias, M, N);
+    if (!validate_bias_buffer(gBias, M, N, bk)) return ai::Status::Invalid;
   }
 
-  // 4.5) (선택) 캡처-세이프 dZ scratch 준비
+  // 4.5) 캡처-세이프 dZ scratch / Lt workspace 검증
+  if (!validate_ws_lt(ws)) return ai::Status::Invalid;
+  if (!validate_ws_scratch(ws, M, N)) return ai::Status::Invalid;
+
   float* dZ = nullptr;
   if (ws && ws->scratch) {
     dZ = reinterpret_cast<float*>(ws->scratch);
-    // 필요 시 크기 점검: (M*N*sizeof(float)) 이상 — 내부(regemm)에서도 shape로 재검증 권장
-    // size_t need = static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(float);
-    // if (ws->scratch_bytes && ws->scratch_bytes < need) return ai::Status::Invalid;
   }
 
   // 5) 파라미터
@@ -253,16 +285,16 @@ ai::Status GemmCudaBackward(
   p.beta  = (C && gC) ? 1.0f : 0.0f;
 
   p.bias_kind   = bk;
-  p.act         = static_cast<regemm::ActKind>(attrs.act);
+  p.act         = to_regemm_act(attrs.act);
   p.leaky_slope = attrs.leaky_slope;
 
   // 6.5) dZ scratch + Lt WS 전달
-  p.gZ_scratch       = dZ;                                  // 외부 제공 시 malloc-free 없음
-  p.ldgZ             = (dZ ? static_cast<int>(N) : 0);      // 제공 시 반드시 N
-  p.lt_workspace     = ws ? ws->lt_workspace       : nullptr;
+  p.gZ_scratch         = dZ;                                  // 외부 제공 시 malloc-free 없음
+  p.ldgZ               = (dZ ? static_cast<int>(N) : 0);      // 제공 시 반드시 N
+  p.lt_workspace       = ws ? ws->lt_workspace       : nullptr;
   p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
 
-  // 7) 실행 (확장 버전, 이름은 호환 유지)
+  // 7) 실행
   regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
   return ai::Status::Ok;
 }
