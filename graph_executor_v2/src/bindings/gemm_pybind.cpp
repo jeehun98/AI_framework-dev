@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
+#include <cctype>        // <-- tolower 안전 사용
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
@@ -59,7 +60,8 @@ static void raise_if_not_ok(ai::Status st, const char* where) {
 // -------- 문자열 -> ActKind 파서 --------
 static ai::ActKind parse_act(const std::string& s) {
     std::string k(s);
-    std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+    std::transform(k.begin(), k.end(), k.begin(),
+                   [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     if (k=="none")       return ai::ActKind::None;
     if (k=="relu")       return ai::ActKind::ReLU;
     if (k=="leakyrelu" || k=="leaky_relu" || k=="lrelu")
@@ -106,7 +108,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            ai::GemmAttrs attrs,
            ai::Tensor* Z_saved,          // optional
            void* stream /* = nullptr */) {
-            py::gil_scoped_release release; // 🔓 GIL off
+            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
             // If Z_saved is provided but attrs.save_z is false, enable it implicitly
             if (Z_saved && Z_saved->data && !attrs.save_z) {
                 attrs.save_z = true;
@@ -151,13 +153,13 @@ PYBIND11_MODULE(_ops_gemm, m) {
            ai::Tensor* gBias,        // optional
            const ai::GemmAttrs& attrs,
            void* stream /* = nullptr */) {
-            py::gil_scoped_release release; // 🔓 GIL off
+            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
             // ---- PerN 강제 세이프가드 ----
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
             if (gBias && gBias->data) {
                 const auto& s = gBias->desc.shape;
-                auto bad_perm =
+                const bool bad_perm =
                     (s.size()==1 && s[0]==M) ||
                     (s.size()==2 && s[0]==M && s[1]==1);
                 if (bad_perm) {
@@ -208,7 +210,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            bool save_z,               // NEW
            ai::Tensor* Z_saved,       // NEW
            void* stream /*=nullptr*/) {
-            py::gil_scoped_release release; // 🔓 GIL off
+            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
             ai::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
             attrs.trans_b     = trans_b;
@@ -271,7 +273,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            bool with_bias,
            float leaky_slope,
            void* stream /*=nullptr*/) {
-            py::gil_scoped_release release; // 🔓 GIL off
+            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
             ai::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
             attrs.trans_b     = trans_b;
@@ -284,7 +286,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
             const int64_t N = B.desc.shape.at(1);
             if (gBias && gBias->data) {
                 const auto& s = gBias->desc.shape;
-                auto bad_perm =
+                const bool bad_perm =
                     (s.size()==1 && s[0]==M) ||
                     (s.size()==2 && s[0]==M && s[1]==1);
                 if (bad_perm) {
@@ -322,7 +324,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
     );
 
     // ===========================================
-    // 2) NumPy 친화 오버로드 (상위 _core 위임)
+    // 2) NumPy 친화 오버로드 (상위 _core 위임) — GIL 유지!
     // ===========================================
     m.def(
         "forward_numpy",
@@ -331,7 +333,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            py::object bias, // None or 1D float array
            std::string act,
            float leaky_slope) {
-            py::gil_scoped_release release; // 🔓 GIL off (import는 이미 됐다고 가정)
+            // GIL 필요: 순수 파이썬 호출
             py::module_ core = py::module_::import("graph_executor_v2._core");
             py::object fn = core.attr("gemm_bias_act");
             py::object bias_arg = bias.is_none() ? py::none() : bias;
@@ -355,7 +357,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            std::string act,
            std::string bias_kind,
            float leaky_slope) {
-            py::gil_scoped_release release; // 🔓 GIL off
+            // GIL 필요: 순수 파이썬 호출
             py::module_ core = py::module_::import("graph_executor_v2._core");
             py::object fn = core.attr("gemm_bias_act_bwd");
             py::dict out = fn(A, B, gY, Z,
@@ -394,7 +396,7 @@ PYBIND11_MODULE(_ops_gemm, m) {
            uintptr_t dZ_ptr,         // required: float[M*N]
            uintptr_t lt_ws_ptr,      // optional: cublasLt workspace
            size_t    lt_ws_bytes) {
-            py::gil_scoped_release release; // 🔓 GIL off
+            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
 
             // PerN shape 가드 (그대로 유지)
             const int64_t M = A.desc.shape.at(0);
@@ -418,15 +420,11 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 throw std::invalid_argument(
                     "[_ops_gemm::backward_into] lt_workspace ptr/bytes must be both zero or both non-zero");
             }
-            // (선택) 최소 크기 가드
-            // if (lt_ws_ptr && lt_ws_bytes < (1u << 20)) {
-            //     throw std::invalid_argument("[_ops_gemm::backward_into] lt_workspace too small (<1MB)");
-            // }
 
             // 통합 워크스페이스 사용
             ai::GemmWorkspace ws{};
             ws.scratch            = reinterpret_cast<void*>(dZ_ptr);     // dZ buffer
-            ws.scratch_bytes      = static_cast<size_t>(M * N * sizeof(float)); // ★ 정확히 채움
+            ws.scratch_bytes      = static_cast<size_t>(M * N * sizeof(float)); // 정확히 기입
             ws.lt_workspace       = reinterpret_cast<void*>(lt_ws_ptr);
             ws.lt_workspace_bytes = lt_ws_bytes;
 
@@ -453,47 +451,45 @@ PYBIND11_MODULE(_ops_gemm, m) {
         "Capture-safe GEMM backward that uses preallocated workspaces (no malloc during capture)."
     );
 
-    // === 파일 하단 m.def 들 아래쪽에 “별칭”만 추가 ===
+    // === 별칭 (attrs 버전 유지용) ===
+    m.def(
+        "forward_ex_attrs",
+        [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* Bias,
+           ai::Tensor& Y, ai::GemmAttrs attrs, ai::Tensor* Z_saved, void* stream) {
+            py::gil_scoped_release release;
+            if (Z_saved && Z_saved->data && !attrs.save_z) attrs.save_z = true;
+            if (attrs.save_z && (!Z_saved || !Z_saved->data))
+                throw std::invalid_argument("[_ops_gemm::forward_ex_attrs] save_z=True requires Z_saved");
+            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+            raise_if_not_ok(st, "forward_ex_attrs");
+        },
+        "A"_a, "B"_a, "bias"_a = nullptr, "Y"_a,
+        "attrs"_a, "Z_saved"_a = nullptr, "stream"_a = nullptr,
+        "Alias to `forward` that accepts GemmAttrs (kept for Python compatibility)."
+    );
 
-// attrs 버전과 동일하게 연결
-m.def(
-    "forward_ex_attrs",
-    [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* Bias,
-       ai::Tensor& Y, ai::GemmAttrs attrs, ai::Tensor* Z_saved, void* stream) {
-        py::gil_scoped_release release;
-        if (Z_saved && Z_saved->data && !attrs.save_z) attrs.save_z = true;
-        if (attrs.save_z && (!Z_saved || !Z_saved->data))
-            throw std::invalid_argument("[_ops_gemm::forward_ex_attrs] save_z=True requires Z_saved");
-        auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
-        raise_if_not_ok(st, "forward_ex_attrs");
-    },
-    "A"_a, "B"_a, "bias"_a = nullptr, "Y"_a,
-    "attrs"_a, "Z_saved"_a = nullptr, "stream"_a = nullptr,
-    "Alias to `forward` that accepts GemmAttrs (kept for Python compatibility)."
-);
-
-m.def(
-    "backward_ex_attrs",
-    [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* C,
-       const ai::Tensor& gY, const ai::Tensor& Z,
-       ai::Tensor* gA, ai::Tensor* gB, ai::Tensor* gC, ai::Tensor* gBias,
-       const ai::GemmAttrs& attrs, void* stream) {
-        py::gil_scoped_release release;
-        const int64_t M = A.desc.shape.at(0);
-        const int64_t N = B.desc.shape.at(1);
-        if (gBias && gBias->data) {
-            const auto& s = gBias->desc.shape;
-            if ((s.size()==1 && s[0]==M) || (s.size()==2 && s[0]==M && s[1]==1))
-                throw std::invalid_argument("[_ops_gemm::backward_ex_attrs] gBias must be PerN (1,N) or (N,)");
-        }
-        auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
-        raise_if_not_ok(st, "backward_ex_attrs");
-    },
-    "A"_a, "B"_a, "C"_a = nullptr, "gY"_a, "Z"_a,
-    "gA"_a = nullptr, "gB"_a = nullptr, "gC"_a = nullptr, "gBias"_a = nullptr,
-    "attrs"_a, "stream"_a = nullptr,
-    "Alias to `backward` that accepts GemmAttrs (kept for Python compatibility)."
-);
+    m.def(
+        "backward_ex_attrs",
+        [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* C,
+           const ai::Tensor& gY, const ai::Tensor& Z,
+           ai::Tensor* gA, ai::Tensor* gB, ai::Tensor* gC, ai::Tensor* gBias,
+           const ai::GemmAttrs& attrs, void* stream) {
+            py::gil_scoped_release release;
+            const int64_t M = A.desc.shape.at(0);
+            const int64_t N = B.desc.shape.at(1);
+            if (gBias && gBias->data) {
+                const auto& s = gBias->desc.shape;
+                if ((s.size()==1 && s[0]==M) || (s.size()==2 && s[0]==M && s[1]==1))
+                    throw std::invalid_argument("[_ops_gemm::backward_ex_attrs] gBias must be PerN (1,N) or (N,)");
+            }
+            auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
+            raise_if_not_ok(st, "backward_ex_attrs");
+        },
+        "A"_a, "B"_a, "C"_a = nullptr, "gY"_a, "Z"_a,
+        "gA"_a = nullptr, "gB"_a = nullptr, "gC"_a = nullptr, "gBias"_a = nullptr,
+        "attrs"_a, "stream"_a = nullptr,
+        "Alias to `backward` that accepts GemmAttrs (kept for Python compatibility)."
+    );
 
     // 메타
     m.attr("__package__") = "graph_executor_v2.ops";
@@ -506,6 +502,6 @@ m.def(
         "forward_ex", "backward_ex",
         "forward_numpy", "backward_numpy",
         "backward_into",
-        "forward_ex_attrs", "backward_ex_attrs" // ★ 공개 API에 포함
+        "forward_ex_attrs", "backward_ex_attrs"
     );
 }

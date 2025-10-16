@@ -6,11 +6,11 @@
 #include <mutex>
 #include <unordered_map>
 
-#include <regemm/config.h>
-#include <regemm/bias.h>
-#include <regemm/api.h>
-#include <regemm/activations.h>
-#include <regemm/nvtx_shim.h>
+#include "../detail/config.h"
+#include "../detail/bias.h"
+#include "../detail/api.h"
+#include "../detail/activations.h"
+#include "../detail/nvtx_shim.h"
 
 namespace regemm {
 
@@ -153,12 +153,20 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     need_free = true;
   }
 
+  // -------- gC가 요청되었지만 C가 없거나 beta==0 → gC를 0으로 초기화 --------
+  if (p.gC && (!p.C || p.beta == 0.f)) {
+    NVTX_RANGE("regemm::bwd::zero_gC", 0x6688FF);
+    const size_t bytes = sizeof(float) * static_cast<size_t>(M) * static_cast<size_t>(N);
+    REGEMM_CHECK(cudaMemsetAsync(p.gC, 0, bytes, s));
+  }
+
   // -------- 에필로그 실행 (gZ, [옵션]gC, [옵션]gBias) --------
   {
+    NVTX_RANGE("regemm::bwd::epilogue", 0x66CC66);
     dim3 block(16, 16);
     dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
 
-    const bool fuse_gC = (p.C && p.gC);
+    const bool fuse_gC = (p.C && p.gC && p.beta != 0.f);
 
     if (p.gBias) {
       size_t bytes = 0;
@@ -239,8 +247,8 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   }
 
   // -------- GEMMs (cuBLAS) --------
-  // 🔴 기존: 매 호출 cublasCreate / Destroy → 캡처 무효화
-  // ✅ 수정: 디바이스별 캐시 핸들 획득 + 스트림만 설정
+  NVTX_RANGE("regemm::bwd::gemms", 0xCC6666);
+  // ✅ 디바이스별 캐시 핸들 획득 + 스트림 설정 (캡처 안전)
   cublasHandle_t h = acquire_cublas_handle();
   CUBLAS_CHECK(cublasSetStream(h, s));
 

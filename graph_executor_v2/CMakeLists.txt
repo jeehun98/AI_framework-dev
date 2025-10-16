@@ -72,7 +72,7 @@ add_library(ai_core STATIC
   src/ops/cross_entropy.cpp
   src/ops/dropout.cpp
   src/ops/sdpa.cpp
-  src/ops/conv2d.cpp
+  
   src/ops/pool2d.cpp
   src/ops/elementwise.cpp
   src/ops/reduction.cpp
