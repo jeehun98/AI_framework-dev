@@ -10,6 +10,7 @@
 #include "../detail/bias.h"
 #include "../detail/api.h"
 #include "../detail/activations.h"
+#include "../detail/traits.hpp"   // BiasMode / to_bias_mode
 #include "../detail/nvtx_shim.h"
 
 namespace regemm {
@@ -79,20 +80,25 @@ static inline cublasStatus_t sgemm_rm(
       /*C=*/C, /*ldc=*/ldc_rm);
 }
 
-// ===================== BWD 에필로그 커널 =====================
+// ===================== BWD 에필로그 커널(정책화) =====================
 // gZ = gY ⊙ act'(Z)
 // (옵션) gC = beta * gZ
 // (옵션) gBias 누적(Scalar/PerM/PerN)
-template<ActKind AK, bool FUSE_GC>
+// 템플릿 파라미터:
+//   AK       : 활성화 종류
+//   FUSE_GC  : gC 동시 계산 여부
+//   BM       : BiasMode (None/PerM/PerN/Full=Scalar)
+//   HasBias  : gBias 버퍼 존재 여부
+template<ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias>
 __global__ void bwd_epilogue_kernel(
     const float* __restrict__ gY, int ldgY,
     const float* __restrict__ Z,  int ldZ,
     float* __restrict__ gZ,       // contiguous, ld = N
     int M, int N,
     float beta,                        // for gC
-    float* __restrict__ gC, int ldgC,  // nullable
-    float* __restrict__ gBias,         // nullable
-    BiasKind bk, float leaky_slope)
+    float* __restrict__ gC, int ldgC,  // nullable (FUSE_GC일 때만 의미)
+    float* __restrict__ gBias,         // nullable (HasBias=false면 사용 안 함)
+    float leaky_slope)
 {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
   const int n = blockIdx.x * blockDim.x + threadIdx.x;
@@ -111,12 +117,36 @@ __global__ void bwd_epilogue_kernel(
     if (gC) gC[m * ldgC + n] = beta * gz;
   }
 
-  // 3) gBias 누적 (간단 경로: atomicAdd)
-  if (gBias) {
-    if (bk == BiasKind::Scalar)      atomicAdd(gBias, gz);
-    else if (bk == BiasKind::PerM)   atomicAdd(&gBias[m], gz);
-    else if (bk == BiasKind::PerN)   atomicAdd(&gBias[n], gz);
+  // 3) gBias 누적 (정책화로 런타임 분기 제거)
+  if constexpr (HasBias) {
+    if constexpr (BM == BiasMode::PerM) {
+      atomicAdd(&gBias[m], gz);
+    } else if constexpr (BM == BiasMode::PerN) {
+      atomicAdd(&gBias[n], gz);
+    } else if constexpr (BM == BiasMode::Full) { // Scalar
+      atomicAdd(gBias, gz);
+    } else {
+      // BiasMode::None: do nothing
+    }
   }
+}
+
+// 인스턴스 런처
+template<ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias>
+static inline void launch_bwd_epilogue_cfg(
+    const GemmBiasActBwdParams& p, float* gZ, cudaStream_t s)
+{
+  dim3 block(16, 16);
+  dim3 grid((p.N + block.x - 1) / block.x, (p.M + block.y - 1) / block.y);
+
+  bwd_epilogue_kernel<AK, FUSE_GC, BM, HasBias><<<grid, block, 0, s>>>(
+      reinterpret_cast<const float*>(p.gY), p.ldgY,
+      reinterpret_cast<const float*>(p.Z),  p.ldZ,
+      gZ, p.M, p.N,
+      p.beta,
+      reinterpret_cast<float*>(p.gC), p.ldgC,
+      reinterpret_cast<float*>(p.gBias),
+      p.leaky_slope);
 }
 
 // ============================ 메인 ============================
@@ -144,7 +174,6 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     }
     gZ = p.gZ_scratch;
   } else {
-    // 내부 임시 할당 (비-캡처 경로 전용)
 #if CUDART_VERSION >= 11020
     REGEMM_CHECK(cudaMallocAsync(&gZ, sizeof(float) * static_cast<size_t>(M) * N, s));
 #else
@@ -160,90 +189,75 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     REGEMM_CHECK(cudaMemsetAsync(p.gC, 0, bytes, s));
   }
 
+  // -------- gBias 0-fill (요청 시) --------
+  if (p.gBias) {
+    size_t bytes = 0;
+    if (p.bias_kind == BiasKind::Scalar)      bytes = sizeof(float);
+    else if (p.bias_kind == BiasKind::PerM)   bytes = sizeof(float) * static_cast<size_t>(p.M);
+    else if (p.bias_kind == BiasKind::PerN)   bytes = sizeof(float) * static_cast<size_t>(p.N);
+    if (bytes) REGEMM_CHECK(cudaMemsetAsync(p.gBias, 0, bytes, s)); // capture-safe
+  }
+
   // -------- 에필로그 실행 (gZ, [옵션]gC, [옵션]gBias) --------
   {
     NVTX_RANGE("regemm::bwd::epilogue", 0x66CC66);
-    dim3 block(16, 16);
-    dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
 
-    const bool fuse_gC = (p.C && p.gC && p.beta != 0.f);
+    const bool     fuse_gC = (p.C && p.gC && p.beta != 0.f);
+    const BiasMode bm      = to_bias_mode(p.bias_kind);
+    const bool     hasBias = (p.gBias != nullptr) && (bm != BiasMode::None);
 
-    if (p.gBias) {
-      size_t bytes = 0;
-      if (p.bias_kind == BiasKind::Scalar)      bytes = sizeof(float);
-      else if (p.bias_kind == BiasKind::PerM)   bytes = sizeof(float) * static_cast<size_t>(p.M);
-      else if (p.bias_kind == BiasKind::PerN)   bytes = sizeof(float) * static_cast<size_t>(p.N);
-      if (bytes) REGEMM_CHECK(cudaMemsetAsync(p.gBias, 0, bytes, s)); // capture-safe
-    }
+    // 작은 디스패치 매크로
+    #define DISPATCH_BIAS(AK_, FUSE_)                                      \
+      switch (bm) {                                                        \
+        case BiasMode::PerM:                                               \
+          if (hasBias) launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::PerM, true >(p, gZ, s); \
+          else         launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::PerM, false>(p, gZ, s); \
+          break;                                                           \
+        case BiasMode::PerN:                                               \
+          if (hasBias) launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::PerN, true >(p, gZ, s); \
+          else         launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::PerN, false>(p, gZ, s); \
+          break;                                                           \
+        case BiasMode::Full: /* Scalar */                                  \
+          if (hasBias) launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::Full, true >(p, gZ, s); \
+          else         launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::Full, false>(p, gZ, s); \
+          break;                                                           \
+        case BiasMode::None:                                               \
+        default:                                                           \
+          if (hasBias) launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::None, true >(p, gZ, s); \
+          else         launch_bwd_epilogue_cfg<AK_, FUSE_, BiasMode::None, false>(p, gZ, s); \
+          break;                                                           \
+      }
 
+    // ActKind × FUSE_GC 분기
     switch (p.act) {
       case ActKind::ReLU:
-        if (fuse_gC)
-          bwd_epilogue_kernel<ActKind::ReLU, true><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, p.beta, (float*)p.gC, p.ldgC, (float*)p.gBias, p.bias_kind, p.leaky_slope);
-        else
-          bwd_epilogue_kernel<ActKind::ReLU, false><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, 0.f, nullptr, 0, (float*)p.gBias, p.bias_kind, p.leaky_slope);
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::ReLU,       true)  }
+        else          { DISPATCH_BIAS(ActKind::ReLU,       false) }
         break;
-
       case ActKind::LeakyReLU:
-        if (fuse_gC)
-          bwd_epilogue_kernel<ActKind::LeakyReLU, true><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, p.beta, (float*)p.gC, p.ldgC, (float*)p.gBias, p.bias_kind, p.leaky_slope);
-        else
-          bwd_epilogue_kernel<ActKind::LeakyReLU, false><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, 0.f, nullptr, 0, (float*)p.gBias, p.bias_kind, p.leaky_slope);
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::LeakyReLU,  true)  }
+        else          { DISPATCH_BIAS(ActKind::LeakyReLU,  false) }
         break;
-
       case ActKind::GELU:
-        if (fuse_gC)
-          bwd_epilogue_kernel<ActKind::GELU, true><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, p.beta, (float*)p.gC, p.ldgC, (float*)p.gBias, p.bias_kind, p.leaky_slope);
-        else
-          bwd_epilogue_kernel<ActKind::GELU, false><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, 0.f, nullptr, 0, (float*)p.gBias, p.bias_kind, p.leaky_slope);
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::GELU,       true)  }
+        else          { DISPATCH_BIAS(ActKind::GELU,       false) }
         break;
-
       case ActKind::Sigmoid:
-        if (fuse_gC)
-          bwd_epilogue_kernel<ActKind::Sigmoid, true><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, p.beta, (float*)p.gC, p.ldgC, (float*)p.gBias, p.bias_kind, p.leaky_slope);
-        else
-          bwd_epilogue_kernel<ActKind::Sigmoid, false><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, 0.f, nullptr, 0, (float*)p.gBias, p.bias_kind, p.leaky_slope);
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::Sigmoid,    true)  }
+        else          { DISPATCH_BIAS(ActKind::Sigmoid,    false) }
         break;
-
       case ActKind::Tanh:
-        if (fuse_gC)
-          bwd_epilogue_kernel<ActKind::Tanh, true><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, p.beta, (float*)p.gC, p.ldgC, (float*)p.gBias, p.bias_kind, p.leaky_slope);
-        else
-          bwd_epilogue_kernel<ActKind::Tanh, false><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, 0.f, nullptr, 0, (float*)p.gBias, p.bias_kind, p.leaky_slope);
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::Tanh,       true)  }
+        else          { DISPATCH_BIAS(ActKind::Tanh,       false) }
         break;
-
       case ActKind::None:
       default:
-        if (fuse_gC)
-          bwd_epilogue_kernel<ActKind::None, true><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, p.beta, (float*)p.gC, p.ldgC, (float*)p.gBias, p.bias_kind, p.leaky_slope);
-        else
-          bwd_epilogue_kernel<ActKind::None, false><<<grid, block, 0, s>>>(
-            (const float*)p.gY, ldgY, (const float*)p.Z, ldZ,
-            gZ, M, N, 0.f, nullptr, 0, (float*)p.gBias, p.bias_kind, p.leaky_slope);
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::None,       true)  }
+        else          { DISPATCH_BIAS(ActKind::None,       false) }
         break;
     }
+
+    #undef DISPATCH_BIAS
   }
 
   // -------- GEMMs (cuBLAS) --------

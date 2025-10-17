@@ -205,7 +205,7 @@ set_target_properties(ai_backend_cuda PROPERTIES
 )
 target_include_directories(ai_backend_cuda
   PUBLIC
-    backends/cuda/ops/gemm/include
+    backends/cuda/ops/gemm/detail
     ${PROJECT_INCLUDE_DIR}
   PRIVATE
     ${CMAKE_SOURCE_DIR}
