@@ -1,4 +1,5 @@
-// backends/cuda/ops/gemm/launcher.cu  (FWD+BWD 통합, workspace 지원)
+// backends/cuda/ops/gemm/launcher.cu
+// (FWD+BWD 통합, workspace 지원 / 정책화 디스패치 + BiasMode 런타임→컴파일타임 브릿지)
 #include <cuda_runtime.h>
 #include <cstring>
 #include <stdexcept>
@@ -6,8 +7,28 @@
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/gemm/detail/gemm_common.hpp"
+#include "backends/cuda/ops/gemm/detail/config.h"     // REGEMM_* 타일/블록 매크로
 #include "backends/cuda/ops/gemm/detail/api.h"
-#include "backends/cuda/ops/gemm/api.hpp"  // GemmWorkspace, GemmCudaLaunch/Backward + AI_API
+#include "backends/cuda/ops/gemm/detail/traits.hpp"   // BiasMode / to_bias_mode / Epilogue 정책
+#include "backends/cuda/ops/gemm/api.hpp"             // GemmWorkspace, GemmCudaLaunch/Backward + AI_API
+
+//
+// 커널 선언(템플릿 인스턴스 디스패치용) — 정의는 kernels/*.cu에 존재
+//
+namespace regemm {
+  // Non-EX (C 사용 여부/SaveZ 없음)
+  template<int BM_, int BN_, int BK_, ActKind AK, BiasMode BM, bool HasC>
+  __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p);
+  void launch_gemm_bias_act_f32_smoke (const GemmBiasActParams& p, cudaStream_t s);
+
+  // EX (Z stash 포함)
+  template<int BM_, int BN_, int BK_, ActKind AK, BiasMode BM, bool HasC, bool SaveZ>
+  __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p);
+  void launch_gemm_bias_act_f32_smoke_ex (const GemmBiasActParamsEx& p, cudaStream_t s);
+
+  // BWD (정의는 kernels/regemm_backward.cu)
+  void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s);
+} // namespace regemm
 
 namespace {
 using namespace ai::gemm_common;
@@ -84,12 +105,55 @@ inline bool validate_ws_scratch(const ai::GemmWorkspace* ws, int64_t M, int64_t 
   return true;
 }
 
+// 타일/블록 파라미터(런처에서도 사용)
+constexpr int BM  = REGEMM_TILE_M;
+constexpr int BN  = REGEMM_TILE_N;
+constexpr int BK  = REGEMM_TILE_K;
+constexpr int TDX = REGEMM_BLOCK_TDX;
+constexpr int TDY = REGEMM_BLOCK_TDY;
+
+// === [EX 디스패치 헬퍼들] ===
+// 고정된 BiasMode 인자로 직접 커널 호출
+template<regemm::ActKind AK, regemm::BiasMode BMmode, bool HasC, bool SaveZ>
+inline void launch_ex_cfg(const regemm::GemmBiasActParamsEx& p, cudaStream_t s) {
+  dim3 block(TDX, TDY);
+  dim3 grid((p.N + BN - 1) / BN, (p.M + BM - 1) / BM);
+  regemm::gemm_bias_act_f32_tiled_kernel_ex<BM, BN, BK, AK, BMmode, HasC, SaveZ><<<grid, block, 0, s>>>(p);
+}
+
+// 런타임 BiasMode → 컴파일타임 인스턴스 분배
+template<regemm::ActKind AK, bool SaveZ>
+inline void launch_ex_cfg_bm(const regemm::GemmBiasActParamsEx& p,
+                             regemm::BiasMode bm,
+                             cudaStream_t s) {
+  constexpr bool HasC = false; // FWD에서는 C 미사용
+  switch (bm) {
+    case regemm::BiasMode::PerM:
+      launch_ex_cfg<AK, regemm::BiasMode::PerM, HasC, SaveZ>(p, s); break;
+    case regemm::BiasMode::PerN:
+      launch_ex_cfg<AK, regemm::BiasMode::PerN, HasC, SaveZ>(p, s); break;
+    case regemm::BiasMode::Full: // (Scalar)
+      launch_ex_cfg<AK, regemm::BiasMode::Full, HasC, SaveZ>(p, s); break;
+    case regemm::BiasMode::None:
+    default:
+      launch_ex_cfg<AK, regemm::BiasMode::None, HasC, SaveZ>(p, s); break;
+  }
+}
+
+// (참고) Non-EX FWD 디스패치(현재는 사용하지 않음 — EX로 통합)
+template<regemm::ActKind AK, regemm::BiasMode BMmode, bool HasC>
+inline void launch_fwd_cfg(const regemm::GemmBiasActParams& p, cudaStream_t s) {
+  dim3 block(TDX, TDY);
+  dim3 grid((p.N + BN - 1) / BN, (p.M + BM - 1) / BM);
+  regemm::gemm_bias_act_f32_tiled_kernel<BM, BN, BK, AK, BMmode, HasC><<<grid, block, 0, s>>>(p);
+}
+
 } // anonymous
 
 namespace ai {
 
 // =========================
-// Forward (save_z + Lt WS 지원)
+// Forward (save_z + Lt WS 지원 / 정책화 디스패치)
 // =========================
 ai::Status GemmCudaLaunch(
     const Tensor& A, const Tensor& B, const Tensor* Bias /*=nullptr*/,
@@ -147,7 +211,7 @@ ai::Status GemmCudaLaunch(
   // 5.5) Workspace 가드(정렬/크기)
   if (!validate_ws_lt(ws)) return ai::Status::Invalid;
 
-  // 6) regemm 파라미터
+  // 6) regemm 파라미터 (Ex 경로 사용)
   regemm::GemmBiasActParamsEx p{};
   p.M = static_cast<int>(M);
   p.N = static_cast<int>(N);
@@ -172,20 +236,60 @@ ai::Status GemmCudaLaunch(
 
   // ---- Z 저장: pre-activation을 단일 패스로 저장 ----
   p.Z           = want_save_z ? Z_ptr : nullptr;
-  p.ldZ         = want_save_z ? ldZ_i : 0;   // 0이면 내부에서 ldd로 간주 가능
+  p.ldZ         = want_save_z ? ldZ_i : 0;   // 0이면 내부에서 ldd로 간주
   p.save_preact = want_save_z ? 1      : 0;
 
   // ---- Lt workspace (있으면 전달) ----
   p.lt_workspace       = ws ? ws->lt_workspace       : nullptr;
   p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
 
-  // 7) 실행
-  regemm::gemm_bias_act_f32_ex(p, reinterpret_cast<cudaStream_t>(stream));
+  // 7) 디스패치
+  const bool tiny = (p.M * p.N < 4096) || (p.K < 8);
+  const cudaStream_t cs = reinterpret_cast<cudaStream_t>(stream);
+  if (tiny) {
+    // 소규모/비타일 경로(런타임 분기 유지)
+    regemm::launch_gemm_bias_act_f32_smoke_ex(p, cs);
+    return ai::Status::Ok;
+  }
+
+  // EX 템플릿 파라미터 계산
+  const regemm::BiasMode bm = regemm::to_bias_mode(p.bias_kind);
+  const bool SaveZ = want_save_z;
+
+  // 활성화별 컴파일타임 디스패치 (BiasMode는 런타임→컴파일타임 브릿지로 전달)
+  switch (p.act) {
+    case regemm::ActKind::ReLU:
+      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::ReLU,      true >(p, bm, cs);
+      else       launch_ex_cfg_bm<regemm::ActKind::ReLU,      false>(p, bm, cs);
+      break;
+    case regemm::ActKind::LeakyReLU:
+      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, true >(p, bm, cs);
+      else       launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, false>(p, bm, cs);
+      break;
+    case regemm::ActKind::GELU:
+      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::GELU,      true >(p, bm, cs);
+      else       launch_ex_cfg_bm<regemm::ActKind::GELU,      false>(p, bm, cs);
+      break;
+    case regemm::ActKind::Sigmoid:
+      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   true >(p, bm, cs);
+      else       launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   false>(p, bm, cs);
+      break;
+    case regemm::ActKind::Tanh:
+      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Tanh,      true >(p, bm, cs);
+      else       launch_ex_cfg_bm<regemm::ActKind::Tanh,      false>(p, bm, cs);
+      break;
+    case regemm::ActKind::None:
+    default:
+      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::None,      true >(p, bm, cs);
+      else       launch_ex_cfg_bm<regemm::ActKind::None,      false>(p, bm, cs);
+      break;
+  }
+
   return ai::Status::Ok;
 }
 
 // =========================
-// Backward (dZ scratch + Lt WS 지원)
+// Backward (dZ scratch + Lt WS 지원) — 원문 로직 유지
 // =========================
 ai::Status GemmCudaBackward(
     const Tensor& A, const Tensor& B, const Tensor* C,
