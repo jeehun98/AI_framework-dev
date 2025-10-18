@@ -7,6 +7,8 @@
 extern "C" __global__ void ep_f16_relu_bias(EpParamsF16);
 extern "C" __global__ void ep_f16_relu_nobias(EpParamsF16);
 extern "C" __global__ void epilogue_kernel_f16_generic(EpParamsF16);
+extern "C" __global__ void ep_f16_gelu_bias(EpParamsF16);
+extern "C" __global__ void ep_f16_gelu_nobias(EpParamsF16);
 
 namespace epi {
 
@@ -18,15 +20,18 @@ Status run_fp16(const Plan& plan, const Tensors& ts, DType bdt, void* stream){
   dim3 block(256), grid = make_grid(P.M*P.N, block.x);
   auto s = reinterpret_cast<cudaStream_t>(stream);
 
-  const bool relu = (plan.attrs.act==ActKind::ReLU);
-  const bool bias = (plan.attrs.bias==BiasKind::PerN);
+    const auto act = plan.attrs.act;
+    const bool bias = (plan.attrs.bias==BiasKind::PerN);
 
-  if (relu) {
+    if (act==ActKind::ReLU) {
     if (bias) ep_f16_relu_bias<<<grid,block,0,s>>>(P);
     else      ep_f16_relu_nobias<<<grid,block,0,s>>>(P);
-  } else {
+    } else if (act==ActKind::GELU) {
+    if (bias) ep_f16_gelu_bias<<<grid,block,0,s>>>(P);
+    else      ep_f16_gelu_nobias<<<grid,block,0,s>>>(P);
+    } else {
     epilogue_kernel_f16_generic<<<grid,block,0,s>>>(P);
-  }
+    }
   return {true,""};
 }
 

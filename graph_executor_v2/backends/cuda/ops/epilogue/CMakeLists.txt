@@ -21,6 +21,12 @@ add_library(epi STATIC
   kernels/fused/ep_f32_relu_nobias.cu
   kernels/fused/ep_f16_relu_bias.cu
   kernels/fused/ep_f16_relu_nobias.cu
+
+  kernels/fused/ep_f32_gelu_bias.cu
+  kernels/fused/ep_f32_gelu_nobias.cu
+  kernels/fused/ep_f16_gelu_bias.cu
+  kernels/fused/ep_f16_gelu_nobias.cu
+
 )
 
 target_include_directories(epi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
