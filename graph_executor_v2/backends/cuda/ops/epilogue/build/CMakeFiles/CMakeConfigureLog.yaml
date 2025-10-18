@@ -618,8 +618,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-udscjl"
-      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-udscjl"
+      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-37czlb"
+      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-37czlb"
     cmakeVariables:
       CMAKE_CUDA_ARCHITECTURES: "86"
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
@@ -630,11 +630,11 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-udscjl'
+        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-37czlb'
         
-        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_8fcd3
-        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP   /DWIN32 /D_WINDOWS /EHsc  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_8fcd3.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_8fcd3.dir\\ /FS -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1942 --intdir=CMakeFiles\\cmTC_8fcd3.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_8fcd3.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_8fcd3.exe /implib:cmTC_8fcd3.lib /pdb:cmTC_8fcd3.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_bfd1a
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP   /DWIN32 /D_WINDOWS /EHsc  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_bfd1a.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_bfd1a.dir\\ /FS -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1942 --intdir=CMakeFiles\\cmTC_bfd1a.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_bfd1a.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_bfd1a.exe /implib:cmTC_bfd1a.lib /pdb:cmTC_bfd1a.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
         
       exitCode: 0
   -
@@ -674,8 +674,8 @@ events:
     checks:
       - "Detecting CUDA compiler ABI info"
     directories:
-      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-587fu0"
-      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-587fu0"
+      source: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-xg9jjy"
+      binary: "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-xg9jjy"
     cmakeVariables:
       CMAKE_CUDA_ARCHITECTURES: "86"
       CMAKE_CUDA_FLAGS: "-D_WINDOWS -Xcompiler=\" /EHsc\""
@@ -686,10 +686,10 @@ events:
       variable: "CMAKE_CUDA_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-587fu0'
+        Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-xg9jjy'
         
-        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_6669e
-        [1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Zi -Ob0 -Od /RTC1" "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MDd   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu -o CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_6669e.dir\\,-FS
+        Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_92b33
+        [1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Zi -Ob0 -Od /RTC1" "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MDd   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu -o CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_92b33.dir\\,-FS
         cl : Command line warning D9002 : ignoring unknown option '-v'
         CMakeCUDACompilerABI.cu
         C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss
@@ -770,12 +770,12 @@ events:
         C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss
         CMakeCUDACompilerABI.cu
         cl : Command line warning D9002 : ignoring unknown option '-v'
-        tmpxft_00003348_00000000-10_CMakeCUDACompilerABI.cudafe1.cpp
+        tmpxft_00001584_00000000-10_CMakeCUDACompilerABI.cudafe1.cpp
         C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss
         C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss
         C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss\x0d
         C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCompilerCUDAArch.h(10): warning C4305: 'return': truncation from 'int' to 'bool'\x0d
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_6669e.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_6669e.exe /implib:cmTC_6669e.lib /pdb:cmTC_6669e.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64" && cd ."
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_92b33.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_92b33.exe /implib:cmTC_92b33.lib /pdb:cmTC_92b33.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64" && cd ."
         
       exitCode: 0
   -
@@ -799,10 +799,10 @@ events:
       Parsed CUDA implicit link information:
         link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
         linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
-        ignore line: [Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-587fu0']
+        ignore line: [Change Dir: 'C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/CMakeFiles/CMakeScratch/TryCompile-xg9jjy']
         ignore line: []
-        ignore line: [Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_6669e]
-        ignore line: [[1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Zi -Ob0 -Od /RTC1" "--generate-code=arch=compute_86 code=[compute_86 sm_86]" -Xcompiler=-MDd   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu -o CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_6669e.dir\\ -FS]
+        ignore line: [Run Build Command(s): C:/Users/owner/AppData/Local/Programs/Python/Python312/Scripts/ninja.exe -v cmTC_92b33]
+        ignore line: [[1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.6\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Zi -Ob0 -Od /RTC1" "--generate-code=arch=compute_86 code=[compute_86 sm_86]" -Xcompiler=-MDd   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu -o CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_92b33.dir\\ -FS]
         ignore line: [cl : Command line warning D9002 : ignoring unknown option '-v']
         ignore line: [CMakeCUDACompilerABI.cu]
         ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss]
@@ -883,12 +883,12 @@ events:
         ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\cuda_runtime_api.h(12392): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss]
         ignore line: [CMakeCUDACompilerABI.cu]
         ignore line: [cl : Command line warning D9002 : ignoring unknown option '-v']
-        ignore line: [tmpxft_00003348_00000000-10_CMakeCUDACompilerABI.cudafe1.cpp]
+        ignore line: [tmpxft_00001584_00000000-10_CMakeCUDACompilerABI.cudafe1.cpp]
         ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss]
         ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss]
         ignore line: [C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\\driver_types.h(1334): warning C4819: The file contains a character that cannot be represented in the current code page (949). Save the file in Unicode format to prevent data loss\x0d]
         ignore line: [C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\share\\cmake-4.0\\Modules\\CMakeCompilerCUDAArch.h(10): warning C4305: 'return': truncation from 'int' to 'bool'\x0d]
-        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_6669e.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_6669e.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_6669e.exe /implib:cmTC_6669e.lib /pdb:cmTC_6669e.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64" && cd ."]
+        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && C:\\Users\\owner\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cmake\\data\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_92b33.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_92b33.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_92b33.exe /implib:cmTC_92b33.lib /pdb:cmTC_92b33.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/lib/x64" && cd ."]
         ignore line: []
         ignore line: []
         linker tool for 'CUDA': C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1442~1.344/bin/Hostx64/x64/link.exe
