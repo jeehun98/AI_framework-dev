@@ -4,7 +4,7 @@
 
 namespace epi {
 
-enum class ActKind   : uint8_t { None=0, ReLU=1 };
+enum class ActKind   : uint8_t { None=0, ReLU=1, GELU=2 };
 enum class BiasKind  : uint8_t { None=0, PerN=1 };
 enum class Layout    : uint8_t { RowMajor=0 /*, ColMajor, Strided*/ };
 
