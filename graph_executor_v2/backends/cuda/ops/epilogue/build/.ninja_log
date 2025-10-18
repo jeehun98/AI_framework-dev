@@ -1,0 +1,8 @@
+# ninja log v5
+25	219	7824849344511229	CMakeFiles/epi_test.dir/tests/test_epilogue_min.cpp.obj	8ba034eeca29e93b
+18	2727	7824849369489170	CMakeFiles/epi.dir/launcher/epilogue_launcher.cu.obj	dcc40c5675908e9
+21	2729	7824849369489170	CMakeFiles/epi.dir/kernels/epilogue_kernel.cu.obj	fdff60c60586dd2e
+2729	4815	7824849386651659	CMakeFiles/epi.dir/cmake_device_link.obj	78003dcf9acd25b6
+4815	4846	7824849390788751	epi.lib	afe7fbb7855d5468
+4846	6986	7824849408112617	CMakeFiles/epi_test.dir/cmake_device_link.obj	d148c61880b5b50
+6986	7071	7824849412888495	epi_test.exe	7e92b0358989c5f2
