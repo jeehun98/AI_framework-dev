@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/backends/cuda/ops/epilogue/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
