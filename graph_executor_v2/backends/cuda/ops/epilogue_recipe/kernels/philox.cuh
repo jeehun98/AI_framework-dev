@@ -17,7 +17,7 @@
 
 struct PhiloxState {
   unsigned long long seed;   // 64-bit key
-  unsigned long long offset; // 64-bit counter base
+  unsigned long long offset; // 64-bit base counter
 };
 
 __device__ __forceinline__ void philox_round(uint4 &ctr, uint2 key) {
@@ -37,13 +37,14 @@ __device__ __forceinline__ void bumpkey(uint2 &key) {
 __device__ __forceinline__ uint4 philox4x32_10(uint4 counter, uint2 key) {
   uint4 ctr = counter; uint2 k = key;
   #pragma unroll
-  for (int i = 0; i < 10; ++i) { philox_round(ctr, k); bumpkey(k); }
+  for (int i=0;i<10;++i){ philox_round(ctr,k); bumpkey(k); }
   return ctr;
 }
 __device__ __forceinline__ uint4 make_counter(unsigned long long base, unsigned long long elem){
   unsigned long long c = base + elem;
-  uint4 ctr; ctr.x = (uint32_t)(c & 0xffffffffull);
-  ctr.y = (uint32_t)((c>>32)&0xffffffffull);
+  uint4 ctr;
+  ctr.x = (uint32_t)(c & 0xffffffffull);
+  ctr.y = (uint32_t)((c>>32) & 0xffffffffull);
   ctr.z = 0u; ctr.w = 0u; return ctr;
 }
 __device__ __forceinline__ uint2 make_key(unsigned long long seed){
