@@ -115,7 +115,8 @@ _lazy_submodules = {
     "memory",
     "rmsnorm",
     "slice",
-    "view"
+    "view",
+    "epilogue"
 }
 
 def __getattr__(name: str):

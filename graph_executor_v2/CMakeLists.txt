@@ -779,8 +779,10 @@ apply_win_warnings(_ops_view)
 # Epilogue (policy) 라이브러리
 # =========================
 add_library(ge2_epilogue_policy STATIC
+  backends/cuda/ops/epilogue/api/epilogue_stub.cpp
+  backends/cuda/ops/epilogue/kernels/epilogue_kernels_policy.cu
+  backends/cuda/ops/epilogue/kernels/epilogue_dispatch.cu
   backends/cuda/ops/epilogue/launcher/epilogue_launcher_policy.cu
-  
 )
 
 set_target_properties(ge2_epilogue_policy PROPERTIES
@@ -792,6 +794,10 @@ target_include_directories(ge2_epilogue_policy
   PUBLIC
     ${PROJECT_INCLUDE_DIR}
     ${CMAKE_SOURCE_DIR}
+    backends/cuda/ops/epilogue
+    backends/cuda/ops/epilogue/api
+    backends/cuda/ops/epilogue/kernels
+    backends/cuda/ops/epilogue/kernels/policy
   PRIVATE
     backends/cuda/ops/epilogue
 )
@@ -806,6 +812,7 @@ apply_win_warnings(ge2_epilogue_policy)
 # =========================
 # Python 모듈 (_ops_epilogue)
 # =========================
+# ⚠️ pybind 모듈은 pybind cpp만 포함하고, 나머지는 라이브러리에 링크로 의존
 pybind11_add_module(_ops_epilogue MODULE
   backends/cuda/ops/epilogue/pybind/epilogue_pybind.cpp
 )
@@ -819,6 +826,9 @@ target_include_directories(_ops_epilogue PRIVATE
   ${CMAKE_SOURCE_DIR}
   ${PROJECT_INCLUDE_DIR}
   backends/cuda/ops/epilogue
+  backends/cuda/ops/epilogue/api
+  backends/cuda/ops/epilogue/kernels
+  backends/cuda/ops/epilogue/kernels/policy
 )
 
 set_target_properties(_ops_epilogue PROPERTIES
@@ -836,6 +846,7 @@ if (WIN32)
 endif()
 
 apply_win_warnings(_ops_epilogue)
+
 
 
 # =========================

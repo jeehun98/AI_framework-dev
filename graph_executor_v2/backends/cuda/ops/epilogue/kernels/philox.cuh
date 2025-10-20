@@ -1,60 +1,28 @@
+// backends/cuda/ops/epilogue/kernels/philox.cuh
 #pragma once
-#include <cuda_fp16.h>
 #include <stdint.h>
 
-#ifndef PHILOX_M4x32_A
-#define PHILOX_M4x32_A 0xD2511F53u
-#endif
-#ifndef PHILOX_M4x32_B
-#define PHILOX_M4x32_B 0xCD9E8D57u
-#endif
-#ifndef PHILOX_W32_A
-#define PHILOX_W32_A   0x9E3779B9u
-#endif
-#ifndef PHILOX_W32_B
-#define PHILOX_W32_B   0xBB67AE85u
-#endif
+namespace epi {
 
+// 무상태 해시 RNG (SplitMix64→u32)
+__device__ __forceinline__ uint32_t splitmix32(uint64_t x){
+  x += 0x9E3779B97F4A7C15ULL;
+  x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+  x = x ^ (x >> 31);
+  return static_cast<uint32_t>(x & 0xFFFFFFFFu);
+}
+
+__device__ __forceinline__ float rand01(uint64_t seed, uint64_t idx){
+  uint32_t u = splitmix32(seed ^ (idx + 0xD1342543DE82EF95ULL));
+  const float scale = 1.0f / 4294967296.0f;
+  return (static_cast<float>(u) + 0.5f) * scale;
+}
+
+// ep_apply 호환용 state 셰임
 struct PhiloxState {
-  unsigned long long seed;
-  unsigned long long offset;
+  uint64_t seed;
+  __device__ __forceinline__ PhiloxState(uint64_t s=0ULL) : seed(s) {}
 };
 
-__device__ __forceinline__ void philox_round(uint4 &ctr, uint2 key) {
-  unsigned int hi0 = __umulhi(PHILOX_M4x32_A, ctr.x);
-  unsigned int hi1 = __umulhi(PHILOX_M4x32_B, ctr.z);
-  unsigned int lo0 = PHILOX_M4x32_A * ctr.x;
-  unsigned int lo1 = PHILOX_M4x32_B * ctr.z;
-  ctr.x = hi1 ^ ctr.y ^ key.x;
-  ctr.y = lo1;
-  ctr.z = hi0 ^ ctr.w ^ key.y;
-  ctr.w = lo0;
-}
-__device__ __forceinline__ void bumpkey(uint2 &key) {
-  key.x += PHILOX_W32_A; key.y += PHILOX_W32_B;
-}
-__device__ __forceinline__ uint4 philox4x32_10(uint4 counter, uint2 key) {
-  uint4 ctr = counter; uint2 k = key;
-  #pragma unroll
-  for (int i = 0; i < 10; ++i) { philox_round(ctr, k); bumpkey(k); }
-  return ctr;
-}
-__device__ __forceinline__ uint4 make_counter(unsigned long long base, unsigned long long elem){
-  unsigned long long c = base + elem;
-  uint4 ctr; ctr.x=(uint32_t)(c & 0xffffffffull);
-  ctr.y=(uint32_t)((c>>32)&0xffffffffull);
-  ctr.z=0u; ctr.w=0u; return ctr;
-}
-__device__ __forceinline__ uint2 make_key(unsigned long long seed){
-  uint2 k; k.x=(uint32_t)(seed & 0xffffffffull);
-  k.y=(uint32_t)((seed>>32)&0xffffffffull); return k;
-}
-__device__ __forceinline__ float uint32_to_uniform01(uint32_t x){
-  return (x >> 9) * (1.0f/8388608.0f);
-}
-__device__ __forceinline__ float philox_uniform01(const PhiloxState& st, unsigned long long elem_idx){
-  uint4 ctr=make_counter(st.offset, elem_idx);
-  uint2 key=make_key(st.seed);
-  uint4 r=philox4x32_10(ctr, key);
-  return uint32_to_uniform01(r.x);
-}
+} // namespace epi
