@@ -1,9 +1,10 @@
+// backends/cuda/ops/rnn/launcher.cu
 #include <cuda_runtime.h>
 #include <vector>
 #include <algorithm>
 #include <cassert>
 
-#include "backends/cuda/ops/gemm/api.hpp"   // GemmCudaLaunch (epilogue)
+#include "backends/cuda/ops/gemm/api.hpp"   // GemmCudaLaunch / GemmCudaBackward (epilogue FWD/BWD)
 #include "backends/cuda/ops/rnn/api.hpp"    // this module's API
 
 #ifdef BUILD_STANDALONE_OPS
@@ -75,6 +76,8 @@ Status RnnCudaLaunch(const Tensor& X,   // [N,T,I]
   if (want_z) {
     if (!is3_f32_cuda(*Z_saved)) return Status::Invalid;
     if (Z_saved->desc.shape[0]!=N || Z_saved->desc.shape[1]!=T || Z_saved->desc.shape[2]!=H) return Status::ShapeMismatch;
+    // ✅ 안전 가드: Z와 Y 버퍼 alias 금지
+    if (Z_saved->data == Y.data) return Status::Invalid;
   }
 
   if (!ws || !ws->XH_cat || !ws->Y_rows || !ws->W_cat || (want_z && !ws->Z_rows))
@@ -174,7 +177,7 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                              const Tensor* B,       // [H] optional (unused)
                              const Tensor& h0,      // [N,H]
                              const Tensor& dY_post, // [N,T,H]
-                             const Tensor& Z,       // [N,T,H]
+                             const Tensor& Z,       // [N,T,H] (pre-activation from FWD)
                              Tensor* dWx,           // [I,H]
                              Tensor* dWh,           // [H,H]
                              Tensor* dB,            // [H]
@@ -209,16 +212,18 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
   if (dB  && a.with_bias) cudaMemsetAsync(dB->data, 0, sizeof(float)*(size_t)H, s);
   if (dh0) cudaMemsetAsync(dh0->data, 0, sizeof(float)*(size_t)N*H, s);
   if (dX)  cudaMemsetAsync(dX->data, 0, sizeof(float)*(size_t)N*T*I, s);
-  cudaMemsetAsync(ws->dWcat,  0, sizeof(float)*(size_t)(I+H)*H, s);
-  cudaMemsetAsync(ws->dXH_cat,0, sizeof(float)*(size_t)N*(I+H), s);
+  cudaMemsetAsync(ws->dWcat,   0, sizeof(float)*(size_t)(I+H)*H, s);
+  cudaMemsetAsync(ws->dXH_cat, 0, sizeof(float)*(size_t)N*(I+H), s);
 
   // W_cat = [Wx ; Wh] : [I+H, H]
   cudaMemcpyAsync(ws->W_cat, Wx.data, (size_t)I*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
   cudaMemcpyAsync(ws->W_cat + (size_t)I*H, Wh.data, (size_t)H*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
 
-  ai::GemmAttrs g{}; g.act = ai::ActKind::None; g.with_bias=false;
+  ai::GemmAttrs g{};
+  g.act         = a.act;                 // BWD 에필로그에서 act' 사용
+  g.leaky_slope = a.leaky_slope;
+  g.with_bias   = (a.with_bias && dB);  // dB 있을 때만 reduce
 
-  // pitches
   const size_t X_pitch_elems_dst = (size_t)(I + H);
   const size_t X_pitch_elems_src = (size_t)(T * I);
   const size_t H_pitch_elems     = (size_t)H;
@@ -243,7 +248,6 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                         H * sizeof(float), (size_t)N,
                         cudaMemcpyDeviceToDevice, s);
     } else {
-      // Z_rows <- Z[:,t-1,:]
       {
         const void* src_z = static_cast<const float*>(Z.data) + (size_t)(t-1) * H;
         void* dst_z = ws->Z_rows;
@@ -253,7 +257,6 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                           cudaMemcpyDeviceToDevice, s);
       }
       apply_act_rows_local_launcher(ws->Z_rows, ws->Z_rows, (int)N, (int)H, (int)a.act, a.leaky_slope, s);
-      // copy to tail
       {
         const void* src = ws->Z_rows;
         void* dst = ws->XH_cat + I;
@@ -273,33 +276,38 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                         H * sizeof(float), (size_t)N,
                         cudaMemcpyDeviceToDevice, s);
     }
-    // + dh_next (from previous iteration) => dXH_cat[:, I:]
+    // + dh_next 누적 (tail of dXH_cat)
     add_dhnext_into_grows_launcher(ws->dXH_cat, ws->G_rows, (int)N, (int)I, (int)H, s);
 
-    // dact: use Z[:,t,:]
+    // Z_rows <- Z[:,t,:] (BWD 에필로그 입력)
     {
       const void* src_z = static_cast<const float*>(Z.data) + (size_t)t * H;
-      void* dst_z = ws->Z_rows; // reuse as [N,H]
+      void* dst_z = ws->Z_rows;
       cudaMemcpy2DAsync(dst_z, H_pitch_elems * sizeof(float),
                         src_z, TH_pitch_elems * sizeof(float),
                         H * sizeof(float), (size_t)N,
                         cudaMemcpyDeviceToDevice, s);
     }
-    apply_dact_rows_local_launcher(ws->G_rows, ws->Z_rows, ws->G_rows, (int)N, (int)H, (int)a.act, a.leaky_slope, s);
-    if (dB && a.with_bias) {
-      reduce_db_rows_NH_launcher(ws->G_rows, static_cast<float*>(dB->data), (int)N, (int)H, s);
-    }
 
-    // (1) dXH = G_rows[N,H] @ (W_cat^T)[H,I+H]
-    transpose_kernel_launcher(ws->W_cat, ws->TmpW, /*M=*/(int)(I+H), /*N=*/(int)H, s); // TmpW := W_cat^T (H, I+H)
-    {
-      Tensor tG { ws->G_rows, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)H},       {(int64_t)H, 1}},     Device::CUDA, 0 };
-      Tensor tWT{ ws->TmpW,   {DType::F32, Layout::RowMajor, {(int64_t)H, (int64_t)(I+H)},   {(int64_t)(I+H), 1}}, Device::CUDA, 0 };
-      Tensor tO { ws->dXH_cat,{DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)(I+H)},   {(int64_t)(I+H), 1}}, Device::CUDA, 0 };
-      Status st = GemmCudaLaunch(tG, tWT, /*Bias*/nullptr, tO, g, stream, nullptr);
-      if (st != Status::Ok) return st;
-    }
-    // scatter dX[:,t,:] = dXH[:, :I]
+    // 텐서 뷰
+    Tensor tA   { ws->XH_cat, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)(I+H)}, {(int64_t)(I+H), 1}}, Device::CUDA, 0 };
+    Tensor tB   { ws->W_cat,  {DType::F32, Layout::RowMajor, {(int64_t)(I+H), (int64_t)H}, {(int64_t)H, 1}},   Device::CUDA, 0 };
+    Tensor tGY  { ws->G_rows, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)H},     {(int64_t)H, 1}},   Device::CUDA, 0 };
+    Tensor tZ   { ws->Z_rows, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)H},     {(int64_t)H, 1}},   Device::CUDA, 0 };
+    Tensor tGA  { ws->dXH_cat,{DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)(I+H)}, {(int64_t)(I+H), 1}},Device::CUDA, 0 };
+    Tensor tGB  { ws->TmpW,   {DType::F32, Layout::RowMajor, {(int64_t)(I+H), (int64_t)H}, {(int64_t)H, 1}},   Device::CUDA, 0 };
+    Tensor* tGC = nullptr;
+    Tensor* tGBias = (dB && a.with_bias) ? dB : nullptr;
+
+    // 내부 scratch(캡처-세이프 alloc/free)에 맡김
+    Status st_bwd = GemmCudaBackward(
+      tA, tB, /*C*/nullptr,
+      tGY, tZ,
+      /*gA*/ &tGA, /*gB*/ &tGB, /*gC*/ tGC, /*gBias*/ tGBias,
+      g, stream, /*ws=*/nullptr);
+    if (st_bwd != Status::Ok) return st_bwd;
+
+    // dX[:,t,:] = dXH_cat[:, :I]
     if (dX){
       void* dst = static_cast<float*>(dX->data) + (size_t)t * I;
       const void* src = ws->dXH_cat; // [:, :I]
@@ -309,16 +317,9 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                         cudaMemcpyDeviceToDevice, s);
     }
 
-    // (2) dWcat += (XH_cat^T @ G_rows) => Tmp := (G_rows^T @ XH_cat) [H, I+H], dWcat += Tmp^T
-    transpose_kernel_launcher(ws->G_rows, ws->Z_rows, /*M=*/(int)N, /*N=*/(int)H, s); // Z_rows := G^T [H,N]
-    {
-      Tensor tGT{ ws->Z_rows, {DType::F32, Layout::RowMajor, {(int64_t)H, (int64_t)N},     {(int64_t)N, 1}},       Device::CUDA, 0 };
-      Tensor tX { ws->XH_cat, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)(I+H)}, {(int64_t)(I+H), 1}},   Device::CUDA, 0 };
-      Tensor tS { ws->TmpW,   {DType::F32, Layout::RowMajor, {(int64_t)H, (int64_t)(I+H)}, {(int64_t)(I+H), 1}},   Device::CUDA, 0 };
-      Status st = GemmCudaLaunch(tGT, tX, /*Bias*/nullptr, tS, g, stream, nullptr); // S = G^T @ X
-      if (st != Status::Ok) return st;
-    }
-    add_transpose_into_launcher(ws->dWcat, ws->TmpW, (int)(I+H), (int)H, s);
+    // dWcat += gB  (gB: [I+H,H])  →  transpose(H,I+H) 후 누적
+    transpose_kernel_launcher(ws->TmpW, ws->Z_rows, /*M=*/(int)(I+H), /*N=*/(int)H, s); // Z_rows := gB^T [H, I+H]
+    add_transpose_into_launcher(ws->dWcat, ws->Z_rows, (int)(I+H), (int)H, s);
   } // for t
 
   // split dWcat -> dWx, dWh
@@ -329,7 +330,7 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
     cudaMemcpyAsync(dWh->data, ws->dWcat + (size_t)I*H, (size_t)H*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
   }
 
-  // dh0 = dh_next (after t==0) = dXH_cat[:, I:]
+  // dh0 = dXH_cat[:, I:]
   if (dh0){
     void* dst = dh0->data;             // [N,H]
     const void* src = ws->dXH_cat + I; // [:, I:]

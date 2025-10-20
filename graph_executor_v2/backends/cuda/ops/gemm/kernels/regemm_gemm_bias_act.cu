@@ -6,7 +6,8 @@
 #include "../detail/api.h"
 #include "../detail/activations.h"
 #include "../detail/bias.h"
-#include "../detail/traits.hpp"
+// 기존 traits.hpp의 에필로그 구현 대신, 공통 모듈 래퍼를 포함
+#include "../detail/epilogue_adaptor.hpp"
 #include "../detail/nvtx_shim.h"
 
 namespace regemm {
@@ -531,12 +532,13 @@ void gemm_bias_act_f32_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
   if (tiny) launch_gemm_bias_act_f32_smoke_ex(p, s);
   else      launch_gemm_bias_act_f32_tiled_ex(p, s);
 }
-
 // ====================================================================
 // 명시적 인스턴스화 (링크 안정)
 //  - 필요 활성화만 열어 바이너리 크기 제어 가능
 // ====================================================================
-namespace regemm {
+#ifdef __CUDACC__
+
+// 여기서는 **추가 네임스페이스 열지 않습니다** (이미 regemm 내부임)
 
 // 템플릿 선언(정의는 위에 있음)
 template<int,int,int,ActKind,BiasMode,bool>
@@ -551,55 +553,42 @@ constexpr int kBN = BN;
 constexpr int kBK = BK;
 
 // ---------- FWD (non-EX) ----------
-// HasC=false/true 모두 인스턴스화 (불필요하면 한쪽만 남기세요)
 #define INSTANTIATE_FWD_FOR_ACT(AK) \
-  /* BiasMode::None */ \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::None, false>(GemmBiasActParams); \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::None, true >(GemmBiasActParams); \
-  /* BiasMode::PerM */ \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerM, false>(GemmBiasActParams); \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerM, true >(GemmBiasActParams); \
-  /* BiasMode::PerN */ \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerN, false>(GemmBiasActParams); \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerN, true >(GemmBiasActParams); \
-  /* BiasMode::Full(=Scalar) */ \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::Full, false>(GemmBiasActParams); \
   template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::Full, true >(GemmBiasActParams);
 
-// 필요 활성화만 남기세요(전체 6종)
 INSTANTIATE_FWD_FOR_ACT(ActKind::None)
 INSTANTIATE_FWD_FOR_ACT(ActKind::ReLU)
 INSTANTIATE_FWD_FOR_ACT(ActKind::LeakyReLU)
 INSTANTIATE_FWD_FOR_ACT(ActKind::GELU)
 INSTANTIATE_FWD_FOR_ACT(ActKind::Sigmoid)
 INSTANTIATE_FWD_FOR_ACT(ActKind::Tanh)
-
 #undef INSTANTIATE_FWD_FOR_ACT
 
 // ---------- FWD EX (Z-stash) ----------
-// HasC=false 고정(보통 FWD EX에서 C를 쓰지 않음). SaveZ=false/true 모두.
 #define INSTANTIATE_EX_FOR_ACT(AK) \
-  /* SaveZ=false */ \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::None, false, false>(GemmBiasActParamsEx); \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerM, false, false>(GemmBiasActParamsEx); \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerN, false, false>(GemmBiasActParamsEx); \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::Full, false, false>(GemmBiasActParamsEx); \
-  /* SaveZ=true  */ \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::None, false, true >(GemmBiasActParamsEx); \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerM, false, true >(GemmBiasActParamsEx); \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerN, false, true >(GemmBiasActParamsEx); \
   template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::Full, false, true >(GemmBiasActParamsEx);
 
-// 필요 활성화만 남기세요(전체 6종)
 INSTANTIATE_EX_FOR_ACT(ActKind::None)
 INSTANTIATE_EX_FOR_ACT(ActKind::ReLU)
 INSTANTIATE_EX_FOR_ACT(ActKind::LeakyReLU)
 INSTANTIATE_EX_FOR_ACT(ActKind::GELU)
 INSTANTIATE_EX_FOR_ACT(ActKind::Sigmoid)
 INSTANTIATE_EX_FOR_ACT(ActKind::Tanh)
-
 #undef INSTANTIATE_EX_FOR_ACT
-
-} // namespace regemm
+#endif // __CUDACC__
 
 } // namespace regemm

@@ -10,7 +10,8 @@
 #include "../detail/bias.h"
 #include "../detail/api.h"
 #include "../detail/activations.h"
-#include "../detail/traits.hpp"   // BiasMode / to_bias_mode
+// 기존 traits.hpp 에 있던 BiasMode/to_bias_mode를 epilogue 공용 어댑터로 대체
+#include "../detail/epilogue_adaptor.hpp"
 #include "../detail/nvtx_shim.h"
 
 namespace regemm {

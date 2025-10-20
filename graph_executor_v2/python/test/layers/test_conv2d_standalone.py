@@ -21,7 +21,7 @@ def run_basic():
     cp.random.seed(1)
     x = cp.random.randn(2, 3, 32, 32).astype(cp.float32)
 
-    conv = Conv2D(filters=8, kernel_size=(3,3), stride=(1,1), padding=(1,1), use_bias=True)
+    conv = Conv2D(kernel_size=(3,3), stride=(1,1), padding=(1,1), use_bias=True)
     y = conv(x)
     print(f"Forward OK: y.shape={y.shape}")
     assert cp.allclose(y, conv.last_z, atol=1e-6)

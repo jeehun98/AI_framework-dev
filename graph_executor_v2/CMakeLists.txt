@@ -57,6 +57,29 @@ function(apply_win_warnings tgt)
 endfunction()
 
 # =========================
+# epilogue (공통 모듈)
+# =========================
+# 구버전 epilogue 설정을 모두 제거하고, 공통 정책 라이브러리로 재구성
+add_library(ge2_epilogue_policy STATIC
+  backends/cuda/ops/epilogue/include/epilogue/config.hpp
+  backends/cuda/ops/epilogue/include/epilogue/activations.hpp
+  backends/cuda/ops/epilogue/include/epilogue/bias_broadcast.hpp
+  backends/cuda/ops/epilogue/include/epilogue/dropout.hpp
+  backends/cuda/ops/epilogue/include/epilogue/apply.hpp
+  # 필요 시 명시적 인스턴스 활성화:
+  backends/cuda/ops/epilogue/kernels/epilogue_inst.cu
+)
+set_target_properties(ge2_epilogue_policy PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+)
+target_include_directories(ge2_epilogue_policy
+  PUBLIC
+    backends/cuda/ops/epilogue/include
+)
+apply_win_warnings(ge2_epilogue_policy)
+
+# =========================
 # ai_core (디스패치/실행기/ops)
 # =========================
 add_library(ai_core STATIC
@@ -111,6 +134,7 @@ target_include_directories(ge2_regemm_core
     ${PROJECT_INCLUDE_DIR}
     backends/cuda/ops/gemm/include
 )
+target_link_libraries(ge2_regemm_core PRIVATE ge2_epilogue_policy)
 apply_win_warnings(ge2_regemm_core)
 
 # (2) 독립 모듈용
@@ -125,6 +149,7 @@ target_include_directories(ge2_regemm_standalone
     backends/cuda/ops/gemm/include
 )
 target_compile_definitions(ge2_regemm_standalone PRIVATE BUILD_STANDALONE_OPS=1)
+target_link_libraries(ge2_regemm_standalone PRIVATE ge2_epilogue_policy)
 apply_win_warnings(ge2_regemm_standalone)
 
 # =========================
@@ -215,7 +240,7 @@ target_link_libraries(ai_backend_cuda
     ai_core
     CUDA::cudart
     CUDA::cublas
-    ge2_epilogue_policy          
+    ge2_epilogue_policy
 )
 apply_win_warnings(ai_backend_cuda)
 
@@ -275,6 +300,7 @@ target_sources(_ops_gemm PRIVATE
 target_link_libraries(_ops_gemm PRIVATE
   CUDA::cudart
   CUDA::cublas
+  ge2_epilogue_policy
 )
 target_include_directories(_ops_gemm PRIVATE
   ${CMAKE_SOURCE_DIR}
@@ -318,6 +344,7 @@ target_sources(_ops_conv2d PRIVATE
 target_link_libraries(_ops_conv2d PRIVATE
   CUDA::cudart
   CUDA::cublas
+  ge2_epilogue_policy
 )
 set_target_properties(_ops_conv2d PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -526,6 +553,7 @@ target_sources(_ops_rnn PRIVATE
 target_link_libraries(_ops_rnn PRIVATE
   CUDA::cudart
   CUDA::cublas
+  ge2_epilogue_policy
 )
 set_target_properties(_ops_rnn PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -776,80 +804,6 @@ endif()
 apply_win_warnings(_ops_view)
 
 # =========================
-# Epilogue (policy) 라이브러리
-# =========================
-add_library(ge2_epilogue_policy STATIC
-  backends/cuda/ops/epilogue/api/epilogue_stub.cpp
-  backends/cuda/ops/epilogue/kernels/epilogue_kernels_policy.cu
-  backends/cuda/ops/epilogue/kernels/epilogue_dispatch.cu
-  backends/cuda/ops/epilogue/launcher/epilogue_launcher_policy.cu
-)
-
-set_target_properties(ge2_epilogue_policy PROPERTIES
-  CUDA_SEPARABLE_COMPILATION ON
-  CUDA_RESOLVE_DEVICE_SYMBOLS ON
-)
-
-target_include_directories(ge2_epilogue_policy
-  PUBLIC
-    ${PROJECT_INCLUDE_DIR}
-    ${CMAKE_SOURCE_DIR}
-    backends/cuda/ops/epilogue
-    backends/cuda/ops/epilogue/api
-    backends/cuda/ops/epilogue/kernels
-    backends/cuda/ops/epilogue/kernels/policy
-  PRIVATE
-    backends/cuda/ops/epilogue
-)
-
-target_link_libraries(ge2_epilogue_policy
-  PUBLIC
-    CUDA::cudart
-)
-
-apply_win_warnings(ge2_epilogue_policy)
-
-# =========================
-# Python 모듈 (_ops_epilogue)
-# =========================
-# ⚠️ pybind 모듈은 pybind cpp만 포함하고, 나머지는 라이브러리에 링크로 의존
-pybind11_add_module(_ops_epilogue MODULE
-  backends/cuda/ops/epilogue/pybind/epilogue_pybind.cpp
-)
-
-target_link_libraries(_ops_epilogue PRIVATE
-  ge2_epilogue_policy
-  CUDA::cudart
-)
-
-target_include_directories(_ops_epilogue PRIVATE
-  ${CMAKE_SOURCE_DIR}
-  ${PROJECT_INCLUDE_DIR}
-  backends/cuda/ops/epilogue
-  backends/cuda/ops/epilogue/api
-  backends/cuda/ops/epilogue/kernels
-  backends/cuda/ops/epilogue/kernels/policy
-)
-
-set_target_properties(_ops_epilogue PROPERTIES
-  CUDA_SEPARABLE_COMPILATION ON
-  CUDA_RESOLVE_DEVICE_SYMBOLS ON
-  PREFIX "" SUFFIX ".pyd"
-  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-)
-
-if (WIN32)
-  set_target_properties(_ops_epilogue PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-  )
-endif()
-
-apply_win_warnings(_ops_epilogue)
-
-
-
-# =========================
 # _ops_common 선행 의존성 일괄 추가
 # =========================
 set(_ops_modules
@@ -857,7 +811,6 @@ set(_ops_modules
   _ops_optimizer _ops_memory _ops_batchnorm _ops_embedding _ops_layernorm
   _ops_softmax _ops_cross_entropy _ops_rmsnorm
   _ops_concat _ops_slice _ops_view
-  _ops_epilogue              
 )
 foreach(mod IN LISTS _ops_modules)
   if (TARGET ${mod} AND TARGET _ops_common)
