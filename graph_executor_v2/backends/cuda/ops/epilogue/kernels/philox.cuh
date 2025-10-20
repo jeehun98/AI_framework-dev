@@ -16,8 +16,8 @@
 #endif
 
 struct PhiloxState {
-  unsigned long long seed;   // 64-bit key
-  unsigned long long offset; // 64-bit counter base
+  unsigned long long seed;
+  unsigned long long offset;
 };
 
 __device__ __forceinline__ void philox_round(uint4 &ctr, uint2 key) {
@@ -31,8 +31,7 @@ __device__ __forceinline__ void philox_round(uint4 &ctr, uint2 key) {
   ctr.w = lo0;
 }
 __device__ __forceinline__ void bumpkey(uint2 &key) {
-  key.x += PHILOX_W32_A;
-  key.y += PHILOX_W32_B;
+  key.x += PHILOX_W32_A; key.y += PHILOX_W32_B;
 }
 __device__ __forceinline__ uint4 philox4x32_10(uint4 counter, uint2 key) {
   uint4 ctr = counter; uint2 k = key;
@@ -42,19 +41,20 @@ __device__ __forceinline__ uint4 philox4x32_10(uint4 counter, uint2 key) {
 }
 __device__ __forceinline__ uint4 make_counter(unsigned long long base, unsigned long long elem){
   unsigned long long c = base + elem;
-  uint4 ctr; ctr.x = (uint32_t)(c & 0xffffffffull);
-  ctr.y = (uint32_t)((c>>32)&0xffffffffull);
-  ctr.z = 0u; ctr.w = 0u; return ctr;
+  uint4 ctr; ctr.x=(uint32_t)(c & 0xffffffffull);
+  ctr.y=(uint32_t)((c>>32)&0xffffffffull);
+  ctr.z=0u; ctr.w=0u; return ctr;
 }
 __device__ __forceinline__ uint2 make_key(unsigned long long seed){
-  uint2 k; k.x=(uint32_t)(seed & 0xffffffffull); k.y=(uint32_t)((seed>>32)&0xffffffffull); return k;
+  uint2 k; k.x=(uint32_t)(seed & 0xffffffffull);
+  k.y=(uint32_t)((seed>>32)&0xffffffffull); return k;
 }
 __device__ __forceinline__ float uint32_to_uniform01(uint32_t x){
-  return (x >> 9) * (1.0f/8388608.0f); // 2^23
+  return (x >> 9) * (1.0f/8388608.0f);
 }
 __device__ __forceinline__ float philox_uniform01(const PhiloxState& st, unsigned long long elem_idx){
-  uint4 ctr = make_counter(st.offset, elem_idx);
-  uint2 key = make_key(st.seed);
-  uint4 r = philox4x32_10(ctr, key);
+  uint4 ctr=make_counter(st.offset, elem_idx);
+  uint2 key=make_key(st.seed);
+  uint4 r=philox4x32_10(ctr, key);
   return uint32_to_uniform01(r.x);
 }

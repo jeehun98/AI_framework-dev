@@ -215,6 +215,7 @@ target_link_libraries(ai_backend_cuda
     ai_core
     CUDA::cudart
     CUDA::cublas
+    ge2_epilogue_policy          
 )
 apply_win_warnings(ai_backend_cuda)
 
@@ -775,6 +776,69 @@ endif()
 apply_win_warnings(_ops_view)
 
 # =========================
+# Epilogue (policy) 라이브러리
+# =========================
+add_library(ge2_epilogue_policy STATIC
+  backends/cuda/ops/epilogue/launcher/epilogue_launcher_policy.cu
+  
+)
+
+set_target_properties(ge2_epilogue_policy PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+)
+
+target_include_directories(ge2_epilogue_policy
+  PUBLIC
+    ${PROJECT_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}
+  PRIVATE
+    backends/cuda/ops/epilogue
+)
+
+target_link_libraries(ge2_epilogue_policy
+  PUBLIC
+    CUDA::cudart
+)
+
+apply_win_warnings(ge2_epilogue_policy)
+
+# =========================
+# Python 모듈 (_ops_epilogue)
+# =========================
+pybind11_add_module(_ops_epilogue MODULE
+  backends/cuda/ops/epilogue/pybind/epilogue_pybind.cpp
+)
+
+target_link_libraries(_ops_epilogue PRIVATE
+  ge2_epilogue_policy
+  CUDA::cudart
+)
+
+target_include_directories(_ops_epilogue PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  ${PROJECT_INCLUDE_DIR}
+  backends/cuda/ops/epilogue
+)
+
+set_target_properties(_ops_epilogue PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  PREFIX "" SUFFIX ".pyd"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+)
+
+if (WIN32)
+  set_target_properties(_ops_epilogue PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
+  )
+endif()
+
+apply_win_warnings(_ops_epilogue)
+
+
+# =========================
 # _ops_common 선행 의존성 일괄 추가
 # =========================
 set(_ops_modules
@@ -782,6 +846,7 @@ set(_ops_modules
   _ops_optimizer _ops_memory _ops_batchnorm _ops_embedding _ops_layernorm
   _ops_softmax _ops_cross_entropy _ops_rmsnorm
   _ops_concat _ops_slice _ops_view
+  _ops_epilogue              
 )
 foreach(mod IN LISTS _ops_modules)
   if (TARGET ${mod} AND TARGET _ops_common)
