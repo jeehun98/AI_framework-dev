@@ -10,7 +10,22 @@
 #include "backends/cuda/ops/gemm/detail/config.h"     // REGEMM_* 타일/블록 매크로
 #include "backends/cuda/ops/gemm/detail/api.h"
 #include "backends/cuda/ops/gemm/detail/traits.hpp"   // BiasMode / to_bias_mode / Epilogue 정책
-#include "backends/cuda/ops/gemm/api.hpp"             // GemmWorkspace, GemmCudaLaunch/Backward + AI_API
+#include "backends/cuda/ops/gemm/api.hpp"             // GemmWorkspace, GemmCudaLaunch/Backward
+#include "backends/cuda/ops/epilogue/api.hpp"         // ⟵ 추가: Standalone Epilogue
+ 
+#ifndef AI_RETURN_IF_ERROR
+#define AI_RETURN_IF_ERROR(expr)                          \
+  do {                                                    \
+    ::ai::Status _st__ = (expr);                          \
+    if (_st__ != ::ai::Status::Ok) return _st__;          \
+  } while (0)
+#endif
+
+
+// 폴백 사용 플래그(정책): 필요 시 외부에서 오버라이드
+#ifndef REGEMM_USE_STANDALONE_EPILOGUE_FALLBACK
+#define REGEMM_USE_STANDALONE_EPILOGUE_FALLBACK 1
+#endif
 
 //
 // 커널 선언(템플릿 인스턴스 디스패치용) — 정의는 kernels/*.cu에 존재
@@ -42,13 +57,11 @@ inline regemm::BiasKind infer_bias_kind_fallback(const ai::Tensor* Bias, int64_t
   for (auto v : s) numel *= v;
   if (numel <= 0) return BK::None;
 
-  // 우선 정확 매칭
+  // 정확 매칭
   if (s.size()==2 && s[0]==1 && s[1]==N) return BK::PerN;
   if (s.size()==1 && s[0]==N)            return BK::PerN;
-
   if (s.size()==2 && s[0]==M && s[1]==1) return BK::PerM;
   if (s.size()==1 && s[0]==M)            return BK::PerM;
-
   if ((s.size()==2 && s[0]==1 && s[1]==1) ||
       (s.size()==1 && s[0]==1))          return BK::Scalar;
 
@@ -246,50 +259,112 @@ ai::Status GemmCudaLaunch(
   // 7) 디스패치
   const bool tiny = (p.M * p.N < 4096) || (p.K < 8);
   const cudaStream_t cs = reinterpret_cast<cudaStream_t>(stream);
-  if (tiny) {
-    // 소규모/비타일 경로(런타임 분기 유지)
-    regemm::launch_gemm_bias_act_f32_smoke_ex(p, cs);
+
+  // ===== 7.A 성능 우선: 기존 fused(EX) 경로 =====
+  if (!REGEMM_USE_STANDALONE_EPILOGUE_FALLBACK) {
+    if (tiny) { regemm::launch_gemm_bias_act_f32_smoke_ex(p, cs); return ai::Status::Ok; }
+
+    const regemm::BiasMode bm = regemm::to_bias_mode(p.bias_kind);
+    const bool SaveZ = want_save_z;
+
+    switch (p.act) {
+      case regemm::ActKind::ReLU:
+        if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::ReLU,      true >(p, bm, cs);
+        else       launch_ex_cfg_bm<regemm::ActKind::ReLU,      false>(p, bm, cs);
+        break;
+      case regemm::ActKind::LeakyReLU:
+        if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, true >(p, bm, cs);
+        else       launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, false>(p, bm, cs);
+        break;
+      case regemm::ActKind::GELU:
+        if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::GELU,      true >(p, bm, cs);
+        else       launch_ex_cfg_bm<regemm::ActKind::GELU,      false>(p, bm, cs);
+        break;
+      case regemm::ActKind::Sigmoid:
+        if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   true >(p, bm, cs);
+        else       launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   false>(p, bm, cs);
+        break;
+      case regemm::ActKind::Tanh:
+        if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Tanh,      true >(p, bm, cs);
+        else       launch_ex_cfg_bm<regemm::ActKind::Tanh,      false>(p, bm, cs);
+        break;
+      case regemm::ActKind::None:
+      default:
+        if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::None,      true >(p, bm, cs);
+        else       launch_ex_cfg_bm<regemm::ActKind::None,      false>(p, bm, cs);
+        break;
+    }
     return ai::Status::Ok;
   }
 
-  // EX 템플릿 파라미터 계산
-  const regemm::BiasMode bm = regemm::to_bias_mode(p.bias_kind);
-  const bool SaveZ = want_save_z;
-
-  // 활성화별 컴파일타임 디스패치 (BiasMode는 런타임→컴파일타임 브릿지로 전달)
-  switch (p.act) {
-    case regemm::ActKind::ReLU:
-      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::ReLU,      true >(p, bm, cs);
-      else       launch_ex_cfg_bm<regemm::ActKind::ReLU,      false>(p, bm, cs);
-      break;
-    case regemm::ActKind::LeakyReLU:
-      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, true >(p, bm, cs);
-      else       launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, false>(p, bm, cs);
-      break;
-    case regemm::ActKind::GELU:
-      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::GELU,      true >(p, bm, cs);
-      else       launch_ex_cfg_bm<regemm::ActKind::GELU,      false>(p, bm, cs);
-      break;
-    case regemm::ActKind::Sigmoid:
-      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   true >(p, bm, cs);
-      else       launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   false>(p, bm, cs);
-      break;
-    case regemm::ActKind::Tanh:
-      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Tanh,      true >(p, bm, cs);
-      else       launch_ex_cfg_bm<regemm::ActKind::Tanh,      false>(p, bm, cs);
-      break;
-    case regemm::ActKind::None:
-    default:
-      if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::None,      true >(p, bm, cs);
-      else       launch_ex_cfg_bm<regemm::ActKind::None,      false>(p, bm, cs);
-      break;
+  // ===== 7.B 폴백: GEMM(=X) → Epilogue 호출 =====
+  // (i) pre-activation만 먼저 만든다: EX 커널을 "act=None, bias=None"로 호출하여
+  //     X = A*B 를 Y 또는 scratch에 쓴다. (SaveZ=false)
+  void* Xbuf = Y.data;
+  int   ldX  = static_cast<int>(ldd);
+  bool  use_scratch = false;
+  if (ws && ws->scratch && ws->scratch_bytes >= size_t(M)*size_t(N)*sizeof(float)) {
+    Xbuf = ws->scratch;
+    ldX  = static_cast<int>(N); // scratch는 [M,N] 연속 가정
+    use_scratch = true;
   }
 
+  // EX 파라미터를 복사해서, bias/act을 제거하고 출력 대상만 Xbuf로 바꾼다.
+  regemm::GemmBiasActParamsEx p_x = p;
+  p_x.D        = Xbuf;
+  p_x.ldd      = ldX;
+  p_x.bias     = nullptr;
+  p_x.bias_kind= regemm::BiasKind::None;
+  p_x.act      = regemm::ActKind::None;
+  p_x.save_preact = 0;
+  p_x.Z        = nullptr;
+  p_x.ldZ      = 0;
+
+  if (tiny) { regemm::launch_gemm_bias_act_f32_smoke_ex(p_x, cs); }
+  else {
+    launch_ex_cfg_bm<regemm::ActKind::None, false /*SaveZ*/>(p_x, regemm::BiasMode::None, cs);
+  }
+
+  // (ii) Standalone Epilogue 실행: Xbuf + Bias + Act (+Z) → Y
+  ai::EpilogueAttrs eattr;
+  eattr.act         = attrs.act;
+  eattr.leaky_slope = attrs.leaky_slope;
+  eattr.save_z      = attrs.save_z;
+
+  // regemm::BiasKind → ai::BiasLayout 매핑
+  ai::BiasLayout bl = ai::BiasLayout::None;
+  switch (p.bias_kind) {
+    case regemm::BiasKind::PerM:   bl = ai::BiasLayout::PerM;   break;
+    case regemm::BiasKind::PerN:   bl = ai::BiasLayout::PerN;   break;
+    case regemm::BiasKind::Scalar: bl = ai::BiasLayout::Scalar; break;
+    default:                       bl = ai::BiasLayout::None;   break;
+  }
+
+  // EpilogueFwdParams 채우기 (새 API는 raw 포인터/ld 기반)
+  const float* bias_ptr = (p.bias && p.bias_kind != regemm::BiasKind::None)
+                          ? reinterpret_cast<const float*>(p.bias) : nullptr;
+
+  ai::EpilogueFwdParams ep{};
+  ep.X          = reinterpret_cast<const float*>(Xbuf);
+  ep.ldX        = ldX;
+  ep.Bias       = bias_ptr;
+  ep.bias_layout= bl;
+  ep.Y          = reinterpret_cast<float*>(Y.data);
+  ep.ldY        = static_cast<int>(ldd);
+  ep.Z          = want_save_z ? reinterpret_cast<float*>(Z_ptr) : nullptr;
+  ep.ldZ        = want_save_z ? ldZ_i : 0;
+  ep.M          = static_cast<int>(M);
+  ep.N          = static_cast<int>(N);
+
+  AI_RETURN_IF_ERROR( ai::EpilogueFwdLaunch(ep, eattr, stream) );
+
+
+  // scratch를 썼으면 별도 해제는 상위 WS 정책(캡처-세이프)에서 관리
   return ai::Status::Ok;
 }
 
 // =========================
-// Backward (dZ scratch + Lt WS 지원) — 원문 로직 유지
+// Backward (원문 경로 유지) — 검증·성능 회귀 방지
 // =========================
 ai::Status GemmCudaBackward(
     const Tensor& A, const Tensor& B, const Tensor* C,
@@ -398,7 +473,7 @@ ai::Status GemmCudaBackward(
   p.lt_workspace       = ws ? ws->lt_workspace       : nullptr;
   p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
 
-  // 7) 실행
+  // 7) 실행 (원문 경로 유지)
   regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
   return ai::Status::Ok;
 }

@@ -96,7 +96,7 @@ def run_smoke_for_rnn(tag: str, *, variant: str):
     elif variant == "eval_tanh_bias":
         model = make_model_rnn_eval(
             N=N, T=T, I=I, H=32, hidden=64, classes=C,
-            rnn_act="tanh", rnn_bias=True, rnn_save_z=False,
+            rnn_act="tanh", rnn_bias=True, rnn_save_z=True,
             p_drop_head=0.6, scale_in_train=True
         )
     else:

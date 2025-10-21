@@ -14,7 +14,7 @@ struct RnnAttrs {
   ai::ActKind act{ai::ActKind::None};
   float       leaky_slope{0.01f};
   bool        with_bias{false};
-  bool        save_z{false};
+  bool        save_z{true};
 };
 
 // ========== 캡처-세이프 워크스페이스 (Forward) ==========

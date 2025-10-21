@@ -56,28 +56,6 @@ function(apply_win_warnings tgt)
   endif()
 endfunction()
 
-# =========================
-# epilogue (공통 모듈)
-# =========================
-# 구버전 epilogue 설정을 모두 제거하고, 공통 정책 라이브러리로 재구성
-add_library(ge2_epilogue_policy STATIC
-  backends/cuda/ops/epilogue/include/epilogue/config.hpp
-  backends/cuda/ops/epilogue/include/epilogue/activations.hpp
-  backends/cuda/ops/epilogue/include/epilogue/bias_broadcast.hpp
-  backends/cuda/ops/epilogue/include/epilogue/dropout.hpp
-  backends/cuda/ops/epilogue/include/epilogue/apply.hpp
-  # 필요 시 명시적 인스턴스 활성화:
-  backends/cuda/ops/epilogue/kernels/epilogue_inst.cu
-)
-set_target_properties(ge2_epilogue_policy PROPERTIES
-  CUDA_SEPARABLE_COMPILATION ON
-  CUDA_RESOLVE_DEVICE_SYMBOLS ON
-)
-target_include_directories(ge2_epilogue_policy
-  PUBLIC
-    backends/cuda/ops/epilogue/include
-)
-apply_win_warnings(ge2_epilogue_policy)
 
 # =========================
 # ai_core (디스패치/실행기/ops)
@@ -117,7 +95,7 @@ target_include_directories(ai_core
 apply_win_warnings(ai_core)
 
 # =========================
-# GEMM 공용 오브젝트 라이브러리 (소스 공통)
+# GEMM + Epilogue 공용 오브젝트 라이브러리 (소스 공통)
 # =========================
 set(GE2_REGEMM_SOURCES
   backends/cuda/ops/gemm/launcher.cu
@@ -125,20 +103,26 @@ set(GE2_REGEMM_SOURCES
   backends/cuda/ops/gemm/kernels/regemm_backward.cu
 )
 
+# Epilogue 소스(독립 모듈화)
+set(EPILOGUE_SRCS
+  backends/cuda/ops/epilogue/launcher.cu
+  backends/cuda/ops/epilogue/kernels.cu
+)
+
 # (1) 통합 백엔드용
-add_library(ge2_regemm_core OBJECT ${GE2_REGEMM_SOURCES})
+add_library(ge2_regemm_core OBJECT ${GE2_REGEMM_SOURCES} ${EPILOGUE_SRCS})
 set_property(TARGET ge2_regemm_core PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 target_include_directories(ge2_regemm_core
   PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${PROJECT_INCLUDE_DIR}
     backends/cuda/ops/gemm/include
+    backends/cuda/ops/epilogue
 )
-target_link_libraries(ge2_regemm_core PRIVATE ge2_epilogue_policy)
 apply_win_warnings(ge2_regemm_core)
 
 # (2) 독립 모듈용
-add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES})
+add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES} ${EPILOGUE_SRCS})
 set_target_properties(ge2_regemm_standalone PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
 )
@@ -147,9 +131,9 @@ target_include_directories(ge2_regemm_standalone
     ${CMAKE_SOURCE_DIR}
     backends/cuda/ops/_common/shim
     backends/cuda/ops/gemm/include
+    backends/cuda/ops/epilogue
 )
 target_compile_definitions(ge2_regemm_standalone PRIVATE BUILD_STANDALONE_OPS=1)
-target_link_libraries(ge2_regemm_standalone PRIVATE ge2_epilogue_policy)
 apply_win_warnings(ge2_regemm_standalone)
 
 # =========================
@@ -240,7 +224,6 @@ target_link_libraries(ai_backend_cuda
     ai_core
     CUDA::cudart
     CUDA::cublas
-    ge2_epilogue_policy
 )
 apply_win_warnings(ai_backend_cuda)
 
@@ -300,12 +283,12 @@ target_sources(_ops_gemm PRIVATE
 target_link_libraries(_ops_gemm PRIVATE
   CUDA::cudart
   CUDA::cublas
-  ge2_epilogue_policy
 )
 target_include_directories(_ops_gemm PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
   backends/cuda/ops/gemm/include
+  backends/cuda/ops/epilogue
 )
 target_compile_definitions(_ops_gemm PRIVATE BUILD_STANDALONE_OPS=1)
 set_target_properties(_ops_gemm PROPERTIES
@@ -337,6 +320,7 @@ target_include_directories(_ops_conv2d PRIVATE
   backends/cuda/ops/conv2d
   backends/cuda/ops/gemm/include
   backends/cuda/ops/gemm
+  backends/cuda/ops/epilogue
 )
 target_sources(_ops_conv2d PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
@@ -344,7 +328,6 @@ target_sources(_ops_conv2d PRIVATE
 target_link_libraries(_ops_conv2d PRIVATE
   CUDA::cudart
   CUDA::cublas
-  ge2_epilogue_policy
 )
 set_target_properties(_ops_conv2d PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -546,6 +529,7 @@ target_include_directories(_ops_rnn PRIVATE
   backends/cuda/ops/_common/shim
   backends/cuda/ops/gemm/include
   backends/cuda/ops/rnn
+  backends/cuda/ops/epilogue
 )
 target_sources(_ops_rnn PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
@@ -553,7 +537,6 @@ target_sources(_ops_rnn PRIVATE
 target_link_libraries(_ops_rnn PRIVATE
   CUDA::cudart
   CUDA::cublas
-  ge2_epilogue_policy
 )
 set_target_properties(_ops_rnn PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
