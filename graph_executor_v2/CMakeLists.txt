@@ -56,6 +56,42 @@ function(apply_win_warnings tgt)
   endif()
 endfunction()
 
+# =========================
+# NVTX 토글 & 링크/인클루드 설정
+# =========================
+option(USE_NVTX "Enable NVTX ranges" ON)
+if (USE_NVTX)
+  add_definitions(-DUSE_NVTX)
+
+  # 사용자가 -DNVTX_ROOT=... 넘길 수 있게
+  if (NOT DEFINED NVTX_ROOT)
+    if (WIN32)
+      set(NVTX_ROOT "C:/Program Files/NVIDIA Corporation/NVToolsExt")
+    else()
+      set(NVTX_ROOT "/usr/local/NVToolsExt") # 리눅스 기본 경로는 배포마다 다름
+    endif()
+  endif()
+
+  # 헤더 & 라이브러리 동시 탐색
+  find_path(NVTX_INCLUDE_DIR nvToolsExt.h
+            HINTS "${NVTX_ROOT}/include" "$ENV{CUDA_PATH}/include")
+  if (WIN32)
+    set(_NVTX_CANDIDATES nvToolsExt64_1 nvToolsExt)
+    list(APPEND _NVTX_HINTS
+      "${NVTX_ROOT}/lib/x64" "$ENV{CUDA_PATH}/lib/x64" "$ENV{CUDA_PATH}/lib")
+  else()
+    set(_NVTX_CANDIDATES nvToolsExt)
+    list(APPEND _NVTX_HINTS
+      "${NVTX_ROOT}/lib64" "${NVTX_ROOT}/lib" "$ENV{CUDA_PATH}/lib64" "$ENV{CUDA_PATH}/lib")
+  endif()
+  find_library(NVTOOLSEXT_LIB NAMES ${_NVTX_CANDIDATES} HINTS ${_NVTX_HINTS})
+
+  if (NOT NVTX_INCLUDE_DIR OR NOT NVTOOLSEXT_LIB)
+    message(WARNING
+      "NVTX not found completely (include='${NVTX_INCLUDE_DIR}', lib='${NVTOOLSEXT_LIB}'). "
+      "빌드는 진행하지만 NVTX가 제대로 작동하지 않을 수 있습니다.")
+  endif()
+endif()
 
 # =========================
 # ai_core (디스패치/실행기/ops)
@@ -73,7 +109,7 @@ add_library(ai_core STATIC
   src/ops/cross_entropy.cpp
   src/ops/dropout.cpp
   src/ops/sdpa.cpp
-  
+
   src/ops/pool2d.cpp
   src/ops/elementwise.cpp
   src/ops/reduction.cpp
@@ -93,6 +129,12 @@ target_include_directories(ai_core
     ${CMAKE_SOURCE_DIR}
 )
 apply_win_warnings(ai_core)
+if (USE_NVTX AND NVTX_INCLUDE_DIR)
+  target_include_directories(ai_core PRIVATE ${NVTX_INCLUDE_DIR})
+endif()
+if (USE_NVTX AND NVTOOLSEXT_LIB)
+  target_link_libraries(ai_core PRIVATE ${NVTOOLSEXT_LIB})
+endif()
 
 # =========================
 # GEMM + Epilogue 공용 오브젝트 라이브러리 (소스 공통)
@@ -120,6 +162,11 @@ target_include_directories(ge2_regemm_core
     backends/cuda/ops/epilogue
 )
 apply_win_warnings(ge2_regemm_core)
+# OBJECT 라이브러리: NVTX 헤더 필요
+if (USE_NVTX AND NVTX_INCLUDE_DIR)
+  target_include_directories(ge2_regemm_core PRIVATE ${NVTX_INCLUDE_DIR})
+endif()
+# NOTE: OBJECT 라이브러리는 직접 링크 불가 → 소비자(ai_backend_cuda, _ops_gemm)가 NVTX 링크를 가진다.
 
 # (2) 독립 모듈용
 add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES} ${EPILOGUE_SRCS})
@@ -135,6 +182,11 @@ target_include_directories(ge2_regemm_standalone
 )
 target_compile_definitions(ge2_regemm_standalone PRIVATE BUILD_STANDALONE_OPS=1)
 apply_win_warnings(ge2_regemm_standalone)
+# OBJECT 라이브러리: NVTX 헤더 필요
+if (USE_NVTX AND NVTX_INCLUDE_DIR)
+  target_include_directories(ge2_regemm_standalone PRIVATE ${NVTX_INCLUDE_DIR})
+endif()
+# NOTE: OBJECT 라이브러리는 직접 링크 불가 → 소비자(_ops_gemm)가 NVTX 링크를 가진다.
 
 # =========================
 # ai_backend_cuda (CUDA 백엔드 + 모든 CUDA ops)
@@ -225,6 +277,12 @@ target_link_libraries(ai_backend_cuda
     CUDA::cudart
     CUDA::cublas
 )
+if (USE_NVTX AND NVTX_INCLUDE_DIR)
+  target_include_directories(ai_backend_cuda PRIVATE ${NVTX_INCLUDE_DIR})
+endif()
+if (USE_NVTX AND NVTOOLSEXT_LIB)
+  target_link_libraries(ai_backend_cuda PRIVATE ${NVTOOLSEXT_LIB})
+endif()
 apply_win_warnings(ai_backend_cuda)
 
 # =========================
@@ -284,6 +342,12 @@ target_link_libraries(_ops_gemm PRIVATE
   CUDA::cudart
   CUDA::cublas
 )
+if (USE_NVTX AND NVTX_INCLUDE_DIR)
+  target_include_directories(_ops_gemm PRIVATE ${NVTX_INCLUDE_DIR})
+endif()
+if (USE_NVTX AND NVTOOLSEXT_LIB)
+  target_link_libraries(_ops_gemm PRIVATE ${NVTOOLSEXT_LIB})
+endif()
 target_include_directories(_ops_gemm PRIVATE
   ${CMAKE_SOURCE_DIR}
   backends/cuda/ops/_common/shim
@@ -807,3 +871,8 @@ endforeach()
 message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "PROJECT_INCLUDE_DIR: ${PROJECT_INCLUDE_DIR}")
+if (USE_NVTX)
+  message(STATUS "NVTX: enabled, include=${NVTX_INCLUDE_DIR}, lib=${NVTOOLSEXT_LIB}")
+else()
+  message(STATUS "NVTX: disabled")
+endif()

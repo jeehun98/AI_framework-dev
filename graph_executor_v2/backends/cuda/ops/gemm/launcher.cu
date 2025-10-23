@@ -5,6 +5,11 @@
 #include <stdexcept>
 #include <limits>
 
+#include "backends/cuda/ops/epilogue/api.hpp"         // ⟵ 추가: Standalone Epilogue
+// NVTX 공용 shim
+#include "backends/cuda/ops/_common/shim/nvtx.hpp"
+#include "backends/cuda/ops/gemm/detail/nvtx_shim.h" // ← 추가 (NVTX_COLOR, NVTX_MARK 제공)
+
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/gemm/detail/gemm_common.hpp"
 #include "backends/cuda/ops/gemm/detail/config.h"     // REGEMM_* 타일/블록 매크로
@@ -175,6 +180,8 @@ ai::Status GemmCudaLaunch(
     Tensor* Z_saved /*=nullptr*/,
     const GemmWorkspace* ws /*=nullptr*/
 ) {
+  NVTX_RANGE("gemm.fwd", NVTX_COLOR::Orange);
+
   // 1) 디바이스/형식/레이아웃 체크
   if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) || !is_cuda_f32_rowmajor(Y))
     return ai::Status::DeviceMismatch;
@@ -262,6 +269,7 @@ ai::Status GemmCudaLaunch(
 
   // ===== 7.A 성능 우선: 기존 fused(EX) 경로 =====
   if (!REGEMM_USE_STANDALONE_EPILOGUE_FALLBACK) {
+    NVTX_RANGE("gemm.fwd.ex_dispatch", NVTX_COLOR::Teal);
     if (tiny) { regemm::launch_gemm_bias_act_f32_smoke_ex(p, cs); return ai::Status::Ok; }
 
     const regemm::BiasMode bm = regemm::to_bias_mode(p.bias_kind);
@@ -269,27 +277,39 @@ ai::Status GemmCudaLaunch(
 
     switch (p.act) {
       case regemm::ActKind::ReLU:
+        NVTX_MARK("ex.relu");
+
         if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::ReLU,      true >(p, bm, cs);
         else       launch_ex_cfg_bm<regemm::ActKind::ReLU,      false>(p, bm, cs);
         break;
       case regemm::ActKind::LeakyReLU:
+        NVTX_MARK("ex.leakyrelu");
+
         if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, true >(p, bm, cs);
         else       launch_ex_cfg_bm<regemm::ActKind::LeakyReLU, false>(p, bm, cs);
         break;
       case regemm::ActKind::GELU:
+        NVTX_MARK("ex.gelu");
+
         if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::GELU,      true >(p, bm, cs);
         else       launch_ex_cfg_bm<regemm::ActKind::GELU,      false>(p, bm, cs);
         break;
       case regemm::ActKind::Sigmoid:
+        NVTX_MARK("ex.sigmoid");
+
         if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   true >(p, bm, cs);
         else       launch_ex_cfg_bm<regemm::ActKind::Sigmoid,   false>(p, bm, cs);
         break;
       case regemm::ActKind::Tanh:
+        NVTX_MARK("ex.tanh");
+
         if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::Tanh,      true >(p, bm, cs);
         else       launch_ex_cfg_bm<regemm::ActKind::Tanh,      false>(p, bm, cs);
         break;
       case regemm::ActKind::None:
       default:
+        NVTX_MARK("ex.none");
+
         if (SaveZ) launch_ex_cfg_bm<regemm::ActKind::None,      true >(p, bm, cs);
         else       launch_ex_cfg_bm<regemm::ActKind::None,      false>(p, bm, cs);
         break;
@@ -298,6 +318,8 @@ ai::Status GemmCudaLaunch(
   }
 
   // ===== 7.B 폴백: GEMM(=X) → Epilogue 호출 =====
+  NVTX_RANGE("gemm.fwd.fallback", NVTX_COLOR::Gray);
+
   // (i) pre-activation만 먼저 만든다: EX 커널을 "act=None, bias=None"로 호출하여
   //     X = A*B 를 Y 또는 scratch에 쓴다. (SaveZ=false)
   void* Xbuf = Y.data;
@@ -320,44 +342,52 @@ ai::Status GemmCudaLaunch(
   p_x.Z        = nullptr;
   p_x.ldZ      = 0;
 
-  if (tiny) { regemm::launch_gemm_bias_act_f32_smoke_ex(p_x, cs); }
-  else {
+  if (tiny) { 
+    NVTX_MARK("fallback.tiny_gemm");
+
+    regemm::launch_gemm_bias_act_f32_smoke_ex(p_x, cs); 
+  } else {
+    NVTX_MARK("fallback.main_gemm");
+
     launch_ex_cfg_bm<regemm::ActKind::None, false /*SaveZ*/>(p_x, regemm::BiasMode::None, cs);
   }
 
   // (ii) Standalone Epilogue 실행: Xbuf + Bias + Act (+Z) → Y
-  ai::EpilogueAttrs eattr;
-  eattr.act         = attrs.act;
-  eattr.leaky_slope = attrs.leaky_slope;
-  eattr.save_z      = attrs.save_z;
+  {
+    NVTX_RANGE("fallback.epilogue", NVTX_COLOR::Cyan);
 
-  // regemm::BiasKind → ai::BiasLayout 매핑
-  ai::BiasLayout bl = ai::BiasLayout::None;
-  switch (p.bias_kind) {
-    case regemm::BiasKind::PerM:   bl = ai::BiasLayout::PerM;   break;
-    case regemm::BiasKind::PerN:   bl = ai::BiasLayout::PerN;   break;
-    case regemm::BiasKind::Scalar: bl = ai::BiasLayout::Scalar; break;
-    default:                       bl = ai::BiasLayout::None;   break;
+    ai::EpilogueAttrs eattr;
+    eattr.act         = attrs.act;
+    eattr.leaky_slope = attrs.leaky_slope;
+    eattr.save_z      = attrs.save_z;
+
+    // regemm::BiasKind → ai::BiasLayout 매핑
+    ai::BiasLayout bl = ai::BiasLayout::None;
+    switch (p.bias_kind) {
+      case regemm::BiasKind::PerM:   bl = ai::BiasLayout::PerM;   break;
+      case regemm::BiasKind::PerN:   bl = ai::BiasLayout::PerN;   break;
+      case regemm::BiasKind::Scalar: bl = ai::BiasLayout::Scalar; break;
+      default:                       bl = ai::BiasLayout::None;   break;
+    }
+
+    // EpilogueFwdParams 채우기 (새 API는 raw 포인터/ld 기반)
+    const float* bias_ptr = (p.bias && p.bias_kind != regemm::BiasKind::None)
+                            ? reinterpret_cast<const float*>(p.bias) : nullptr;
+
+    ai::EpilogueFwdParams ep{};
+    ep.X          = reinterpret_cast<const float*>(Xbuf);
+    ep.ldX        = ldX;
+    ep.Bias       = bias_ptr;
+    ep.bias_layout= bl;
+    ep.Y          = reinterpret_cast<float*>(Y.data);
+    ep.ldY        = static_cast<int>(ldd);
+    ep.Z          = want_save_z ? reinterpret_cast<float*>(Z_ptr) : nullptr;
+    ep.ldZ        = want_save_z ? ldZ_i : 0;
+    ep.M          = static_cast<int>(M);
+    ep.N          = static_cast<int>(N);
+
+    AI_RETURN_IF_ERROR( ai::EpilogueFwdLaunch(ep, eattr, stream) );
   }
-
-  // EpilogueFwdParams 채우기 (새 API는 raw 포인터/ld 기반)
-  const float* bias_ptr = (p.bias && p.bias_kind != regemm::BiasKind::None)
-                          ? reinterpret_cast<const float*>(p.bias) : nullptr;
-
-  ai::EpilogueFwdParams ep{};
-  ep.X          = reinterpret_cast<const float*>(Xbuf);
-  ep.ldX        = ldX;
-  ep.Bias       = bias_ptr;
-  ep.bias_layout= bl;
-  ep.Y          = reinterpret_cast<float*>(Y.data);
-  ep.ldY        = static_cast<int>(ldd);
-  ep.Z          = want_save_z ? reinterpret_cast<float*>(Z_ptr) : nullptr;
-  ep.ldZ        = want_save_z ? ldZ_i : 0;
-  ep.M          = static_cast<int>(M);
-  ep.N          = static_cast<int>(N);
-
-  AI_RETURN_IF_ERROR( ai::EpilogueFwdLaunch(ep, eattr, stream) );
-
 
   // scratch를 썼으면 별도 해제는 상위 WS 정책(캡처-세이프)에서 관리
   return ai::Status::Ok;
@@ -374,6 +404,8 @@ ai::Status GemmCudaBackward(
     StreamHandle stream,
     const GemmWorkspace* ws /*=nullptr*/
 ) {
+  NVTX_RANGE("gemm.bwd", NVTX_COLOR::Red);
+
   // 1) 디바이스/타입/레이아웃/transpose
   if (!is_cuda_f32_rowmajor(A) || !is_cuda_f32_rowmajor(B) ||
       !is_cuda_f32_rowmajor(gY) || !is_cuda_f32_rowmajor(Z))
@@ -474,7 +506,12 @@ ai::Status GemmCudaBackward(
   p.lt_workspace_bytes = ws ? ws->lt_workspace_bytes : 0;
 
   // 7) 실행 (원문 경로 유지)
-  regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
+  {
+    NVTX_RANGE("bwd.core", NVTX_COLOR::Magenta);
+    regemm::gemm_bias_act_bwd_f32(p, reinterpret_cast<cudaStream_t>(stream));
+  }
+  
+
   return ai::Status::Ok;
 }
 

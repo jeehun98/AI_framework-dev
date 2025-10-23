@@ -1,10 +1,4 @@
 #pragma once
-
-#if defined(USE_NVTX)
-  #include <nvtx3/nvToolsExt.h>
-  #define NVTX_RANGE(name,color) nvtxRangePushEx(&(nvtxEventAttributes_t{0,0,0,color,0,name,0,0}))
-  #define NVTX_POP() nvtxRangePop()
-#else
-  #define NVTX_RANGE(name,color) do{}while(0)
-  #define NVTX_POP() do{}while(0)
-#endif
+// GEMM 쪽 detail 에서 쓰던 shim — 공용 nvtx.hpp 를 그대로 사용
+#include "../../_common/shim/nvtx.hpp"
+using NVTX_COLOR = ::ai::nvtx::Color;  // 기존 코드 호환: NVTX_COLOR::Gray 등

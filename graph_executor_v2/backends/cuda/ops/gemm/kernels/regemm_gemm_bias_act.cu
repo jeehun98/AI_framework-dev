@@ -8,7 +8,8 @@
 #include "../detail/bias.h"
 // 기존 traits.hpp의 에필로그 구현 대신, 공통 모듈 래퍼를 포함
 #include "../detail/epilogue_adaptor.hpp"
-#include "../detail/nvtx_shim.h"
+#include "backends/cuda/ops/_common/shim/nvtx.hpp"
+
 
 namespace regemm {
 

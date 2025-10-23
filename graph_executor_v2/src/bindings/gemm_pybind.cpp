@@ -29,9 +29,11 @@
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/gemm/api.hpp"
 
-#ifdef USE_NVTX
-  #include "nvToolsExt.h"
-#endif
+// NVTX shim: USE_NVTX가 켜지면 nvToolsExt를 통해 활성, 아니면 컴파일 타임 no-op
+#include "backends/cuda/ops/_common/shim/nvtx.hpp"
+#include "backends/cuda/ops/gemm/detail/nvtx_shim.h" // ← 추가 (NVTX_COLOR, NVTX_MARK 제공)
+
+
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -118,14 +120,10 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 throw std::invalid_argument(
                     "[_ops_gemm::forward] save_z=True requires a valid Z_saved Tensor");
             }
-            #ifdef USE_NVTX
-            nvtxRangePushA("gemm.forward");
-            #endif
+            NVTX_RANGE("gemm.forward", NVTX_COLOR::Orange);
+            
             auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
-            #ifdef USE_NVTX
-            nvtxRangePop();
-            #endif
-            raise_if_not_ok(st, "forward");
+            
         },
         py::arg("A"),
         py::arg("B"),
@@ -168,16 +166,12 @@ PYBIND11_MODULE(_ops_gemm, m) {
                         "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
                 }
             }
-            #ifdef USE_NVTX
-            nvtxRangePushA("gemm.backward");
-            #endif
+            NVTX_RANGE("gemm.backward", NVTX_COLOR::Red);
+            
             auto st = ai::GemmCudaBackward(
                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
             );
-            #ifdef USE_NVTX
-            nvtxRangePop();
-            #endif
-            raise_if_not_ok(st, "backward");
+            
         },
         py::arg("A"),
         py::arg("B"),
@@ -231,14 +225,10 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 attrs.save_z = true;
             }
 
-            #ifdef USE_NVTX
-            nvtxRangePushA("gemm.forward_ex");
-            #endif
+            NVTX_RANGE("gemm.forward_ex", NVTX_COLOR::Teal);
+            
             auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
-            #ifdef USE_NVTX
-            nvtxRangePop();
-            #endif
-            raise_if_not_ok(st, "forward_ex");
+            
         },
         py::arg("A"),
         py::arg("B"),
@@ -296,14 +286,10 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 }
             }
 
-            #ifdef USE_NVTX
-            nvtxRangePushA("gemm.backward_ex");
-            #endif
+            NVTX_RANGE("gemm.backward_ex", NVTX_COLOR::Magenta);
+            
             auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
-            #ifdef USE_NVTX
-            nvtxRangePop();
-            #endif
-            raise_if_not_ok(st, "backward_ex");
+            
         },
         py::arg("A"),
         py::arg("B"),
@@ -428,16 +414,12 @@ PYBIND11_MODULE(_ops_gemm, m) {
             ws.lt_workspace       = reinterpret_cast<void*>(lt_ws_ptr);
             ws.lt_workspace_bytes = lt_ws_bytes;
 
-            #ifdef USE_NVTX
-            nvtxRangePushA("gemm.backward_into");
-            #endif
+            NVTX_RANGE("gemm.backward_into", NVTX_COLOR::Yellow);
+            
             auto st = ai::GemmCudaBackward(
                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream, &ws
             );
-            #ifdef USE_NVTX
-            nvtxRangePop();
-            #endif
-            raise_if_not_ok(st, "backward_into");
+            
         },
         py::arg("A"), py::arg("B"),
         py::arg("C") = nullptr,

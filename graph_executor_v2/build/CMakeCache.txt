@@ -433,8 +433,17 @@ CUDA_pcsamplingutil_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolk
 //No help, variable specified on the command line.
 GE2_WITH_REGEMM:UNINITIALIZED=ON
 
+//Path to a library.
+NVTOOLSEXT_LIB:FILEPATH=C:/Program Files/NVIDIA Corporation/NvToolsExt/lib/x64/nvToolsExt64_1.lib
+
+//Path to a file.
+NVTX_INCLUDE_DIR:PATH=C:/Program Files/NVIDIA Corporation/NVToolsExt/include
+
 //No help, variable specified on the command line.
 Python3_EXECUTABLE:UNINITIALIZED=C:\Users\owner\AppData\Local\Programs\Python\Python312\python.exe
+
+//Enable NVTX ranges
+USE_NVTX:BOOL=ON
 
 //Value Computed by CMake
 graph_executor_v2_BINARY_DIR:STATIC=C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build

@@ -51,9 +51,9 @@ build cmake_object_order_depends_target_ai_core: phony || .
 
 build CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\dispatch\registry.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\dispatch
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -61,9 +61,9 @@ build CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj: CXX_COMPILER__ai_cor
 
 build CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\dispatch\selector_rules.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\dispatch
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -71,9 +71,9 @@ build CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj: CXX_COMPILER__
 
 build CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\executor\scheduler.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -81,9 +81,9 @@ build CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj: CXX_COMPILER__ai_co
 
 build CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\executor\mem_planner.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -91,9 +91,9 @@ build CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj: CXX_COMPILER__ai_
 
 build CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\executor\autograd_engine.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -101,9 +101,9 @@ build CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj: CXX_COMPILER_
 
 build CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\gemm.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -111,9 +111,9 @@ build CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj: CXX_COMPILER__ai_core_unscann
 
 build CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\rmsnorm.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -121,9 +121,9 @@ build CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj: CXX_COMPILER__ai_core_unsc
 
 build CMakeFiles\ai_core.dir\src\ops\softmax.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\softmax.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -131,9 +131,9 @@ build CMakeFiles\ai_core.dir\src\ops\softmax.cpp.obj: CXX_COMPILER__ai_core_unsc
 
 build CMakeFiles\ai_core.dir\src\ops\layernorm.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\layernorm.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -141,9 +141,9 @@ build CMakeFiles\ai_core.dir\src\ops\layernorm.cpp.obj: CXX_COMPILER__ai_core_un
 
 build CMakeFiles\ai_core.dir\src\ops\cross_entropy.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\cross_entropy.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -151,9 +151,9 @@ build CMakeFiles\ai_core.dir\src\ops\cross_entropy.cpp.obj: CXX_COMPILER__ai_cor
 
 build CMakeFiles\ai_core.dir\src\ops\dropout.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\dropout.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -161,9 +161,9 @@ build CMakeFiles\ai_core.dir\src\ops\dropout.cpp.obj: CXX_COMPILER__ai_core_unsc
 
 build CMakeFiles\ai_core.dir\src\ops\sdpa.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\sdpa.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -171,9 +171,9 @@ build CMakeFiles\ai_core.dir\src\ops\sdpa.cpp.obj: CXX_COMPILER__ai_core_unscann
 
 build CMakeFiles\ai_core.dir\src\ops\pool2d.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\pool2d.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -181,9 +181,9 @@ build CMakeFiles\ai_core.dir\src\ops\pool2d.cpp.obj: CXX_COMPILER__ai_core_unsca
 
 build CMakeFiles\ai_core.dir\src\ops\elementwise.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\elementwise.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -191,9 +191,9 @@ build CMakeFiles\ai_core.dir\src\ops\elementwise.cpp.obj: CXX_COMPILER__ai_core_
 
 build CMakeFiles\ai_core.dir\src\ops\reduction.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\reduction.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -201,9 +201,9 @@ build CMakeFiles\ai_core.dir\src\ops\reduction.cpp.obj: CXX_COMPILER__ai_core_un
 
 build CMakeFiles\ai_core.dir\src\ops\concat.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\concat.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -211,9 +211,9 @@ build CMakeFiles\ai_core.dir\src\ops\concat.cpp.obj: CXX_COMPILER__ai_core_unsca
 
 build CMakeFiles\ai_core.dir\src\ops\slice.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\slice.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -221,9 +221,9 @@ build CMakeFiles\ai_core.dir\src\ops\slice.cpp.obj: CXX_COMPILER__ai_core_unscan
 
 build CMakeFiles\ai_core.dir\src\ops\indexing.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\indexing.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -231,9 +231,9 @@ build CMakeFiles\ai_core.dir\src\ops\indexing.cpp.obj: CXX_COMPILER__ai_core_uns
 
 build CMakeFiles\ai_core.dir\src\ops\pad.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\pad.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -241,9 +241,9 @@ build CMakeFiles\ai_core.dir\src\ops\pad.cpp.obj: CXX_COMPILER__ai_core_unscanne
 
 build CMakeFiles\ai_core.dir\src\ops\memory.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\memory.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -251,9 +251,9 @@ build CMakeFiles\ai_core.dir\src\ops\memory.cpp.obj: CXX_COMPILER__ai_core_unsca
 
 build CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\upsample2d.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -261,9 +261,9 @@ build CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj: CXX_COMPILER__ai_core_u
 
 build CMakeFiles\ai_core.dir\src\ops\view.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\view.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -271,9 +271,9 @@ build CMakeFiles\ai_core.dir\src\ops\view.cpp.obj: CXX_COMPILER__ai_core_unscann
 
 build CMakeFiles\ai_core.dir\src\ops\rnn.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\rnn.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ai_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
@@ -309,10 +309,10 @@ build cmake_object_order_depends_target_ge2_regemm_core: phony || .
 
 build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\launcher.cu.obj: CUDA_COMPILER__ge2_regemm_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\launcher.cu || cmake_object_order_depends_target_ge2_regemm_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_core.dir\
@@ -320,10 +320,10 @@ build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\launcher.cu.obj: CUD
 
 build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj: CUDA_COMPILER__ge2_regemm_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu || cmake_object_order_depends_target_ge2_regemm_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_core.dir\
@@ -331,10 +331,10 @@ build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_
 
 build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj: CUDA_COMPILER__ge2_regemm_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\kernels\regemm_backward.cu || cmake_object_order_depends_target_ge2_regemm_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_core.dir\
@@ -342,10 +342,10 @@ build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_backw
 
 build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\launcher.cu.obj: CUDA_COMPILER__ge2_regemm_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue\launcher.cu || cmake_object_order_depends_target_ge2_regemm_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_core.dir\
@@ -353,10 +353,10 @@ build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\launcher.cu.obj:
 
 build CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\kernels.cu.obj: CUDA_COMPILER__ge2_regemm_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue\kernels.cu || cmake_object_order_depends_target_ge2_regemm_core
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_core.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_core.dir\
@@ -380,10 +380,10 @@ build cmake_object_order_depends_target_ge2_regemm_standalone: phony || .
 
 build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.obj: CUDA_COMPILER__ge2_regemm_standalone_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\launcher.cu || cmake_object_order_depends_target_ge2_regemm_standalone
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_standalone.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_standalone.dir\
@@ -391,10 +391,10 @@ build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.ob
 
 build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj: CUDA_COMPILER__ge2_regemm_standalone_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu || cmake_object_order_depends_target_ge2_regemm_standalone
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_standalone.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_standalone.dir\
@@ -402,10 +402,10 @@ build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm
 
 build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj: CUDA_COMPILER__ge2_regemm_standalone_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\kernels\regemm_backward.cu || cmake_object_order_depends_target_ge2_regemm_standalone
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_standalone.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_standalone.dir\
@@ -413,10 +413,10 @@ build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm
 
 build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.cu.obj: CUDA_COMPILER__ge2_regemm_standalone_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue\launcher.cu || cmake_object_order_depends_target_ge2_regemm_standalone
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_standalone.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_standalone.dir\
@@ -424,10 +424,10 @@ build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.c
 
 build CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\kernels.cu.obj: CUDA_COMPILER__ge2_regemm_standalone_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue\kernels.cu || cmake_object_order_depends_target_ge2_regemm_standalone
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
   OBJECT_DIR = CMakeFiles\ge2_regemm_standalone.dir
   OBJECT_FILE_DIR = CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue
   TARGET_COMPILE_PDB = CMakeFiles\ge2_regemm_standalone.dir\
@@ -451,9 +451,9 @@ build cmake_object_order_depends_target_ai_backend_cuda: phony || cmake_object_o
 
 build CMakeFiles\ai_backend_cuda.dir\src\ops\register_ops.cpp.obj: CXX_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\ops\register_ops.cpp || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\src\ops
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -461,10 +461,10 @@ build CMakeFiles\ai_backend_cuda.dir\src\ops\register_ops.cpp.obj: CXX_COMPILER_
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -472,10 +472,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -483,10 +483,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj: 
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -494,10 +494,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\kernels.cu.obj:
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -505,10 +505,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\launcher.cu.obj
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -516,10 +516,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\kernels.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -527,10 +527,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\launcher.cu.obj: 
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -538,10 +538,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\kernels.cu.
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -549,10 +549,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\launcher.cu
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\dropout\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -560,10 +560,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\kernels.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\dropout\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -571,10 +571,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\launcher.cu.obj: 
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -582,10 +582,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\kernels.cu.obj: CU
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -593,10 +593,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\launcher.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -604,10 +604,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\kernels.cu.obj: CU
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -615,10 +615,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\launcher.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\sdpa\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -626,10 +626,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa\launcher.cu.obj: CUD
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\elementwise\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -637,10 +637,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\kernels.cu.ob
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\elementwise\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -648,10 +648,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\launcher.cu.o
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\reduction\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -659,10 +659,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\kernels.cu.obj:
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\reduction\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -670,10 +670,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\launcher.cu.obj
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -681,10 +681,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\kernels.cu.obj: CU
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -692,10 +692,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\launcher.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -703,10 +703,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\kernels.cu.obj: CUD
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -714,10 +714,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\launcher.cu.obj: CU
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -725,10 +725,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad\launcher.cu.obj: CUDA
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -736,10 +736,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj: C
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -747,10 +747,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj: CU
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\upsample2d\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -758,10 +758,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.ob
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -769,10 +769,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\kernels.cu.obj: CUDA
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -780,10 +780,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj: CUD
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\indexing\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -791,10 +791,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\kernels.cu.obj: 
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\indexing\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -802,10 +802,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\launcher.cu.obj:
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -813,10 +813,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\kernels.cu.obj: CUDA_
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -824,10 +824,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\launcher.cu.obj: CUDA
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -835,10 +835,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\kernels.cu.obj:
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -846,10 +846,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\launcher.cu.obj
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -857,10 +857,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\kernels.cu.obj:
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -868,10 +868,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\launcher.cu.obj
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\kernels.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding\kernels.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -879,10 +879,10 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\kernels.cu.obj:
 
 build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\launcher.cu.obj: CUDA_COMPILER__ai_backend_cuda_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding\launcher.cu || cmake_object_order_depends_target_ai_backend_cuda
   CONFIG = Release
-  DEFINES = -DNOMINMAX
+  DEFINES = -DNOMINMAX -DUSE_NVTX
   DEP_FILE = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   OBJECT_FILE_DIR = CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -898,7 +898,7 @@ build CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\launcher.cu.obj
 
 build CMakeFiles\ai_backend_cuda.dir\cmake_device_link.obj: CXX_STATIC_LIBRARY_DEVICE_LINKER__ai_backend_cuda_Release CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\launcher.cu.obj CMakeFiles\ge2_regemm_core.dir\backends\cuda\ops\epilogue\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\src\ops\register_ops.cpp.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\layernorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\softmax\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\dropout\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\conv2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pool2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\sdpa\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\elementwise\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\reduction\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\concat\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\slice\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\pad\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\memory\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\upsample2d\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\view\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\indexing\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\rnn\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\optimizer\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\batchnorm\launcher.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\kernels.cu.obj CMakeFiles\ai_backend_cuda.dir\backends\cuda\ops\embedding\launcher.cu.obj || ai_core.lib ge2_regemm_core
   LANGUAGE_COMPILE_FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD
-  LINK_LIBRARIES = ai_core.lib "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_LIBRARIES = ai_core.lib "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib" "C:\Program Files\NVIDIA Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
   LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
   OBJECT_DIR = CMakeFiles\ai_backend_cuda.dir
   TARGET_COMPILE_PDB = CMakeFiles\ai_backend_cuda.dir\ai_backend_cuda.pdb
@@ -934,7 +934,7 @@ build cmake_object_order_depends_target__core: phony || cmake_object_order_depen
 
 build CMakeFiles\_core.dir\src\bindings\py_api.cpp.obj: CXX_COMPILER___core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\py_api.cpp || cmake_object_order_depends_target__core
   CONFIG = Release
-  DEFINES = -DNOMINMAX -D_core_EXPORTS
+  DEFINES = -DNOMINMAX -DUSE_NVTX -D_core_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\detail -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_core.dir
@@ -950,11 +950,11 @@ build CMakeFiles\_core.dir\src\bindings\py_api.cpp.obj: CXX_COMPILER___core_unsc
 #############################################
 # Link the shared module C:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd
 
-build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd: CXX_MODULE_LIBRARY_LINKER___core_Release CMakeFiles\_core.dir\src\bindings\py_api.cpp.obj | ai_core.lib ai_backend_cuda.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib ai_core.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublas.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib || ai_backend_cuda.lib ai_core.lib
+build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd: CXX_MODULE_LIBRARY_LINKER___core_Release CMakeFiles\_core.dir\src\bindings\py_api.cpp.obj | ai_core.lib ai_backend_cuda.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib ai_core.lib C$:\Program$ Files\NVIDIA$ Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublas.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib || ai_backend_cuda.lib ai_core.lib
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64 /INCREMENTAL:NO -LTCG
-  LINK_LIBRARIES = ai_core.lib  ai_backend_cuda.lib  C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib  ai_core.lib  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib"  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_LIBRARIES = ai_core.lib  ai_backend_cuda.lib  C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib  ai_core.lib  "C:\Program Files\NVIDIA Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib"  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
   LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
   OBJECT_DIR = CMakeFiles\_core.dir
   POST_BUILD = cd .
@@ -975,7 +975,7 @@ build cmake_object_order_depends_target__ops_common: phony || .
 
 build CMakeFiles\_ops_common.dir\src\bindings\ops_common_pybind.cpp.obj: CXX_COMPILER___ops_common_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\ops_common_pybind.cpp || cmake_object_order_depends_target__ops_common
   CONFIG = Release
-  DEFINES = -DNOMINMAX -D_ops_common_EXPORTS
+  DEFINES = -DNOMINMAX -DUSE_NVTX -D_ops_common_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:W0
   OBJECT_DIR = CMakeFiles\_ops_common.dir
@@ -1015,9 +1015,9 @@ build cmake_object_order_depends_target__ops_gemm: phony || cmake_object_order_d
 
 build CMakeFiles\_ops_gemm.dir\src\bindings\gemm_pybind.cpp.obj: CXX_COMPILER___ops_gemm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\gemm_pybind.cpp || cmake_object_order_depends_target__ops_gemm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_gemm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_gemm_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
+  INCLUDES = -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include" -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_gemm.dir
   OBJECT_FILE_DIR = CMakeFiles\_ops_gemm.dir\src\bindings
   TARGET_COMPILE_PDB = CMakeFiles\_ops_gemm.dir\
@@ -1031,10 +1031,10 @@ build CMakeFiles\_ops_gemm.dir\src\bindings\gemm_pybind.cpp.obj: CXX_COMPILER___
 #############################################
 # Link the shared module CMakeFiles\_ops_gemm.dir\cmake_device_link.obj
 
-build CMakeFiles\_ops_gemm.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_gemm_Release CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\kernels.cu.obj CMakeFiles\_ops_gemm.dir\src\bindings\gemm_pybind.cpp.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublas.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd ge2_regemm_standalone
+build CMakeFiles\_ops_gemm.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_gemm_Release CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\kernels.cu.obj CMakeFiles\_ops_gemm.dir\src\bindings\gemm_pybind.cpp.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublas.lib C$:\Program$ Files\NVIDIA$ Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd ge2_regemm_standalone
   LANGUAGE_COMPILE_FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD
   LINK_FLAGS = -Xcompiler=-LTCG
-  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib" "C:\Program Files\NVIDIA Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
   LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
   OBJECT_DIR = CMakeFiles\_ops_gemm.dir
   TARGET_COMPILE_PDB = CMakeFiles\_ops_gemm.dir\
@@ -1049,11 +1049,11 @@ build CMakeFiles\_ops_gemm.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_
 #############################################
 # Link the shared module C:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd
 
-build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd: CXX_MODULE_LIBRARY_LINKER___ops_gemm_Release CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\kernels.cu.obj CMakeFiles\_ops_gemm.dir\src\bindings\gemm_pybind.cpp.obj CMakeFiles\_ops_gemm.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublas.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd ge2_regemm_standalone
+build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd: CXX_MODULE_LIBRARY_LINKER___ops_gemm_Release CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_gemm_bias_act.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\gemm\kernels\regemm_backward.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\launcher.cu.obj CMakeFiles\ge2_regemm_standalone.dir\backends\cuda\ops\epilogue\kernels.cu.obj CMakeFiles\_ops_gemm.dir\src\bindings\gemm_pybind.cpp.obj CMakeFiles\_ops_gemm.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublas.lib C$:\Program$ Files\NVIDIA$ Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd ge2_regemm_standalone
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64 /INCREMENTAL:NO -LTCG
-  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib"  C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib"  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
+  LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib"  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublas.lib"  "C:\Program Files\NVIDIA Corporation\NvToolsExt\lib\x64\nvToolsExt64_1.lib"  C:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib  "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cublasLt.lib"  cudadevrt.lib  cudart_static.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
   LINK_PATH = -LIBPATH:C:\PROGRA~1\NVIDIA~2\CUDA\v12.6\lib\x64
   OBJECT_DIR = CMakeFiles\_ops_gemm.dir
   POST_BUILD = cd .
@@ -1074,7 +1074,7 @@ build cmake_object_order_depends_target__ops_conv2d: phony || cmake_object_order
 
 build CMakeFiles\_ops_conv2d.dir\src\bindings\conv2d_pybind.cpp.obj: CXX_COMPILER___ops_conv2d_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\conv2d_pybind.cpp || cmake_object_order_depends_target__ops_conv2d
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_conv2d_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_conv2d_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_conv2d.dir
@@ -1084,7 +1084,7 @@ build CMakeFiles\_ops_conv2d.dir\src\bindings\conv2d_pybind.cpp.obj: CXX_COMPILE
 
 build CMakeFiles\_ops_conv2d.dir\backends\cuda\ops\conv2d\launcher.cu.obj: CUDA_COMPILER___ops_conv2d_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d\launcher.cu || cmake_object_order_depends_target__ops_conv2d
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_conv2d_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_conv2d_EXPORTS
   DEP_FILE = CMakeFiles\_ops_conv2d.dir\backends\cuda\ops\conv2d\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1095,7 +1095,7 @@ build CMakeFiles\_ops_conv2d.dir\backends\cuda\ops\conv2d\launcher.cu.obj: CUDA_
 
 build CMakeFiles\_ops_conv2d.dir\backends\cuda\ops\conv2d\kernels.cu.obj: CUDA_COMPILER___ops_conv2d_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d\kernels.cu || cmake_object_order_depends_target__ops_conv2d
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_conv2d_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_conv2d_EXPORTS
   DEP_FILE = CMakeFiles\_ops_conv2d.dir\backends\cuda\ops\conv2d\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\conv2d -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1155,7 +1155,7 @@ build cmake_object_order_depends_target__ops_memory: phony || cmake_object_order
 
 build CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj: CXX_COMPILER___ops_memory_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\memory_pybind.cpp || cmake_object_order_depends_target__ops_memory
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_memory_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_memory_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_memory.dir
@@ -1165,7 +1165,7 @@ build CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj: CXX_COMPILE
 
 build CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj: CUDA_COMPILER___ops_memory_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory\launcher.cu || cmake_object_order_depends_target__ops_memory
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_memory_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_memory_EXPORTS
   DEP_FILE = CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1176,7 +1176,7 @@ build CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj: CUDA_
 
 build CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj: CUDA_COMPILER___ops_memory_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory\kernels.cu || cmake_object_order_depends_target__ops_memory
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_memory_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_memory_EXPORTS
   DEP_FILE = CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\memory -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1236,7 +1236,7 @@ build cmake_object_order_depends_target__ops_dropout: phony || cmake_object_orde
 
 build CMakeFiles\_ops_dropout.dir\src\bindings\dropout_pybind.cpp.obj: CXX_COMPILER___ops_dropout_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\dropout_pybind.cpp || cmake_object_order_depends_target__ops_dropout
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_dropout_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_dropout_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_dropout.dir
@@ -1246,7 +1246,7 @@ build CMakeFiles\_ops_dropout.dir\src\bindings\dropout_pybind.cpp.obj: CXX_COMPI
 
 build CMakeFiles\_ops_dropout.dir\backends\cuda\ops\dropout\launcher.cu.obj: CUDA_COMPILER___ops_dropout_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\dropout\launcher.cu || cmake_object_order_depends_target__ops_dropout
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_dropout_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_dropout_EXPORTS
   DEP_FILE = CMakeFiles\_ops_dropout.dir\backends\cuda\ops\dropout\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1257,7 +1257,7 @@ build CMakeFiles\_ops_dropout.dir\backends\cuda\ops\dropout\launcher.cu.obj: CUD
 
 build CMakeFiles\_ops_dropout.dir\backends\cuda\ops\dropout\kernels.cu.obj: CUDA_COMPILER___ops_dropout_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\dropout\kernels.cu || cmake_object_order_depends_target__ops_dropout
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_dropout_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_dropout_EXPORTS
   DEP_FILE = CMakeFiles\_ops_dropout.dir\backends\cuda\ops\dropout\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1317,7 +1317,7 @@ build cmake_object_order_depends_target__ops_rmsnorm: phony || cmake_object_orde
 
 build CMakeFiles\_ops_rmsnorm.dir\src\bindings\rmsnorm_pybind.cpp.obj: CXX_COMPILER___ops_rmsnorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\rmsnorm_pybind.cpp || cmake_object_order_depends_target__ops_rmsnorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_rmsnorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_rmsnorm_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_rmsnorm.dir
@@ -1327,7 +1327,7 @@ build CMakeFiles\_ops_rmsnorm.dir\src\bindings\rmsnorm_pybind.cpp.obj: CXX_COMPI
 
 build CMakeFiles\_ops_rmsnorm.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj: CUDA_COMPILER___ops_rmsnorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm\launcher.cu || cmake_object_order_depends_target__ops_rmsnorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_rmsnorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_rmsnorm_EXPORTS
   DEP_FILE = CMakeFiles\_ops_rmsnorm.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1338,7 +1338,7 @@ build CMakeFiles\_ops_rmsnorm.dir\backends\cuda\ops\rmsnorm\launcher.cu.obj: CUD
 
 build CMakeFiles\_ops_rmsnorm.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj: CUDA_COMPILER___ops_rmsnorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm\kernels.cu || cmake_object_order_depends_target__ops_rmsnorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_rmsnorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_rmsnorm_EXPORTS
   DEP_FILE = CMakeFiles\_ops_rmsnorm.dir\backends\cuda\ops\rmsnorm\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rmsnorm -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1398,7 +1398,7 @@ build cmake_object_order_depends_target__ops_cross_entropy: phony || cmake_objec
 
 build CMakeFiles\_ops_cross_entropy.dir\src\bindings\cross_entropy_pybind.cpp.obj: CXX_COMPILER___ops_cross_entropy_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\cross_entropy_pybind.cpp || cmake_object_order_depends_target__ops_cross_entropy
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_cross_entropy_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_cross_entropy_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_cross_entropy.dir
@@ -1408,7 +1408,7 @@ build CMakeFiles\_ops_cross_entropy.dir\src\bindings\cross_entropy_pybind.cpp.ob
 
 build CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj: CUDA_COMPILER___ops_cross_entropy_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy\launcher.cu || cmake_object_order_depends_target__ops_cross_entropy
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_cross_entropy_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_cross_entropy_EXPORTS
   DEP_FILE = CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1419,7 +1419,7 @@ build CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\launcher
 
 build CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj: CUDA_COMPILER___ops_cross_entropy_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy\kernels.cu || cmake_object_order_depends_target__ops_cross_entropy
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_cross_entropy_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_cross_entropy_EXPORTS
   DEP_FILE = CMakeFiles\_ops_cross_entropy.dir\backends\cuda\ops\cross_entropy\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\cross_entropy -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1479,7 +1479,7 @@ build cmake_object_order_depends_target__ops_pad: phony || cmake_object_order_de
 
 build CMakeFiles\_ops_pad.dir\src\bindings\pad_pybind.cpp.obj: CXX_COMPILER___ops_pad_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\pad_pybind.cpp || cmake_object_order_depends_target__ops_pad
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_pad_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_pad_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_pad.dir
@@ -1489,7 +1489,7 @@ build CMakeFiles\_ops_pad.dir\src\bindings\pad_pybind.cpp.obj: CXX_COMPILER___op
 
 build CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad\launcher.cu.obj: CUDA_COMPILER___ops_pad_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad\launcher.cu || cmake_object_order_depends_target__ops_pad
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_pad_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_pad_EXPORTS
   DEP_FILE = CMakeFiles\_ops_pad.dir\backends\cuda\ops\pad\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pad -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1549,7 +1549,7 @@ build cmake_object_order_depends_target__ops_pool2d: phony || cmake_object_order
 
 build CMakeFiles\_ops_pool2d.dir\src\bindings\pool2d_pybind.cpp.obj: CXX_COMPILER___ops_pool2d_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\pool2d_pybind.cpp || cmake_object_order_depends_target__ops_pool2d
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_pool2d_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_pool2d_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_pool2d.dir
@@ -1559,7 +1559,7 @@ build CMakeFiles\_ops_pool2d.dir\src\bindings\pool2d_pybind.cpp.obj: CXX_COMPILE
 
 build CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj: CUDA_COMPILER___ops_pool2d_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d\launcher.cu || cmake_object_order_depends_target__ops_pool2d
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_pool2d_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_pool2d_EXPORTS
   DEP_FILE = CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1570,7 +1570,7 @@ build CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\launcher.cu.obj: CUDA_
 
 build CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\kernels.cu.obj: CUDA_COMPILER___ops_pool2d_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d\kernels.cu || cmake_object_order_depends_target__ops_pool2d
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_pool2d_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_pool2d_EXPORTS
   DEP_FILE = CMakeFiles\_ops_pool2d.dir\backends\cuda\ops\pool2d\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\pool2d -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1630,7 +1630,7 @@ build cmake_object_order_depends_target__ops_rnn: phony || cmake_object_order_de
 
 build CMakeFiles\_ops_rnn.dir\src\bindings\rnn_pybind.cpp.obj: CXX_COMPILER___ops_rnn_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\rnn_pybind.cpp || cmake_object_order_depends_target__ops_rnn
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_rnn_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_rnn_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_rnn.dir
@@ -1640,7 +1640,7 @@ build CMakeFiles\_ops_rnn.dir\src\bindings\rnn_pybind.cpp.obj: CXX_COMPILER___op
 
 build CMakeFiles\_ops_rnn.dir\backends\cuda\ops\rnn\launcher.cu.obj: CUDA_COMPILER___ops_rnn_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn\launcher.cu || cmake_object_order_depends_target__ops_rnn
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_rnn_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_rnn_EXPORTS
   DEP_FILE = CMakeFiles\_ops_rnn.dir\backends\cuda\ops\rnn\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1651,7 +1651,7 @@ build CMakeFiles\_ops_rnn.dir\backends\cuda\ops\rnn\launcher.cu.obj: CUDA_COMPIL
 
 build CMakeFiles\_ops_rnn.dir\backends\cuda\ops\rnn\kernels.cu.obj: CUDA_COMPILER___ops_rnn_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn\kernels.cu || cmake_object_order_depends_target__ops_rnn
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_rnn_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_rnn_EXPORTS
   DEP_FILE = CMakeFiles\_ops_rnn.dir\backends\cuda\ops\rnn\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\gemm\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\rnn -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\epilogue -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1711,7 +1711,7 @@ build cmake_object_order_depends_target__ops_optimizer: phony || cmake_object_or
 
 build CMakeFiles\_ops_optimizer.dir\src\bindings\optimizer_pybind.cpp.obj: CXX_COMPILER___ops_optimizer_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\optimizer_pybind.cpp || cmake_object_order_depends_target__ops_optimizer
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_optimizer_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_optimizer_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_optimizer.dir
@@ -1721,7 +1721,7 @@ build CMakeFiles\_ops_optimizer.dir\src\bindings\optimizer_pybind.cpp.obj: CXX_C
 
 build CMakeFiles\_ops_optimizer.dir\backends\cuda\ops\optimizer\launcher.cu.obj: CUDA_COMPILER___ops_optimizer_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer\launcher.cu || cmake_object_order_depends_target__ops_optimizer
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_optimizer_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_optimizer_EXPORTS
   DEP_FILE = CMakeFiles\_ops_optimizer.dir\backends\cuda\ops\optimizer\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1732,7 +1732,7 @@ build CMakeFiles\_ops_optimizer.dir\backends\cuda\ops\optimizer\launcher.cu.obj:
 
 build CMakeFiles\_ops_optimizer.dir\backends\cuda\ops\optimizer\kernels.cu.obj: CUDA_COMPILER___ops_optimizer_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer\kernels.cu || cmake_object_order_depends_target__ops_optimizer
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_optimizer_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_optimizer_EXPORTS
   DEP_FILE = CMakeFiles\_ops_optimizer.dir\backends\cuda\ops\optimizer\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\optimizer -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1792,7 +1792,7 @@ build cmake_object_order_depends_target__ops_softmax: phony || cmake_object_orde
 
 build CMakeFiles\_ops_softmax.dir\src\bindings\softmax_pybind.cpp.obj: CXX_COMPILER___ops_softmax_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\softmax_pybind.cpp || cmake_object_order_depends_target__ops_softmax
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_softmax_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_softmax_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_softmax.dir
@@ -1802,7 +1802,7 @@ build CMakeFiles\_ops_softmax.dir\src\bindings\softmax_pybind.cpp.obj: CXX_COMPI
 
 build CMakeFiles\_ops_softmax.dir\backends\cuda\ops\softmax\launcher.cu.obj: CUDA_COMPILER___ops_softmax_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax\launcher.cu || cmake_object_order_depends_target__ops_softmax
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_softmax_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_softmax_EXPORTS
   DEP_FILE = CMakeFiles\_ops_softmax.dir\backends\cuda\ops\softmax\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1813,7 +1813,7 @@ build CMakeFiles\_ops_softmax.dir\backends\cuda\ops\softmax\launcher.cu.obj: CUD
 
 build CMakeFiles\_ops_softmax.dir\backends\cuda\ops\softmax\kernels.cu.obj: CUDA_COMPILER___ops_softmax_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax\kernels.cu || cmake_object_order_depends_target__ops_softmax
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_softmax_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_softmax_EXPORTS
   DEP_FILE = CMakeFiles\_ops_softmax.dir\backends\cuda\ops\softmax\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\softmax -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1873,7 +1873,7 @@ build cmake_object_order_depends_target__ops_batchnorm: phony || cmake_object_or
 
 build CMakeFiles\_ops_batchnorm.dir\src\bindings\batchnorm_pybind.cpp.obj: CXX_COMPILER___ops_batchnorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\batchnorm_pybind.cpp || cmake_object_order_depends_target__ops_batchnorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_batchnorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_batchnorm_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_batchnorm.dir
@@ -1883,7 +1883,7 @@ build CMakeFiles\_ops_batchnorm.dir\src\bindings\batchnorm_pybind.cpp.obj: CXX_C
 
 build CMakeFiles\_ops_batchnorm.dir\backends\cuda\ops\batchnorm\launcher.cu.obj: CUDA_COMPILER___ops_batchnorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm\launcher.cu || cmake_object_order_depends_target__ops_batchnorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_batchnorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_batchnorm_EXPORTS
   DEP_FILE = CMakeFiles\_ops_batchnorm.dir\backends\cuda\ops\batchnorm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1894,7 +1894,7 @@ build CMakeFiles\_ops_batchnorm.dir\backends\cuda\ops\batchnorm\launcher.cu.obj:
 
 build CMakeFiles\_ops_batchnorm.dir\backends\cuda\ops\batchnorm\kernels.cu.obj: CUDA_COMPILER___ops_batchnorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm\kernels.cu || cmake_object_order_depends_target__ops_batchnorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_batchnorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_batchnorm_EXPORTS
   DEP_FILE = CMakeFiles\_ops_batchnorm.dir\backends\cuda\ops\batchnorm\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\batchnorm -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1954,7 +1954,7 @@ build cmake_object_order_depends_target__ops_embedding: phony || cmake_object_or
 
 build CMakeFiles\_ops_embedding.dir\src\bindings\embedding_pybind.cpp.obj: CXX_COMPILER___ops_embedding_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\embedding_pybind.cpp || cmake_object_order_depends_target__ops_embedding
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_embedding_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_embedding_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_embedding.dir
@@ -1964,7 +1964,7 @@ build CMakeFiles\_ops_embedding.dir\src\bindings\embedding_pybind.cpp.obj: CXX_C
 
 build CMakeFiles\_ops_embedding.dir\backends\cuda\ops\embedding\launcher.cu.obj: CUDA_COMPILER___ops_embedding_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding\launcher.cu || cmake_object_order_depends_target__ops_embedding
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_embedding_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_embedding_EXPORTS
   DEP_FILE = CMakeFiles\_ops_embedding.dir\backends\cuda\ops\embedding\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -1975,7 +1975,7 @@ build CMakeFiles\_ops_embedding.dir\backends\cuda\ops\embedding\launcher.cu.obj:
 
 build CMakeFiles\_ops_embedding.dir\backends\cuda\ops\embedding\kernels.cu.obj: CUDA_COMPILER___ops_embedding_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding\kernels.cu || cmake_object_order_depends_target__ops_embedding
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_embedding_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_embedding_EXPORTS
   DEP_FILE = CMakeFiles\_ops_embedding.dir\backends\cuda\ops\embedding\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\embedding -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2035,7 +2035,7 @@ build cmake_object_order_depends_target__ops_layernorm: phony || cmake_object_or
 
 build CMakeFiles\_ops_layernorm.dir\src\bindings\layernorm_pybind.cpp.obj: CXX_COMPILER___ops_layernorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\layernorm_pybind.cpp || cmake_object_order_depends_target__ops_layernorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_layernorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_layernorm_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_layernorm.dir
@@ -2045,7 +2045,7 @@ build CMakeFiles\_ops_layernorm.dir\src\bindings\layernorm_pybind.cpp.obj: CXX_C
 
 build CMakeFiles\_ops_layernorm.dir\backends\cuda\ops\layernorm\launcher.cu.obj: CUDA_COMPILER___ops_layernorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm\launcher.cu || cmake_object_order_depends_target__ops_layernorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_layernorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_layernorm_EXPORTS
   DEP_FILE = CMakeFiles\_ops_layernorm.dir\backends\cuda\ops\layernorm\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2056,7 +2056,7 @@ build CMakeFiles\_ops_layernorm.dir\backends\cuda\ops\layernorm\launcher.cu.obj:
 
 build CMakeFiles\_ops_layernorm.dir\backends\cuda\ops\layernorm\kernels.cu.obj: CUDA_COMPILER___ops_layernorm_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm\kernels.cu || cmake_object_order_depends_target__ops_layernorm
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_layernorm_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_layernorm_EXPORTS
   DEP_FILE = CMakeFiles\_ops_layernorm.dir\backends\cuda\ops\layernorm\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\layernorm -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2116,7 +2116,7 @@ build cmake_object_order_depends_target__ops_concat: phony || cmake_object_order
 
 build CMakeFiles\_ops_concat.dir\src\bindings\concat_pybind.cpp.obj: CXX_COMPILER___ops_concat_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\concat_pybind.cpp || cmake_object_order_depends_target__ops_concat
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_concat_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_concat_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_concat.dir
@@ -2126,7 +2126,7 @@ build CMakeFiles\_ops_concat.dir\src\bindings\concat_pybind.cpp.obj: CXX_COMPILE
 
 build CMakeFiles\_ops_concat.dir\backends\cuda\ops\concat\launcher.cu.obj: CUDA_COMPILER___ops_concat_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat\launcher.cu || cmake_object_order_depends_target__ops_concat
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_concat_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_concat_EXPORTS
   DEP_FILE = CMakeFiles\_ops_concat.dir\backends\cuda\ops\concat\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2137,7 +2137,7 @@ build CMakeFiles\_ops_concat.dir\backends\cuda\ops\concat\launcher.cu.obj: CUDA_
 
 build CMakeFiles\_ops_concat.dir\backends\cuda\ops\concat\kernels.cu.obj: CUDA_COMPILER___ops_concat_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat\kernels.cu || cmake_object_order_depends_target__ops_concat
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_concat_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_concat_EXPORTS
   DEP_FILE = CMakeFiles\_ops_concat.dir\backends\cuda\ops\concat\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\concat -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2197,7 +2197,7 @@ build cmake_object_order_depends_target__ops_slice: phony || cmake_object_order_
 
 build CMakeFiles\_ops_slice.dir\src\bindings\slice_pybind.cpp.obj: CXX_COMPILER___ops_slice_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\slice_pybind.cpp || cmake_object_order_depends_target__ops_slice
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_slice_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_slice_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_slice.dir
@@ -2207,7 +2207,7 @@ build CMakeFiles\_ops_slice.dir\src\bindings\slice_pybind.cpp.obj: CXX_COMPILER_
 
 build CMakeFiles\_ops_slice.dir\backends\cuda\ops\slice\launcher.cu.obj: CUDA_COMPILER___ops_slice_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice\launcher.cu || cmake_object_order_depends_target__ops_slice
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_slice_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_slice_EXPORTS
   DEP_FILE = CMakeFiles\_ops_slice.dir\backends\cuda\ops\slice\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2218,7 +2218,7 @@ build CMakeFiles\_ops_slice.dir\backends\cuda\ops\slice\launcher.cu.obj: CUDA_CO
 
 build CMakeFiles\_ops_slice.dir\backends\cuda\ops\slice\kernels.cu.obj: CUDA_COMPILER___ops_slice_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice\kernels.cu || cmake_object_order_depends_target__ops_slice
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_slice_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_slice_EXPORTS
   DEP_FILE = CMakeFiles\_ops_slice.dir\backends\cuda\ops\slice\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\slice -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2278,7 +2278,7 @@ build cmake_object_order_depends_target__ops_view: phony || cmake_object_order_d
 
 build CMakeFiles\_ops_view.dir\src\bindings\view_pybind.cpp.obj: CXX_COMPILER___ops_view_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\view_pybind.cpp || cmake_object_order_depends_target__ops_view
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_view_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_view_EXPORTS
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /GL /MP
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Include -external:IC:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -external:I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include" -external:W0
   OBJECT_DIR = CMakeFiles\_ops_view.dir
@@ -2288,7 +2288,7 @@ build CMakeFiles\_ops_view.dir\src\bindings\view_pybind.cpp.obj: CXX_COMPILER___
 
 build CMakeFiles\_ops_view.dir\backends\cuda\ops\view\launcher.cu.obj: CUDA_COMPILER___ops_view_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view\launcher.cu || cmake_object_order_depends_target__ops_view
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_view_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_view_EXPORTS
   DEP_FILE = CMakeFiles\_ops_view.dir\backends\cuda\ops\view\launcher.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
@@ -2299,7 +2299,7 @@ build CMakeFiles\_ops_view.dir\backends\cuda\ops\view\launcher.cu.obj: CUDA_COMP
 
 build CMakeFiles\_ops_view.dir\backends\cuda\ops\view\kernels.cu.obj: CUDA_COMPILER___ops_view_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view\kernels.cu || cmake_object_order_depends_target__ops_view
   CONFIG = Release
-  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -D_ops_view_EXPORTS
+  DEFINES = -DBUILD_STANDALONE_OPS=1 -DNOMINMAX -DUSE_NVTX -D_ops_view_EXPORTS
   DEP_FILE = CMakeFiles\_ops_view.dir\backends\cuda\ops\view\kernels.cu.obj.d
   FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG -std=c++17 "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD -Xcompiler=/W4 -Xcompiler=/Zc:__cplusplus -Xcompiler=/bigobj -Xcompiler=/permissive- -Xcompiler=/EHsc -Xcompiler=/utf-8
   INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\_common\shim -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\backends\cuda\ops\view -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Include -isystem C:\Users\owner\AppData\Local\Programs\Python\Python312\Lib\site-packages\pybind11\include -isystem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"

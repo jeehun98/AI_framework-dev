@@ -10,12 +10,14 @@
 #include "../detail/bias.h"
 #include "../detail/api.h"
 #include "../detail/activations.h"
-// 기존 traits.hpp 에 있던 BiasMode/to_bias_mode를 epilogue 공용 어댑터로 대체
+// 기존 traits.hpp 의 BiasMode/to_bias_mode는 에필로그 공용 어댑터로 대체
 #include "../detail/epilogue_adaptor.hpp"
-#include "../detail/nvtx_shim.h"
+#include "backends/cuda/ops/_common/shim/nvtx.hpp"
+
 
 namespace regemm {
 
+// ========== 에러 체크 유틸 ==========
 #ifndef REGEMM_CHECK
 #define REGEMM_CHECK(stmt) do {                         \
   cudaError_t _e = (stmt);                              \
@@ -292,8 +294,8 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       /*C=*/(float*)p.gB, /*ldc=*/p.ldgB));
   }
 
-  // 🔵 핸들 파괴 금지 (프로세스 종료시 정리하거나 별도 shutdown API에서)
-  // CUBLAS_CHECK(cublasDestroy(h)); // 제거
+  // 🔵 핸들 파괴 금지 (프로세스 종료 시 정리하거나 별도 shutdown API에서)
+  // CUBLAS_CHECK(cublasDestroy(h)); // 유지
 
   // -------- gZ 해제 (내부 할당시에만) --------
   if (need_free) {
