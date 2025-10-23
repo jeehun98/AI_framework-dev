@@ -1,14 +1,12 @@
 # ninja log v5
-58	4620	7829084590140587	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/epilogue/launcher.cu.obj	de505187c0ea7f2
-54	2893	7829073021542376	CMakeFiles/_ops_common.dir/src/bindings/ops_common_pybind.cpp.obj	3ae71c3a3efc6780
-61	5434	7829084598298723	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/epilogue/kernels.cu.obj	feddfe36ee128d7b
-28	1719	7829080008927980	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_common.pyd	d6889d2a3e55296e
-64	2994	7829084573139962	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	93e15ed8e3d8de93
-49	73055	7829087448895383	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	6c2352f38f725b33
-55	5186	7829086770332918	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	3bb8c8d687f89e3d
-58	2702	7829088972114498	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	93e15ed8e3d8de93
-47	3833	7829088983067330	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/launcher.cu.obj	44b566175e375cde
-55	5379	7829088998680363	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	3bb8c8d687f89e3d
-51	67130	7829089616139018	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	6c2352f38f725b33
-67137	70389	7829089648764432	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	1dfeebfd2dc72261
-70389	71636	7829089661166368	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.pyd	71426de175ef2f5d
+89	8644	7829483793682607	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/launcher.cu.obj	44b566175e375cde
+123	4956	7829483757025774	CMakeFiles/_ops_gemm.dir/src/bindings/gemm_pybind.cpp.obj	93e15ed8e3d8de93
+118	4967	7829483757005690	CMakeFiles/_ops_common.dir/src/bindings/ops_common_pybind.cpp.obj	3ae71c3a3efc6780
+110	8586	7829483792852952	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/epilogue/launcher.cu.obj	de505187c0ea7f2
+123086	125263	7829484959602439	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.pyd	71426de175ef2f5d
+4968	7939	7829483786465852	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_common.pyd	d6889d2a3e55296e
+114	10205	7829483809276905	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/epilogue/kernels.cu.obj	feddfe36ee128d7b
+105	11186	7829483819046618	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_backward.cu.obj	3bb8c8d687f89e3d
+100	117460	7829484881502061	CMakeFiles/ge2_regemm_standalone.dir/backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu.obj	6c2352f38f725b33
+117468	123085	7829484938191195	CMakeFiles/_ops_gemm.dir/cmake_device_link.obj	1dfeebfd2dc72261
+117	4647	7829491182190808	C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/python/graph_executor_v2/ops/_ops_gemm.pyd	f244e9cbe54afc78
