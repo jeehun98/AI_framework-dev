@@ -1,2 +1,5 @@
 .venv
 other_frameworks
+
+# CUDA runtime/cuBLAS DLLs (do not commit)
+graph_executor_v2/python/graph_executor_v2/ops/*.dll
