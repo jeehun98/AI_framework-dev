@@ -6,7 +6,6 @@ import cupy as cp
 import math
 
 from graph_executor_v2.layers.conv2d import Conv2D
-from graph_executor_v2.layers.linear import Linear
 from graph_executor_v2.layers.dense_gemm import Dense
 from graph_executor_v2.ops import conv2d as conv_ops
 from graph_executor_v2.ops import gemm as gemm_ops
@@ -37,8 +36,6 @@ class GraphIR:
     input_ids: List[int] = field(default_factory=list)
     output_ids: List[int] = field(default_factory=list)
 
-TesnorDesc = TensorDesc  # backward compat
-
 # ======================== Memory Arena ========================
 
 class MemoryArena:
@@ -61,7 +58,11 @@ class MemoryArena:
         start = int(desc.offset)
         numel = int(math.prod(int(s) for s in desc.shape))
         end = start + numel
-        return buf[start:end].view(dtype=desc.dtype).reshape(tuple(int(s) for s in desc.shape))
+        segment = buf[start:end]
+        # 안전장치: 버퍼 dtype과 요청 dtype이 다르면 재해석 대신 필요한 구간만 캐스팅
+        if segment.dtype != desc.dtype:
+            segment = segment.astype(desc.dtype, copy=False)
+        return segment.reshape(tuple(int(s) for s in desc.shape))
 
 def _numel(shape: Tuple[int, ...]) -> int:
     return int(math.prod(int(s) for s in shape))
@@ -69,11 +70,19 @@ def _numel(shape: Tuple[int, ...]) -> int:
 def plan_memory(ir: GraphIR) -> MemoryArena:
     arena = MemoryArena()
     per_buf_need: Dict[int, int] = {}
+    per_buf_dtype: Dict[int, Any] = {}
     for t in ir.tensors:
         need = t.offset + _numel(t.shape)
-        per_buf_need[t.buffer_id] = max(per_buf_need.get(t.buffer_id, 0), need)
+        bid = t.buffer_id
+        per_buf_need[bid] = max(per_buf_need.get(bid, 0), need)
+        if bid not in per_buf_dtype:
+            per_buf_dtype[bid] = t.dtype
+        else:
+            # 같은 buffer_id에 서로 다른 dtype 혼용 금지
+            if per_buf_dtype[bid] != t.dtype:
+                raise TypeError(f"Mixed dtypes in buffer {bid}: {per_buf_dtype[bid]} vs {t.dtype}")
     for bid, need in per_buf_need.items():
-        arena.allocate(bid, need, dtype=cp.float32)
+        arena.allocate(bid, need, dtype=per_buf_dtype.get(bid, cp.float32))
     return arena
 
 # ======================== Compiler ========================
@@ -97,7 +106,6 @@ class GraphCompiler:
         self._in_bwd_capture: bool = False        # 캡처 중 플래그
         self._bwd_capture_error: Optional[str] = None
         self._last_bwd_node: Optional[str] = None # 최근 실행한 BWD 노드(디버그)
-
 
         # Grad buffers (per tensor id)
         self._grad_bufs: List[Optional[cp.ndarray]] = []
@@ -130,7 +138,7 @@ class GraphCompiler:
                 dH, dW  = layer.dilation
                 H_out = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
                 W_out = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
-                Cout  = layer.filters
+                Cout  = layer.out_channels
                 y_shape = (N, Cout, H_out, W_out)
 
                 ir.tensors.append(TensorDesc(shape=y_shape, buffer_id=next_buf_id, offset=0))
@@ -188,14 +196,13 @@ class GraphCompiler:
                 ir.tensors.append(TensorDesc(shape=in_desc.shape, buffer_id=in_desc.buffer_id, offset=in_desc.offset))
                 y_tid = tid; tid += 1
                 node = Node(kind="ReLU", inputs=[cur_tid], outputs=[y_tid], layer_ref=layer)
-                # ★ 캡처-세이프: ReLU 마스크를 미리 할당해두고 재사용
+                # ★ 캡처-세이프: ReLU 마스크는 bwd에서 (Y>0)로 생성/사용. fwd는 최대연산만.
                 mask_shape = tuple(int(v) for v in in_desc.shape)
                 node.attrs["relu_mask"] = cp.empty(mask_shape, dtype=cp.bool_)
                 ir.nodes.append(node)
                 cur_tid = y_tid
 
-
-            elif lname in ("BatchNorm2D", "BatchNorm"):
+            elif lname in ("BatchNorm2D", "BatchNorm2d", "BatchNorm"):
                 in_desc = ir.tensors[cur_tid]
                 ir.tensors.append(TensorDesc(shape=in_desc.shape, buffer_id=next_buf_id, offset=0))
                 y_tid = tid; tid += 1
@@ -308,7 +315,6 @@ class GraphCompiler:
                     self._use_runtime_graph_api = True
                     self._graph_api_kind = "runtime-pointer"
 
-        
         # (옵션) Backward CUDA Graph 캡처
         if use_cuda_graph_bwd:
             # 1) fwd 한 번 돌려서 Z 등 채우고
@@ -445,6 +451,7 @@ class GraphCompiler:
             elif kind == "ReLU":
                 X = self.arena.view(self.ir.tensors[node.inputs[0]])
                 Y = self.arena.view(self.ir.tensors[node.outputs[0]])
+                # ReLU forward: no extra mask; backward uses (Y > 0) mask which is equivalent to (X > 0)
                 cp.maximum(X, 0, out=Y)
 
             elif kind == "BN2D":
@@ -521,11 +528,10 @@ class GraphCompiler:
             self._grad_view(out_tid)[...] = g_out  # seed
 
         # 역순으로 전파 (+ 어떤 노드에서 깨졌는지 기록)
-        # enumerate를 뒤집어서 인덱스도 함께 기록
         for idx, node in reversed(list(enumerate(self.ir.nodes))):
             self._last_bwd_node = f"#{idx}:{node.kind}"
             cur_stream = cp.cuda.get_current_stream().ptr  # ★ 현재 스트림 포인터 고정 전달
- 
+
             kind = node.kind
 
             if kind == "GEMM":

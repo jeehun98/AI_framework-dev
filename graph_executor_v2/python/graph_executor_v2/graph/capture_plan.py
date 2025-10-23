@@ -1,3 +1,4 @@
+# python/graph_executor_v2/graph/capture_plan.py
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Callable, Type
@@ -95,7 +96,8 @@ def _generic_paramless_planner(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: in
 
     y = cp.empty(out_shp, dtype=cp.float32)
     need_z = getattr(lyr, "activation", "none") != "none"
-    z = cp.empty(out_shp, dtype=cp.float32) if need_z else None
+    # param-less는 pre-activation 개념이 없다고 보고 z=None로 둠
+    z = None
 
     gA = cp.empty(cur, dtype=cp.float32)
     gW = None
@@ -133,12 +135,13 @@ if Dense is not None:
 
         y = cp.empty(out_shp, dtype=cp.float32)
         need_z = getattr(lyr, "activation", "none") != "none"
-        z = cp.empty(out_shp, dtype=cp.float32) if need_z else None
+        # 일관성: act='none'이면 z=y alias, 아니면 별도 z 버퍼
+        z = (cp.empty_like(y) if need_z else y)
 
         gA = cp.empty(cur, dtype=cp.float32)
         if hasattr(lyr, "W") and lyr.W is not None:
             W = lyr.W
-            units = int(W.shape[1])
+            units = int(W.shape[1])  # assume W:(K,N)
             gW = cp.empty_like(W)
             gB = cp.empty((1, units), dtype=cp.float32) if getattr(lyr, "b", None) is not None else None
             ws = _ensure_gemm_workspaces(cur[0], units, lt_bytes=lt_bytes)
@@ -175,15 +178,21 @@ if Conv2D is not None:
 
         act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "none")
         need_z = (str(act_name).lower() != "none")
-        z = y if not need_z else cp.empty_like(y)
+        # 일관성: act='none'이면 z=y alias
+        z = (cp.empty_like(y) if need_z else y)
 
         gA = cp.empty((N, Cin, H, W), dtype=cp.float32)
-        gW = cp.empty((Cout, Cin, KH, KW), dtype=cp.float32)
-        with_bias = (
-            bool(getattr(lyr, "with_bias", False)) or
-            (getattr(lyr, "B", None) is not None) or
-            (getattr(lyr, "bias", None) is not None)
-        )
+        # gW shape: 그룹드 컨볼루션 안전화 — 가능하면 레이어의 W를 신뢰
+        Wp = getattr(lyr, "W", None)
+        if Wp is not None:
+            gW = cp.empty_like(Wp)
+        else:
+            gW = cp.empty((Cout, Cin // groups, KH, KW), dtype=cp.float32)
+        # bias 여부: 표준 속성 use_bias 우선
+        with_bias = bool(getattr(lyr, "use_bias", False)) or \
+                    (getattr(lyr, "B", None) is not None) or \
+                    (getattr(lyr, "bias", None) is not None) or \
+                    (getattr(lyr, "b", None) is not None)
         gB = cp.empty((Cout,), dtype=cp.float32) if with_bias else None
 
         from graph_executor_v2.ops.conv2d import Conv2DWorkspaces  # type: ignore
@@ -292,7 +301,6 @@ if _PadLayer is not None:
           - backward: gA[cur], no params
         """
         lname = f"L{idx}:{lyr.__class__.__name__}"
-        # 레이어가 compute_output_shape를 제공한다고 가정
         try:
             out_shp = tuple(map(int, lyr.compute_output_shape(cur)))
         except Exception as e:
@@ -361,7 +369,6 @@ if Embedding is not None:
         """
         lname = f"L{idx}:{lyr.__class__.__name__}"
 
-        # 입력 shape(cur) 검증 및 출력 shape 계산
         if len(cur) not in (1, 2):
             raise RuntimeError(f"{lname}: Embedding expects 1D/2D indices, got {cur}")
 
@@ -375,21 +382,15 @@ if Embedding is not None:
             L = int(cur[0])
             out_shp = (L, D)
 
-        # forward 버퍼
         y = cp.empty(out_shp, dtype=cp.float32)
-        z = None  # pre-activation 개념 없음
+        z = None
 
-        # backward 버퍼
-        #  - gA: 입력과 동일 shape(float32) — 그래프 체인 정합(Embedding은 실제 grad 없음)
-        gA = cp.empty(cur, dtype=cp.float32)
-        #  - gW: 파라미터 grad (V,D)
+        gA = cp.empty(cur, dtype=cp.float32)   # dummy grad carrier
         gW = cp.empty((V, D), dtype=cp.float32)
         gB = None
         ws = None
 
-        return PerLayerBufs(
-            name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws
-        ), tuple(out_shp)
+        return PerLayerBufs(name=lname, y=y, z=z, gA=gA, gW=gW, gB=gB, work=ws), tuple(out_shp)
 
 # 8) Dropout (mask만 마련하는 소형 work)
 try:
@@ -411,7 +412,7 @@ if _DropLayer is not None:
 
         y  = cp.empty(out_shp, dtype=cp.float32)
         z  = None
-        gA = cp.empty(cur, dtype=cp.float32)  # 입력 grad 버퍼(항등 or dropout bwd 결과)
+        gA = cp.empty(cur, dtype=cp.float32)
         gW = None
         gB = None
 
@@ -440,33 +441,29 @@ if RNN is not None:
         import cupy as cp
         lname = f"L{idx}:{lyr.__class__.__name__}"
 
-        # 입력 형태 확인
         if len(cur) != 3:
             raise RuntimeError(f"{lname}: RNN expects 3D input (N,T,I), got {cur}")
         N, T, I = map(int, cur)
         H = int(getattr(lyr, "hidden_size"))
 
-        # 출력/보조 버퍼
         out_shp = (N, T, H)
         y = cp.empty(out_shp, dtype=cp.float32)
 
         act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "tanh")
         need_z = (str(act_name).lower() != "none")
-        z = y if not need_z else cp.empty_like(y)
+        z = (cp.empty_like(y) if need_z else y)
 
-        # grads
         gA  = cp.empty((N, T, I), dtype=cp.float32)      # dX
-        gW  = None                                       # 단일 weight grad는 사용 안 함 (RNN은 Wx/Wh로 분리)
-        gWx = cp.empty((I, H),     dtype=cp.float32)     # dWx
-        gWh = cp.empty((H, H),     dtype=cp.float32)     # dWh
+        gW  = None
+        gWx = cp.empty((I, H),     dtype=cp.float32)
+        gWh = cp.empty((H, H),     dtype=cp.float32)
 
         with_bias = bool(getattr(lyr, "with_bias", False)) or \
                     (getattr(lyr, "b", None) is not None) or \
                     (getattr(lyr, "bias", None) is not None)
         gB  = cp.empty((H,), dtype=cp.float32) if with_bias else None
-        dh0 = cp.empty((N, H), dtype=cp.float32)         # ∂L/∂h0
+        dh0 = cp.empty((N, H), dtype=cp.float32)
 
-        # 워크스페이스
         from graph_executor_v2.ops.rnn import RnnWorkspaces  # type: ignore
         ws = RnnWorkspaces()
         # forward workspaces
