@@ -17,7 +17,6 @@ from graph_executor_v2.layers.dropout import Dropout
 
 from graph_executor_v2.losses.softmax_ce import SoftmaxCrossEntropy
 from graph_executor_v2.optim.adamw import AdamWOpt
-from graph_executor_v2.train.cuda_graph_trainer import CudaGraphTrainer
 
 # ------------------------
 # Model builders
@@ -62,10 +61,10 @@ def make_model_rnn_eval(
 # ------------------------
 # Helpers
 # ------------------------
-def _clone_params_flat(model):
+def _clone_params_flat(model: Sequential):
     vecs = []
     for lyr in model.layers:
-        for name in ("W", "B"):
+        for name in ("W", "B", "b"):  # 대소문자 혼용 대비
             if hasattr(lyr, name):
                 w = getattr(lyr, name)
                 if w is not None:
@@ -107,13 +106,12 @@ def run_smoke_for_rnn(tag: str, *, variant: str):
     if hasattr(opt, "ensure_initialized"):
         opt.ensure_initialized()
 
-    trainer = CudaGraphTrainer(model, loss, opt)
-    trainer.compile((N, T, I))
+    print("compile! 컴파일!")
+    model.compile((N, T, I), loss=loss, optimizer=opt)
 
-    # 그래프가 내보내는 고정 로짓 버퍼 (포인터 동일성 체크용)
-    logits_buf = trainer.tg.logits
-    logits_ptr_before = int(logits_buf.data.ptr)  # 고정 버퍼여야 동일 포인터
-
+    # 고정 logits 버퍼/포인터 검사
+    logits_buf = model.tg.logits
+    logits_ptr_before = int(logits_buf.data.ptr)
     last_L = None
 
     if variant.startswith("train_"):
@@ -122,7 +120,7 @@ def run_smoke_for_rnn(tag: str, *, variant: str):
         assert w0 is not None
 
         for t in range(3):
-            Lval = trainer.one_step(X, y)
+            Lval = model.one_step(X, y)
             print(f"[SMOKE][RNN:{tag}/{variant}] step={t:02d} loss={Lval:.6f}")
             assert isinstance(Lval, float) and math.isfinite(Lval)
             last_L = Lval
@@ -130,31 +128,27 @@ def run_smoke_for_rnn(tag: str, *, variant: str):
         w1 = _clone_params_flat(model)
         assert not cp.allclose(w0, w1), "parameters did not change after training steps"
 
-        # 로짓이 고정 버퍼에 계속 써지는지(포인터 동일) + 값은 변했는지(업데이트 영향)
-        assert int(trainer.tg.logits.data.ptr) == logits_ptr_before, "logits buffer must be static in capture"
-        # 최소한 한 스텝 후에는 값이 바뀌었다고 가정(랜덤 데이터/드롭아웃로 인해 엄격 단조는 요구하지 않음)
-        # 값 변화 여부를 샘플 몇 개로 체크
+        # 로짓이 고정 버퍼에 계속 써지는지(포인터 동일)
+        assert int(model.tg.logits.data.ptr) == logits_ptr_before, "logits buffer must be static in capture"
+
+        # (선택) 최신 로짓 읽기 및 유한성 검증
+        _ = model.one_step(X, y)
         cp.cuda.Stream.null.synchronize()
-        changed = not cp.allclose(logits_buf, logits_buf + 1e-6)  # trivial false; force read
-        # 보다 직접: 같은 입력으로 여러 스텝 학습하면 로짓은 보통 변함
-        # (간단히 첫 스텝 직후 스냅샷과 마지막 스텝을 비교)
-        # 안전하게 다시 실행해서 최신 로짓 확보
-        _ = trainer.one_step(X, y)
         logits_after = logits_buf.copy()
         assert not cp.allclose(logits_after, logits_after * 0), "logits must be finite"
+
     else:
-        # eval 변형: Dropout off → 같은 입력이면 로짓이 재현성 있게 유지(단, 파라미터 업데이트는 진행됨)
-        # 캡처/리플레이가 되면서 loss도 유의미한 값이어야 함
+        # eval 변형: Dropout off → 같은 입력이면 재현성 유지(단, 파라미터 업데이트는 진행됨)
         Lvals = []
         for t in range(3):
-            Lval = trainer.one_step(X, y)
+            Lval = model.one_step(X, y)
             Lvals.append(Lval)
             print(f"[SMOKE][RNN:{tag}/{variant}] step={t:02d} loss={Lval:.6f}")
             assert isinstance(Lval, float) and math.isfinite(Lval)
-        last_L = Lvals[-1]   # ✅ 마지막 손실로 갱신
-        assert int(trainer.tg.logits.data.ptr) == logits_ptr_before, "logits buffer must be static in capture"
+        last_L = Lvals[-1]
+        assert int(model.tg.logits.data.ptr) == logits_ptr_before, "logits buffer must be static in capture"
 
-    print(f"[OK] Integrated trainer smoke passed with RNN({tag}/{variant}). Last loss={last_L:.6f}")
+    print(f"[OK] Integrated trainer-free smoke passed with RNN({tag}/{variant}). Last loss={last_L:.6f}")
 
 def main():
     print("== Integrated trainer smoke with RNN ==")

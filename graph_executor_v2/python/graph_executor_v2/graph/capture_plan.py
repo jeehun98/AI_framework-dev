@@ -1,12 +1,12 @@
 # python/graph_executor_v2/graph/capture_plan.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Callable, Type
+from typing import Any, Dict, List, Optional, Tuple, Callable, Type, Sequence
 import cupy as cp
 
 __all__ = [
     "PerLayerBufs", "LossBufs", "CapturePlan",
-    "register_planner", "make_plan_for_sequential",
+    "register_planner", "make_plan_for_sequential", "make_plan_for_path",
 ]
 
 # ============================================================
@@ -18,7 +18,7 @@ class PerLayerBufs:
     name: str
     # forward
     y: cp.ndarray                        # forward output (required)
-    z: Optional[cp.ndarray]              # pre-activation (optional)
+    z: Optional[cp.ndarray]              # pre-activation (optional; act!='none'일 때만 별도 버퍼)
     # backward
     gA: cp.ndarray                       # grad w.r.t input (required)
     gW: Optional[cp.ndarray]             # grad w.r.t weight (optional, single tensor)
@@ -95,8 +95,7 @@ def _generic_paramless_planner(lyr, cur: Tuple[int, ...], idx: int, lt_bytes: in
         raise RuntimeError(f"cannot infer output shape for {lname}: {e}")
 
     y = cp.empty(out_shp, dtype=cp.float32)
-    need_z = getattr(lyr, "activation", "none") != "none"
-    # param-less는 pre-activation 개념이 없다고 보고 z=None로 둠
+    # param-less 계열은 pre-activation 개념이 없다고 보고 z=None
     z = None
 
     gA = cp.empty(cur, dtype=cp.float32)
@@ -135,8 +134,8 @@ if Dense is not None:
 
         y = cp.empty(out_shp, dtype=cp.float32)
         need_z = getattr(lyr, "activation", "none") != "none"
-        # 일관성: act='none'이면 z=y alias, 아니면 별도 z 버퍼
-        z = (cp.empty_like(y) if need_z else y)
+        # act!='none'이면 z 별도 버퍼, 아니면 z=None
+        z = (cp.empty_like(y) if need_z else None)
 
         gA = cp.empty(cur, dtype=cp.float32)
         if hasattr(lyr, "W") and lyr.W is not None:
@@ -178,17 +177,17 @@ if Conv2D is not None:
 
         act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "none")
         need_z = (str(act_name).lower() != "none")
-        # 일관성: act='none'이면 z=y alias
-        z = (cp.empty_like(y) if need_z else y)
+        # act!='none'이면 z 별도 버퍼, 아니면 z=None
+        z = (cp.empty_like(y) if need_z else None)
 
         gA = cp.empty((N, Cin, H, W), dtype=cp.float32)
-        # gW shape: 그룹드 컨볼루션 안전화 — 가능하면 레이어의 W를 신뢰
+        # gW shape: 가능하면 레이어의 W를 신뢰
         Wp = getattr(lyr, "W", None)
         if Wp is not None:
             gW = cp.empty_like(Wp)
         else:
             gW = cp.empty((Cout, Cin // groups, KH, KW), dtype=cp.float32)
-        # bias 여부: 표준 속성 use_bias 우선
+        # bias 여부
         with_bias = bool(getattr(lyr, "use_bias", False)) or \
                     (getattr(lyr, "B", None) is not None) or \
                     (getattr(lyr, "bias", None) is not None) or \
@@ -431,14 +430,13 @@ if RNN is not None:
         """
         RNN(Elman) 플래너:
           - 입력: X (N,T,I)
-          - 출력: y (N,T,H), z(optional) = pre-activation (act=='none'이면 y와 alias)
+          - 출력: y (N,T,H), z(optional) = pre-activation (act!='none'일 때만 별도 버퍼)
           - backward 버퍼:
               * gA: dX (N,T,I)
               * gWx: (I,H), gWh: (H,H), gB: (H,) (with_bias가 True일 때)
               * dh0: (N,H)
           - work: RnnWorkspaces (forward/backward 공용 버퍼)
         """
-        import cupy as cp
         lname = f"L{idx}:{lyr.__class__.__name__}"
 
         if len(cur) != 3:
@@ -451,7 +449,7 @@ if RNN is not None:
 
         act_name = getattr(lyr, "activation", None) or getattr(lyr, "act", "tanh")
         need_z = (str(act_name).lower() != "none")
-        z = (cp.empty_like(y) if need_z else y)
+        z = (cp.empty_like(y) if need_z else None)
 
         gA  = cp.empty((N, T, I), dtype=cp.float32)      # dX
         gW  = None
@@ -490,6 +488,43 @@ if RNN is not None:
         )
 
 # ============================================================
+# Internal utility used by public planners
+# ============================================================
+
+def _plan_over_layers(
+    layers: Sequence[Any],
+    input_shape: Tuple[int, ...],
+    *,
+    lt_bytes: int = (8 << 20),
+) -> Tuple[List[PerLayerBufs], Tuple[int, ...]]:
+    """
+    주어진 '선형 경로' 레이어 시퀀스에 대해 순차적으로 플래닝.
+    각 레이어에 등록된 플래너(registry)를 찾아 버퍼/WS를 사전할당한다.
+    레이어가 build(cur) 메서드를 가진 경우, 필요 시 빌드 호출.
+    """
+    cur = tuple(map(int, input_shape))
+    per_layer: List[PerLayerBufs] = []
+
+    for idx, lyr in enumerate(layers):
+        # 레이어 개별 build 지원 (선택)
+        if not getattr(lyr, "built", False) and hasattr(lyr, "build"):
+            try:
+                lyr.build(cur)
+            except Exception:
+                # 일부 레이어는 build가 shape-independent일 수 있음 → 무시 가능
+                pass
+
+        planner = _find_planner(lyr)
+        if planner is None:
+            per, out_shp = _generic_paramless_planner(lyr, cur, idx, lt_bytes)
+        else:
+            per, out_shp = planner(lyr, cur, idx, lt_bytes)
+        per_layer.append(per)
+        cur = tuple(map(int, out_shp))
+
+    return per_layer, cur
+
+# ============================================================
 # Public API
 # ============================================================
 
@@ -512,21 +547,37 @@ def make_plan_for_sequential(
         if hasattr(model, "build"):
             model.build(cur)
 
-    per_layer: List[PerLayerBufs] = []
-    for idx, lyr in enumerate(getattr(model, "layers", [])):
-        planner = _find_planner(lyr)
-        if planner is None:
-            per, out_shp = _generic_paramless_planner(lyr, cur, idx, lt_bytes)
-        else:
-            per, out_shp = planner(lyr, cur, idx, lt_bytes)
-        per_layer.append(per)
-        cur = tuple(map(int, out_shp))
+    layers = list(getattr(model, "layers", []))
+    per_layer, out_shape = _plan_over_layers(layers, cur, lt_bytes=lt_bytes)
 
     # loss dY
-    dY = cp.empty(cur, dtype=cp.float32) if loss_kind == "softmax_ce" else None
+    dY = cp.empty(out_shape, dtype=cp.float32) if loss_kind == "softmax_ce" else None
 
     return CapturePlan(
         input_shape=tuple(map(int, input_shape)),
         per_layer=per_layer,
-        loss=LossBufs(dY=dY, out_shape=tuple(cur)),
+        loss=LossBufs(dY=dY, out_shape=tuple(out_shape)),
+    )
+
+def make_plan_for_path(
+    path_layers: Sequence[Any],
+    input_shape: Tuple[int, ...],
+    *,
+    loss_kind: str = "softmax_ce",
+    lt_bytes: int = (8 << 20),
+) -> CapturePlan:
+    """
+    [동적 경로 전용] 분기/언롤 결정 이후의 '선형 경로' 레이어 리스트에 대해
+    그래프 캡처용 버퍼/워크스페이스를 사전할당한다.
+    - Sequential 없이도 사용 가능 (예: then/else 블록, 1-step 본문 등)
+    """
+    cur = tuple(map(int, input_shape))
+    per_layer, out_shape = _plan_over_layers(path_layers, cur, lt_bytes=lt_bytes)
+
+    dY = cp.empty(out_shape, dtype=cp.float32) if loss_kind == "softmax_ce" else None
+
+    return CapturePlan(
+        input_shape=tuple(map(int, input_shape)),
+        per_layer=per_layer,
+        loss=LossBufs(dY=dY, out_shape=tuple(out_shape)),
     )

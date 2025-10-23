@@ -1,638 +1,360 @@
-# python/graph_executor_v2/graph/graph_executor.py
+# python/graph_executor_v2/graph/graph_exec.py
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Any, Optional, Sequence
 import cupy as cp
-import math
+from .capture_plan import CapturePlan
 
+# Conv2D / WS 유틸
 from graph_executor_v2.layers.conv2d import Conv2D
-from graph_executor_v2.layers.dense_gemm import Dense
-from graph_executor_v2.ops import conv2d as conv_ops
-from graph_executor_v2.ops import gemm as gemm_ops
+from graph_executor_v2.ops import conv2d as convops
 
-# ======================== IR ========================
+# (선택) BN2d 타입 감지용
+try:
+    from graph_executor_v2.layers.batchnorm import BatchNorm2d as _BN2d
+except Exception:
+    _BN2d = None
 
-@dataclass
-class TensorDesc:
-    shape: Tuple[int, ...]
-    dtype: Any = cp.float32
-    buffer_id: int = -1
-    offset: int = 0  # element offset (arena 1D)
 
-@dataclass
-class Node:
-    kind: str
-    inputs: List[int]
-    outputs: List[int]
-    attrs: Dict[str, Any] = field(default_factory=dict)
-    layer_ref: Any = None
-    ws_fwd: Optional[Any] = None       # Conv2DWorkspaces(forward)
-    ws_bwd: Optional[Any] = None       # Conv2DWorkspaces(backward) or optional
+class GraphExecLike:
+    def __init__(self, launch_fn, stream: cp.cuda.Stream):
+        self._launch = launch_fn
+        self._stream = stream
 
-@dataclass
-class GraphIR:
-    tensors: List[TensorDesc] = field(default_factory=list)
-    nodes: List[Node] = field(default_factory=list)
-    input_ids: List[int] = field(default_factory=list)
-    output_ids: List[int] = field(default_factory=list)
+    def launch(self, stream_ptr=None):
+        # stream_ptr는 호환성용 인자(무시). 내부에서 고정 스트림 사용.
+        with self._stream:
+            self._launch()
 
-# ======================== Memory Arena ========================
 
-class MemoryArena:
-    def __init__(self):
-        self.buffers: Dict[int, cp.ndarray] = {}
-        self.alloc_elems: Dict[int, int] = {}
+# ---------------- shape / workspace helpers ----------------
+def _out_hw(
+    H: int, W: int, KH: int, KW: int,
+    stride: tuple[int, int],
+    padding: tuple[int, int],
+    dilation: tuple[int, int],
+) -> tuple[int, int]:
+    sH, sW = stride
+    pH, pW = padding
+    dH, dW = dilation
+    H_out = (H + 2 * pH - dH * (KH - 1) - 1) // sH + 1
+    W_out = (W + 2 * pW - dW * (KW - 1) - 1) // sW + 1
+    return H_out, W_out
 
-    def allocate(self, buffer_id: int, numel: int, dtype=cp.float32):
-        need = int(numel)
-        if buffer_id in self.buffers:
-            if self.alloc_elems[buffer_id] < need:
-                self.buffers[buffer_id] = cp.empty(need, dtype=dtype)
-                self.alloc_elems[buffer_id] = need
-        else:
-            self.buffers[buffer_id] = cp.empty(need, dtype=dtype)
-            self.alloc_elems[buffer_id] = need
 
-    def view(self, desc: TensorDesc) -> cp.ndarray:
-        buf = self.buffers[desc.buffer_id]
-        start = int(desc.offset)
-        numel = int(math.prod(int(s) for s in desc.shape))
-        end = start + numel
-        segment = buf[start:end]
-        # 안전장치: 버퍼 dtype과 요청 dtype이 다르면 재해석 대신 필요한 구간만 캐스팅
-        if segment.dtype != desc.dtype:
-            segment = segment.astype(desc.dtype, copy=False)
-        return segment.reshape(tuple(int(s) for s in desc.shape))
+def _alloc_conv2d_ws(HWo: int, K: int, Cout: int) -> convops.Conv2DWorkspaces:
+    ws = convops.Conv2DWorkspaces()
+    # Forward (옵션 A: 항상 Z_rows 필요)
+    ws.dCol = cp.empty((HWo, K), dtype=cp.float32)
+    ws.W_KC = cp.empty((K, Cout), dtype=cp.float32)
+    ws.Y_tmp = cp.empty((HWo, Cout), dtype=cp.float32)
+    ws.Z_rows = cp.empty((HWo, Cout), dtype=cp.float32)
+    # Backward (공통)
+    ws.dCol_b = cp.empty((HWo, K), dtype=cp.float32)
+    ws.dTmp = cp.empty((max(Cout * K, HWo * K),), dtype=cp.float32)
+    ws.gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)
+    ws.Z_rows_b = cp.empty((Cout, HWo), dtype=cp.float32)
+    # Backward 옵션 (gX, gW)
+    ws.W_CK = cp.empty((Cout, K), dtype=cp.float32)
+    ws.dY_HT = cp.empty((HWo, Cout), dtype=cp.float32)
+    ws.dWpack = cp.empty((Cout, K), dtype=cp.float32)
+    return ws
 
-def _numel(shape: Tuple[int, ...]) -> int:
-    return int(math.prod(int(s) for s in shape))
 
-def plan_memory(ir: GraphIR) -> MemoryArena:
-    arena = MemoryArena()
-    per_buf_need: Dict[int, int] = {}
-    per_buf_dtype: Dict[int, Any] = {}
-    for t in ir.tensors:
-        need = t.offset + _numel(t.shape)
-        bid = t.buffer_id
-        per_buf_need[bid] = max(per_buf_need.get(bid, 0), need)
-        if bid not in per_buf_dtype:
-            per_buf_dtype[bid] = t.dtype
-        else:
-            # 같은 buffer_id에 서로 다른 dtype 혼용 금지
-            if per_buf_dtype[bid] != t.dtype:
-                raise TypeError(f"Mixed dtypes in buffer {bid}: {per_buf_dtype[bid]} vs {t.dtype}")
-    for bid, need in per_buf_need.items():
-        arena.allocate(bid, need, dtype=per_buf_dtype.get(bid, cp.float32))
-    return arena
+def _ensure_conv2d_ws_for_forward(
+    per, lyr: Conv2D, cur_shape: tuple[int, int, int, int]
+) -> convops.Conv2DWorkspaces:
+    """
+    Forward 직전에 Conv2D WS를 준비하여 반환.
+    per에 저장이 가능하면 저장도 시도하지만, 저장 실패해도 반환값을 즉시 사용.
+    """
+    ws = getattr(per, "work", None)
+    if ws is not None:
+        return ws
 
-# ======================== Compiler ========================
+    N, Cin, H, W = map(int, cur_shape)
+    KH, KW = lyr.kernel_size
+    Cout = int(lyr.out_channels)
+    groups = int(lyr.groups)
 
-class GraphCompiler:
-    def __init__(self, model) -> None:
-        self._use_runtime_graph_api: bool = True
-        self.model = model
-        self.ir: Optional[GraphIR] = None
-        self.arena: Optional[MemoryArena] = None
+    H_out, W_out = _out_hw(H, W, KH, KW, lyr.stride, lyr.padding, lyr.dilation)
+    HWo = H_out * W_out
+    K = (Cin // groups) * KH * KW
 
-        # FWD capture
-        self._gexec: Optional[Any] = None
-        self._cap_stream: Optional[cp.cuda.Stream] = None
-        self._graph_api_kind: str = "unknown"
+    ws = _alloc_conv2d_ws(HWo, K, Cout)
+    try:
+        setattr(per, "work", ws)
+    except Exception:
+        pass
+    return ws
 
-        # BWD capture
-        self._gexec_bwd: Optional[Any] = None
-        self._cap_stream_bwd: Optional[cp.cuda.Stream] = None
-        self._graph_api_kind_bwd: str = "none"
-        self._in_bwd_capture: bool = False        # 캡처 중 플래그
-        self._bwd_capture_error: Optional[str] = None
-        self._last_bwd_node: Optional[str] = None # 최근 실행한 BWD 노드(디버그)
 
-        # Grad buffers (per tensor id)
-        self._grad_bufs: List[Optional[cp.ndarray]] = []
+def _ensure_conv2d_ws_for_backward(per, lyr: Conv2D) -> convops.Conv2DWorkspaces:
+    """
+    Backward 직전에 Conv2D WS를 준비하여 반환.
+    per.work가 없으면 per.y(=아웃풋)와 lyr.W로부터 크기를 재계산해 즉시 생성.
+    """
+    ws = getattr(per, "work", None)
+    if ws is not None:
+        return ws
 
-    def _grad_view(self, tid: int) -> cp.ndarray:
-        buf = self._grad_bufs[tid]
-        assert buf is not None
-        return buf
+    # per.y: (N, Cout, H_out, W_out)
+    N, Cout, H_out, W_out = map(int, per.y.shape)
+    HWo = H_out * W_out
 
-    def compile(self, input_shape: Tuple[int, ...],
-                use_cuda_graph: bool = False,
-                use_cuda_graph_bwd: bool = False):
-        ir = GraphIR()
-        tid = 0
-        ir.tensors.append(TensorDesc(shape=input_shape, buffer_id=0, offset=0))
-        ir.input_ids = [tid]
-        cur_tid = tid
-        cur_shape = input_shape
-        tid += 1
-        next_buf_id = 1
+    # lyr.W: (Cout, Cin, KH, KW) (groups 고려는 K 계산에서 반영)
+    _, Cin, KH, KW = map(int, lyr.W.shape)
+    groups = int(lyr.groups)
+    K = (Cin // groups) * KH * KW
 
-        for layer in self.model.layers:
-            lname = layer.__class__.__name__
+    ws = _alloc_conv2d_ws(HWo, K, Cout)
+    try:
+        setattr(per, "work", ws)
+    except Exception:
+        pass
+    return ws
 
-            if lname == "Conv2D":
-                N, Cin, H, W = cur_shape
-                KH, KW = layer.kernel_size
-                sH, sW  = layer.stride
-                pH, pW  = layer.padding
-                dH, dW  = layer.dilation
-                H_out = (H + 2*pH - dH*(KH-1) - 1)//sH + 1
-                W_out = (W + 2*pW - dW*(KW-1) - 1)//sW + 1
-                Cout  = layer.out_channels
-                y_shape = (N, Cout, H_out, W_out)
 
-                ir.tensors.append(TensorDesc(shape=y_shape, buffer_id=next_buf_id, offset=0))
-                y_tid = tid; tid += 1
+# ---------------- grads zeroing ----------------
+def _zero_bwd_buffers(plan: CapturePlan):
+    for p in plan.per_layer:
+        if p.gA is not None:
+            p.gA.fill(0)
+        if p.gW is not None:
+            p.gW.fill(0)
+        if p.gB is not None:
+            p.gB.fill(0)
 
-                node = Node(
-                    kind="Conv2D",
-                    inputs=[cur_tid],
-                    outputs=[y_tid],
-                    attrs=dict(
-                        stride=layer.stride, padding=layer.padding, dilation=layer.dilation,
-                        groups=layer.groups, with_bias=layer.use_bias, act="none", save_z=True
-                    ),
-                    layer_ref=layer,
+
+# ---------------- forward / backward runners ----------------
+def _run_fwd(
+    layers: Sequence[Any],
+    plan: CapturePlan,
+    X,
+    stream_ptr: Optional[int],
+):
+    """
+    layers 시퀀스와 plan.per_layer가 1:1로 정렬되어 있어야 한다.
+    (정적 경로에선 layers=model.layers, 동적 경로에선 path_layers)
+    """
+    cur = X
+    assert len(layers) == len(plan.per_layer), \
+        f"plan/per_layer length mismatch: layers={len(layers)} vs plan={len(plan.per_layer)}"
+
+    for i, lyr in enumerate(layers):
+        per = plan.per_layer[i]
+        ybuf = per.y
+        zbuf = per.z
+
+        ws_local = None
+        if isinstance(lyr, Conv2D):
+            # cur.shape은 Conv2D 입력(N,C,H,W)
+            ws_local = _ensure_conv2d_ws_for_forward(per, lyr, tuple(map(int, cur.shape)))
+
+        # 안전한 kwargs 구성: zbuf가 있을 때만 z_out 전달
+        kwargs = dict(out=ybuf, stream=stream_ptr)
+        work_to_use = ws_local if ws_local is not None else getattr(per, "work", None)
+        if work_to_use is not None:
+            kwargs["work"] = work_to_use
+        if zbuf is not None:
+            kwargs["z_out"] = zbuf
+
+        try:
+            lyr.forward_into(cur, **kwargs)
+        except TypeError:
+            # 2nd try: 최소 인자 (out, stream)만
+            lyr.forward_into(cur, out=ybuf, stream=stream_ptr)
+
+        cur = ybuf
+    return cur
+
+
+def _run_bwd(
+    layers: Sequence[Any],
+    plan: CapturePlan,
+    g_in,
+    stream_ptr: Optional[int],
+):
+    """
+    layers 시퀀스와 plan.per_layer가 1:1로 정렬되어 있어야 한다.
+    역전파는 layers를 역순으로 순회하며 plan도 맞춰 참조한다.
+    """
+    assert len(layers) == len(plan.per_layer), \
+        f"plan/per_layer length mismatch: layers={len(layers)} vs plan={len(plan.per_layer)}"
+
+    for ridx, lyr in enumerate(reversed(layers)):
+        i = len(layers) - 1 - ridx
+        per = plan.per_layer[i]
+
+        ws_local = None
+        if isinstance(lyr, Conv2D):
+            ws_local = _ensure_conv2d_ws_for_backward(per, lyr)
+
+        # ---- BN2d: always needs X_saved regardless of affine ----
+        is_bn = (_BN2d is not None and isinstance(lyr, _BN2d))
+        if is_bn:
+            prev_y = plan.per_layer[i - 1].y if i - 1 >= 0 else None
+            lyr.backward_into(
+                g_in,
+                gA_out=per.gA,
+                gW_out=per.gW,
+                gB_out=per.gB,
+                X_saved=prev_y,
+                stream=stream_ptr,
+            )
+            g_in = per.gA
+            continue
+
+        # ---- 기존 경로 (Dense/Conv/기타) ----
+        if per.gW is not None:
+            try:
+                lyr.backward_into(
+                    g_in,
+                    gA_out=per.gA,
+                    gW_out=per.gW,
+                    gB_out=per.gB,
+                    work=(ws_local if ws_local is not None else getattr(per, "work", None)),
+                    stream=stream_ptr,
                 )
-
-                # === WS (fwd/bwd) 사전할당 ===
-                CinW = int(layer.W.shape[1]) if hasattr(layer, "W") and layer.W is not None else int(Cin // max(1, layer.groups))
-                K    = int(CinW * KH * KW)
-                HWo  = int(H_out * W_out)
-
-                # Forward WS
-                wf = conv_ops.Conv2DWorkspaces()
-                wf.dCol   = cp.empty((HWo, K),    dtype=cp.float32)
-                wf.W_KC   = cp.empty((K,   Cout), dtype=cp.float32)
-                wf.Y_tmp  = cp.empty((HWo, Cout), dtype=cp.float32)
-                wf.Z_rows = cp.empty((HWo, Cout), dtype=cp.float32)  # save_z=True
-                node.ws_fwd = wf
-
-                # Backward WS (gX, gW, gB 모두 켜는 일반 케이스)
-                wb = conv_ops.Conv2DWorkspaces()
-                wb.dCol_b  = cp.empty((HWo, K), dtype=cp.float32)
-                wb.dTmp    = cp.empty((max(Cout*K, HWo*K),), dtype=cp.float32)
-                wb.gy_rows = cp.empty((Cout, HWo), dtype=cp.float32)
-                wb.Z_rows_b= cp.empty((Cout, HWo), dtype=cp.float32)
-                wb.W_CK    = cp.empty((Cout, K), dtype=cp.float32)      # want_gX
-                wb.dY_HT   = cp.empty((HWo,  Cout), dtype=cp.float32)   # want_gX
-                wb.dWpack  = cp.empty((Cout, K), dtype=cp.float32)      # want_gW
-                node.ws_bwd = wb
-
-                # 파라미터 grad 버퍼 보장
-                if not hasattr(layer, "dW") or layer.dW is None:
-                    layer.dW = cp.empty_like(layer.W)
-                if layer.use_bias:
-                    if not hasattr(layer, "db") or layer.db is None:
-                        layer.db = cp.empty_like(layer.b)
-
-                ir.nodes.append(node)
-                cur_tid = y_tid
-                cur_shape = y_shape
-                next_buf_id += 1
-
-            elif lname in ("ReLU",):
-                in_desc = ir.tensors[cur_tid]
-                ir.tensors.append(TensorDesc(shape=in_desc.shape, buffer_id=in_desc.buffer_id, offset=in_desc.offset))
-                y_tid = tid; tid += 1
-                node = Node(kind="ReLU", inputs=[cur_tid], outputs=[y_tid], layer_ref=layer)
-                # ★ 캡처-세이프: ReLU 마스크는 bwd에서 (Y>0)로 생성/사용. fwd는 최대연산만.
-                mask_shape = tuple(int(v) for v in in_desc.shape)
-                node.attrs["relu_mask"] = cp.empty(mask_shape, dtype=cp.bool_)
-                ir.nodes.append(node)
-                cur_tid = y_tid
-
-            elif lname in ("BatchNorm2D", "BatchNorm2d", "BatchNorm"):
-                in_desc = ir.tensors[cur_tid]
-                ir.tensors.append(TensorDesc(shape=in_desc.shape, buffer_id=next_buf_id, offset=0))
-                y_tid = tid; tid += 1
-                ir.nodes.append(Node(kind="BN2D", inputs=[cur_tid], outputs=[y_tid],
-                                     attrs=dict(eps=getattr(layer, "eps", 1e-5)), layer_ref=layer))
-                cur_tid = y_tid
-                next_buf_id += 1
-
-            elif lname == "Flatten":
-                N, C, H, W = cur_shape
-                new_shape = (N, C*H*W)
-                in_desc = ir.tensors[cur_tid]
-                ir.tensors.append(TensorDesc(shape=new_shape, buffer_id=in_desc.buffer_id, offset=in_desc.offset))
-                y_tid = tid; tid += 1
-                ir.nodes.append(Node(kind="Flatten", inputs=[cur_tid], outputs=[y_tid], layer_ref=layer))
-                cur_tid = y_tid
-                cur_shape = new_shape
-
-            elif lname in ("Dense", "Linear"):
-                N, K = cur_shape
-                Nout = int(getattr(layer, "units", None) or getattr(layer, "out_features"))
-                y_shape = (N, Nout)
-
-                # 출력 및 pre-activation(Z) 텐서 등록
-                ir.tensors.append(TensorDesc(shape=y_shape, buffer_id=next_buf_id, offset=0))
-                y_tid = tid; tid += 1
-                ir.tensors.append(TensorDesc(shape=y_shape, buffer_id=next_buf_id, offset=_numel(y_shape)))  # Z
-                z_tid = tid; tid += 1
-
-                node = Node(
-                    kind="GEMM",
-                    inputs=[cur_tid],
-                    outputs=[y_tid],
-                    attrs=dict(
-                        act=getattr(layer, "activation", "none"),
-                        with_bias=bool(getattr(layer, "use_bias", True)),
-                        z_tid=z_tid
-                    ),
-                    layer_ref=layer
-                )
-
-                # 파라미터 grad 버퍼
-                if not hasattr(layer, "dW") or layer.dW is None:
-                    layer.dW = cp.empty_like(layer.W)
-                if bool(getattr(layer, "use_bias", True)):
-                    if not hasattr(layer, "db") or layer.db is None:
-                        layer.db = cp.empty_like(layer.b)
-                    # GEMM gBias는 (1,Nout) 필요 → 노드별 row 버퍼
-                    node.attrs["gBias_row"] = cp.empty((1, Nout), dtype=cp.float32)
-
-                # --- GEMM BWD 워크스페이스(캡처-세이프) ---
-                node.attrs["gemm_ws_dZ"] = cp.empty(y_shape, dtype=cp.float32)          # (M,N)
-                node.attrs["gemm_lt_ws"] = cp.empty(8 * 1024 * 1024, dtype=cp.uint8)     # 8MB (optional)
-
-                ir.nodes.append(node)
-                cur_tid = y_tid
-                cur_shape = y_shape
-                next_buf_id += 1
-
-            else:
-                raise NotImplementedError(f"Unsupported layer in graph compile: {lname}")
-
-        ir.output_ids = [cur_tid]
-        self.ir = ir
-
-        # 메모리 플래닝
-        self.arena = plan_memory(ir)
-
-        # Grad 버퍼 사전할당 (모든 텐서)
-        self._grad_bufs = []
-        for t in ir.tensors:
-            g = cp.empty(tuple(int(s) for s in t.shape), dtype=cp.float32)
-            self._grad_bufs.append(g)
-
-        # (옵션) Forward CUDA Graph 캡처
-        if use_cuda_graph:
-            warm_x = cp.empty(input_shape, dtype=cp.float32)
-            _ = self._run_impl(warm_x)
-            cp.cuda.get_current_stream().synchronize()
-
-            self._cap_stream = cp.cuda.Stream(non_blocking=True)
-            with self._cap_stream:
-                self._cap_stream.begin_capture()
-                _ = self._run_impl(None)
-                graph = self._cap_stream.end_capture()
-
-            self._use_runtime_graph_api = False
-            self._graph_api_kind = "unknown"
-            try:
-                if hasattr(graph, "upload") and hasattr(graph, "launch"):
-                    graph.upload(self._cap_stream)
-                    self._gexec = graph
-                    self._graph_api_kind = "graph-object"
-                else:
-                    raise AttributeError("no-graph-object-methods")
-            except AttributeError:
-                try:
-                    cp.cuda.graph.upload(graph, self._cap_stream)
-                    self._gexec = graph
-                    self._graph_api_kind = "module-func"
-                except Exception:
-                    raw = getattr(graph, "graph", None) or getattr(graph, "ptr", None)
-                    if raw is None:
-                        raise TypeError("This CuPy version exposes neither Graph.launch/upload nor graph/ptr.")
-                    gexec = cp.cuda.runtime.graphInstantiate(int(raw))
-                    if isinstance(gexec, tuple):
-                        gexec = gexec[0]
-                    self._gexec = int(gexec)
-                    cp.cuda.runtime.graphUpload(self._gexec, self._cap_stream.ptr)
-                    self._use_runtime_graph_api = True
-                    self._graph_api_kind = "runtime-pointer"
-
-        # (옵션) Backward CUDA Graph 캡처
-        if use_cuda_graph_bwd:
-            # 1) fwd 한 번 돌려서 Z 등 채우고
-            warm_x = cp.empty(input_shape, dtype=cp.float32)
-            _ = self._run_impl(warm_x)
-
-            # 2) gout 워밍업 + 비캡처 한 번 (워크스페이스들 확정)
-            out_tid = self.ir.output_ids[0]
-            gout_warm = self._grad_view(out_tid); gout_warm.fill(1.0)
-            # 핸들/플랜을 미리 초기화(내부에서 작은 더미 GEMM 실행)
-            self._warmup_gemm_handles()
-            _ = self._backward_impl(None)
-            cp.cuda.get_current_stream().synchronize()
-
-            # 3) 스트림은 try 밖에서 생성!
-            self._bwd_capture_error = None
-            self._cap_stream_bwd = cp.cuda.Stream(non_blocking=True)
-            try:
-                # 3-a) **같은 캡처 스트림에서** 미리 한 번 더 워밍업(캡처 없이)
-                with self._cap_stream_bwd:
-                    self._in_bwd_capture = False
-                    self._warmup_gemm_handles()   # cuBLAS/cuBLASLt lazy init on this stream
-                    _ = self._backward_impl(None) # Conv/GEMM/ReLU bwd 전부 이 스트림에서 한 번 실행
-                    cp.cuda.get_current_stream().synchronize()
-
-                # 3-b) 이제 캡처 시작
-                with self._cap_stream_bwd:
-                    self._in_bwd_capture = True
-                    self._cap_stream_bwd.begin_capture()
-                    try:
-                        _ = self._backward_impl(None)  # gout은 grad_buf에 이미 있음
-                    except Exception as e:
-                        where = getattr(self, "_last_bwd_node", "?")
-                        self._bwd_capture_error = f"{type(e).__name__} at node {where}: {e}"
-                        raise
-                    graph_b = self._cap_stream_bwd.end_capture()
-
-                # 업로드/런치 방식 분기 (FWD와 동일 패턴)
-                if hasattr(graph_b, "upload") and hasattr(graph_b, "launch"):
-                    graph_b.upload(self._cap_stream_bwd)
-                    self._gexec_bwd = graph_b
-                    self._graph_api_kind_bwd = "graph-object"
-                else:
-                    try:
-                        cp.cuda.graph.upload(graph_b, self._cap_stream_bwd)
-                        self._gexec_bwd = graph_b
-                        self._graph_api_kind_bwd = "module-func"
-                    except Exception:
-                        raw = getattr(graph_b, "graph", None) or getattr(graph_b, "ptr", None)
-                        if raw is None:
-                            raise TypeError("This CuPy version exposes neither Graph.launch/upload nor graph/ptr.")
-                        gexec = cp.cuda.runtime.graphInstantiate(int(raw))
-                        if isinstance(gexec, tuple):
-                            gexec = gexec[0]
-                        self._gexec_bwd = int(gexec)
-                        cp.cuda.runtime.graphUpload(self._gexec_bwd, self._cap_stream_bwd.ptr)
-                        self._graph_api_kind_bwd = "runtime-pointer"
-            except Exception as e:
-                self._bwd_capture_error = f"{type(e).__name__}: {e}"
-                # 깨끗하게 폴백 (FWD 캡처는 유지)
-                self._gexec_bwd = None
-                self._cap_stream_bwd = None
-                self._graph_api_kind_bwd = "none"
-            finally:
-                self._in_bwd_capture = False
-
-        return self
-
-    def _warmup_gemm_handles(self) -> None:
-        """캡처 전에 작은 더미 GEMM으로 cuBLAS/cuBLASLt 핸들을 초기화."""
-        s = cp.cuda.Stream(non_blocking=True)
-        with s:
-            A = cp.empty((1, 1), dtype=cp.float32)
-            B = cp.empty((1, 1), dtype=cp.float32)
-            Y = cp.empty((1, 1), dtype=cp.float32)
-            Z = cp.empty((1, 1), dtype=cp.float32)
-            # fwd 핸들 초기화
-            gemm_ops.forward_into(A, B, out=Y, with_bias=False, act="none", save_z=True, z_out=Z)
-            # bwd 핸들/플랜 초기화
-            gY = cp.empty((1, 1), dtype=cp.float32)
-            gA = cp.empty((1, 1), dtype=cp.float32)
-            gB = cp.empty((1, 1), dtype=cp.float32)
-            dZ = cp.empty((1, 1), dtype=cp.float32)  # 선택적 워크스페이스
-            try:
-                gemm_ops.backward_into(A, B, gY, Z, with_bias=False, gA_out=gA, gB_out=gB, work_dZ=dZ)
             except TypeError:
-                gemm_ops.backward_into(A, B, gY, Z, with_bias=False, gA_out=gA, gB_out=gB)
-        s.synchronize()
-
-    # ======================== 실행(FWD) ========================
-    def run(self, x: cp.ndarray) -> cp.ndarray:
-        if self._gexec is not None:
-            inp = self.arena.view(self.ir.tensors[self.ir.input_ids[0]])
-            inp[...] = x
-
-            if self._use_runtime_graph_api:
-                cp.cuda.runtime.graphLaunch(self._gexec, self._cap_stream.ptr)
-            else:
-                if self._graph_api_kind == "graph-object":
-                    self._gexec.launch(self._cap_stream)
-                else:
-                    cp.cuda.graph.launch(self._gexec, self._cap_stream)
-
-            self._cap_stream.synchronize()
-            return self.arena.view(self.ir.tensors[self.ir.output_ids[0]]).copy()
+                try:
+                    ws = ws_local if ws_local is not None else getattr(per, "work", None)
+                    lyr.backward_into(
+                        g_in,
+                        gA_out=per.gA,
+                        gW_out=per.gW,
+                        gB_out=per.gB,
+                        work_dZ=(getattr(ws, "dZ", None) if ws is not None else None),
+                        lt_workspace=(getattr(ws, "lt_ws", None) if ws is not None else None),
+                        stream=stream_ptr,
+                    )
+                except TypeError:
+                    lyr.backward_into(
+                        g_in,
+                        gA_out=per.gA,
+                        gW_out=per.gW,
+                        gB_out=per.gB,
+                        stream=stream_ptr,
+                    )
         else:
-            return self._run_impl(x)
-
-    def _run_impl(self, x: Optional[cp.ndarray]) -> cp.ndarray:
-        if x is not None:
-            inp = self.arena.view(self.ir.tensors[self.ir.input_ids[0]])
-            inp[...] = x
-
-        for node in self.ir.nodes:
-            kind = node.kind
-
-            if kind == "Conv2D":
-                X = self.arena.view(self.ir.tensors[node.inputs[0]])
-                Y = self.arena.view(self.ir.tensors[node.outputs[0]])
-                layer: Conv2D = node.layer_ref
-                attrs = node.attrs
-
-                conv_ops.forward_into(
-                    X, layer.W,
-                    out=Y,
-                    B=layer.b if layer.use_bias else None,
-                    stride=attrs["stride"], padding=attrs["padding"],
-                    dilation=attrs["dilation"], groups=attrs["groups"],
-                    with_bias=attrs["with_bias"], act="none",
-                    save_z=True, Z_saved=Y,  # act='none' → Z=Y alias
-                    work=node.ws_fwd,
-                )
-
-            elif kind == "ReLU":
-                X = self.arena.view(self.ir.tensors[node.inputs[0]])
-                Y = self.arena.view(self.ir.tensors[node.outputs[0]])
-                # ReLU forward: no extra mask; backward uses (Y > 0) mask which is equivalent to (X > 0)
-                cp.maximum(X, 0, out=Y)
-
-            elif kind == "BN2D":
-                X = self.arena.view(self.ir.tensors[node.inputs[0]])
-                Y = self.arena.view(self.ir.tensors[node.outputs[0]])
-                eps = float(node.attrs.get("eps", 1e-5))
-                mu  = X.mean(axis=(0,2,3), keepdims=True)
-                var = X.var(axis=(0,2,3), keepdims=True)
-                inv = cp.reciprocal(cp.sqrt(var + eps))
-                Y[...] = (X - mu) * inv
-
-            elif kind == "Flatten":
-                pass  # alias reshape
-
-            elif kind == "GEMM":
-                A = self.arena.view(self.ir.tensors[node.inputs[0]])
-                Y = self.arena.view(self.ir.tensors[node.outputs[0]])
-                Z = self.arena.view(self.ir.tensors[node.attrs["z_tid"]])
-                layer = node.layer_ref
-                act = node.attrs.get("act", "none")
-                with_bias = node.attrs.get("with_bias", True)
-                W = getattr(layer, "W")
-                b = getattr(layer, "b", None) if with_bias else None
-
-                gemm_ops.forward_into(
-                    A, W,
-                    out=Y,
-                    bias=b,
-                    act=str(act),
-                    with_bias=bool(with_bias),
-                    save_z=True, z_out=Z,
-                )
-            else:
-                raise RuntimeError(f"Unknown node kind: {kind}")
-
-        return self.arena.view(self.ir.tensors[self.ir.output_ids[0]])
-
-    # ======================== 역전파(BWD) ========================
-    def backward(self, g_out: cp.ndarray) -> cp.ndarray:
-        assert self.ir is not None and self.arena is not None, "compile 먼저 호출 필요"
-
-        if self._gexec_bwd is not None:
-            # g_out을 사전할당된 grad 버퍼(out_tid)에 써넣고 런치
-            out_tid = self.ir.output_ids[0]
-            self._grad_view(out_tid)[...] = g_out
-
-            if self._graph_api_kind_bwd == "runtime-pointer":
-                cp.cuda.runtime.graphLaunch(self._gexec_bwd, self._cap_stream_bwd.ptr)
-            else:
-                if self._graph_api_kind_bwd == "graph-object":
-                    self._gexec_bwd.launch(self._cap_stream_bwd)
-                else:
-                    cp.cuda.graph.launch(self._gexec_bwd, self._cap_stream_bwd)
-            self._cap_stream_bwd.synchronize()
-
-            # 캡처 중 미뤄둔 bias(gBias) 반영: 각 GEMM 노드의 gBias_row → layer.db
             try:
-                for n in self.ir.nodes:
-                    if n.kind == "GEMM" and n.attrs.get("with_bias", True):
-                        gb = n.attrs.get("gBias_row", None)
-                        if gb is not None:
-                            n.layer_ref.db[...] = gb.reshape(-1)
-            except Exception:
-                pass
-
-            return self._grad_view(self.ir.input_ids[0]).copy()
-
-        # 비캡쳐 경로
-        return self._backward_impl(g_out)
-
-    def _backward_impl(self, g_out: Optional[cp.ndarray]) -> cp.ndarray:
-        out_tid = self.ir.output_ids[0]
-        if g_out is not None:
-            self._grad_view(out_tid)[...] = g_out  # seed
-
-        # 역순으로 전파 (+ 어떤 노드에서 깨졌는지 기록)
-        for idx, node in reversed(list(enumerate(self.ir.nodes))):
-            self._last_bwd_node = f"#{idx}:{node.kind}"
-            cur_stream = cp.cuda.get_current_stream().ptr  # ★ 현재 스트림 포인터 고정 전달
-
-            kind = node.kind
-
-            if kind == "GEMM":
-                A = self.arena.view(self.ir.tensors[node.inputs[0]])
-                Z = self.arena.view(self.ir.tensors[node.attrs["z_tid"]])
-                gY = self._grad_view(node.outputs[0])
-
-                layer = node.layer_ref
-                act = node.attrs.get("act", "none")
-                with_bias = bool(node.attrs.get("with_bias", True))
-                W = getattr(layer, "W")
-
-                gA_out = self._grad_view(node.inputs[0])
-                gB_out = layer.dW
-                gBias_out = node.attrs.get("gBias_row", None) if with_bias else None
-
-                # GEMM BWD 워크스페이스
-                ws_dZ = node.attrs.get("gemm_ws_dZ")
-                lt_ws = node.attrs.get("gemm_lt_ws")
-
-                gemm_ops.backward_into(
-                    A, W, gY, Z,
-                    act=str(act), with_bias=with_bias,
-                    gA_out=gA_out, gB_out=gB_out,
-                    gBias_out=gBias_out,
-                    work_dZ=ws_dZ,
-                    lt_workspace=lt_ws,
-                    # ★ 캡처-세이프: 반드시 현재 스트림을 명시
-                    stream=cur_stream,
+                lyr.backward_into(
+                    g_in,
+                    gA_out=per.gA,
+                    work=(ws_local if ws_local is not None else getattr(per, "work", None)),
+                    stream=stream_ptr,
                 )
-                # 캡처 중에는 파라미터로의 쓰기를 미룸
-                if with_bias and gBias_out is not None and not self._in_bwd_capture:
-                    layer.db[...] = gBias_out.reshape(-1)
+            except TypeError:
+                lyr.backward_into(g_in, gA_out=per.gA, stream=stream_ptr)
 
-            elif kind == "ReLU":
-                in_tid = node.inputs[0]
-                out_tid = node.outputs[0]
-                Y = self.arena.view(self.ir.tensors[out_tid])
-                gY = self._grad_view(out_tid)
-                gX = self._grad_view(in_tid)
+        g_in = per.gA
+    return g_in
 
-                # ★ 임시 배열 금지: 미리 할당한 마스크 사용
-                mask = node.attrs.get("relu_mask", None)
-                if mask is None or mask.shape != Y.shape:
-                    # 안전장치(이상 케이스용). 원래는 compile에서 이미 만들어 둠
-                    mask = cp.empty_like(Y, dtype=cp.bool_)
-                    node.attrs["relu_mask"] = mask
 
-                cp.greater(Y, 0, out=mask)      # in-place: no alloc
-                cp.multiply(gY, mask, out=gX)   # in-place: no alloc
+# ---------------- record / instantiate ----------------
+def record_step_graph(
+    model,
+    loss_fn,
+    optimizer_step_fn,
+    plan: CapturePlan,
+    *,
+    X_buf: cp.ndarray,
+    y_buf: cp.ndarray,
+    stream: Optional[cp.cuda.Stream] = None,
+    loss_out: Optional[cp.ndarray] = None,  # ✅ 그래프 내부에서 갱신될 손실 스칼라 버퍼(디바이스, shape=())
+    layers_override: Optional[Sequence[Any]] = None,  # ✅ 동적 경로: 이 레이어 시퀀스로 실행
+):
+    """
+    fwd → loss → bwd → opt 한 스텝을 CUDA Graph로 녹화해 실행자 반환.
+    Graph 미지원이면 Pseudo 실행자(GraphExecLike) 반환.
 
-            elif kind == "Flatten":
-                in_tid  = node.inputs[0]
-                out_tid = node.outputs[0]
-                gY = self._grad_view(out_tid)
-                in_shape = tuple(int(s) for s in self.ir.tensors[in_tid].shape)
-                self._grad_view(in_tid)[...] = gY.reshape(in_shape)
+    - 정적 경로: layers_override=None (기본 model.layers 사용)
+    - 동적 경로: layers_override=선형화된 path_layers 전달 (plan.per_layer와 1:1 정렬)
+    """
+    if stream is None:
+        stream = cp.cuda.Stream(non_blocking=True)
 
-            elif kind == "BN2D":
-                # NOTE: 현 구현은 캡쳐-세이프가 아님 (mean/var 임시 생성).
-                # 테스트 모델엔 BN 없음. 필요시 별도 WS 설계 필요.
-                in_tid  = node.inputs[0]
-                out_tid = node.outputs[0]
-                X  = self.arena.view(self.ir.tensors[in_tid])
-                gY = self._grad_view(out_tid)
-                eps = float(node.attrs.get("eps", 1e-5))
-                mu  = X.mean(axis=(0,2,3), keepdims=True)
-                var = X.var(axis=(0,2,3), keepdims=True)
-                inv = cp.reciprocal(cp.sqrt(var + eps))
-                Xhat = (X - mu) * inv
-                Naxis = X.shape[0] * X.shape[2] * X.shape[3]
-                gX = (1.0/Naxis) * inv * (
-                    Naxis*gY - gY.sum(axis=(0,2,3), keepdims=True)
-                    - Xhat * (gY*Xhat).sum(axis=(0,2,3), keepdims=True)
-                )
-                self._grad_view(in_tid)[...] = gX
+    layers_seq: Sequence[Any] = layers_override if layers_override is not None else getattr(model, "layers", [])
+    assert len(layers_seq) == len(plan.per_layer), \
+        f"[record_step_graph] layers vs plan length mismatch: {len(layers_seq)} vs {len(plan.per_layer)}"
 
-            elif kind == "Conv2D":
-                in_tid  = node.inputs[0]
-                out_tid = node.outputs[0]
-                X  = self.arena.view(self.ir.tensors[in_tid])
-                Y  = self.arena.view(self.ir.tensors[out_tid])  # act='none' → Z==Y
-                gY = self._grad_view(out_tid)
-                layer: Conv2D = node.layer_ref
-                attrs = node.attrs
+    dY = plan.loss.dY
 
-                gX_out = self._grad_view(in_tid)
-                gW_out = layer.dW
-                gB_out = layer.db if attrs["with_bias"] else None
+    # ------ 워밍업 (프리런 1회) ------
+    with stream:
+        # 그래프 입력 버퍼를 BN bwd fallback용으로 보관(필요시 참조)
+        setattr(model, "_graph_input_buf", X_buf)
+        cur = _run_fwd(layers_seq, plan, X_buf, stream.ptr)
+        loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
+        # ✅ 손실값을 고정 버퍼로 복사(있으면)
+        if loss_out is not None:
+            loss_out[...] = loss_dev
+        g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
+        if dY is not None:
+            dY[...] = dY_tmp
+        _zero_bwd_buffers(plan)
+        _run_bwd(layers_seq, plan, g_in, stream.ptr)
+        optimizer_step_fn()
 
-                conv_ops.backward_into(
-                    X, layer.W, gY, Y,
-                    stride=attrs["stride"], padding=attrs["padding"],
-                    dilation=attrs["dilation"], groups=attrs["groups"],
-                    with_bias=attrs["with_bias"], act=attrs.get("act", "none"),
-                    gX_out=gX_out, gW_out=gW_out, gB_out=gB_out,
-                    work=node.ws_bwd,
-                    # ★ 캡처-세이프: 반드시 현재 스트림을 명시(바인딩이 지원해야 함)
-                    stream=cur_stream,
-                )
-            else:
-                raise RuntimeError(f"Unknown node kind in backward: {kind}")
+    has_graph = hasattr(cp.cuda, "graph") and hasattr(cp.cuda.graph, "capture_stream")
 
-        return self._grad_view(self.ir.input_ids[0])
+    if has_graph:
+        with stream:
+            with cp.cuda.graph.capture_stream(stream) as cap:
+                cur = _run_fwd(layers_seq, plan, X_buf, stream.ptr)
+                loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
+                # ✅ 손실값을 고정 버퍼로 복사(있으면)
+                if loss_out is not None:
+                    loss_out[...] = loss_dev
+                g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
+                if dY is not None:
+                    dY[...] = dY_tmp
+                _zero_bwd_buffers(plan)
+                _run_bwd(layers_seq, plan, g_in, stream.ptr)
+                optimizer_step_fn()
+        gexec = cap.graph.instantiate()
+        return gexec
+
+    # ------ 폴백 ------
+    def _one_step():
+        cur = _run_fwd(layers_seq, plan, X_buf, stream.ptr)
+        loss_dev, dY_tmp = loss_fn.forward(cur, y_buf, return_scalar=False)
+        # ✅ 손실값을 고정 버퍼로 복사(있으면)
+        if loss_out is not None:
+            loss_out[...] = loss_dev
+        g_in = dY if (dY is not None and dY.shape == dY_tmp.shape) else dY_tmp
+        if dY is not None:
+            dY[...] = dY_tmp
+        _zero_bwd_buffers(plan)
+        _run_bwd(layers_seq, plan, g_in, stream.ptr)
+        optimizer_step_fn()
+
+    return GraphExecLike(_one_step, stream)
+
+
+class TrainGraph:
+    def __init__(self, gexec, io, stream):
+        self._gexec = gexec
+        self._io = io
+        self._stream = stream
+
+    @property
+    def logits(self):
+        return self._io["logits"]
+
+    @property
+    def X_buf(self):
+        return self._io["X"]
+
+    @property
+    def y_buf(self):
+        return self._io["y"]
+
+    def set_batch(self, X_dev, y_dev):
+        xb, yb = self._io["X"], self._io["y"]
+        with self._stream:  # ✅ 그래프와 동일 스트림에서 H2D/D2D 수행
+            xb[...] = cp.asarray(X_dev, dtype=xb.dtype)
+            yb[...] = cp.asarray(y_dev, dtype=yb.dtype)
+
+    def launch(self):
+        # GraphExecLike와 동일 인터페이스 유지
+        self._gexec.launch(self._stream.ptr)

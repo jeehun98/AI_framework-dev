@@ -133,7 +133,10 @@ def _zero_bwd_buffers(plan: CapturePlan):
 
 # ---------------- forward / backward runners ----------------
 def _run_fwd(model, plan: CapturePlan, X, stream_ptr: Optional[int]):
+    
+    
     cur = X
+
     for i, lyr in enumerate(model.layers):
         per = plan.per_layer[i]
         ybuf = per.y
