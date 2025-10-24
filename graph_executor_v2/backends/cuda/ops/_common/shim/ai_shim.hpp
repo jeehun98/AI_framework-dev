@@ -1,10 +1,17 @@
-// backends/cuda/ops/_common/shim/ai_shim.hpp
 #pragma once
 
 // -----------------------------------------------------------------------------
 // Standalone ops 빌드용 "얇은" 코어 대체(shim).
 // 통합 빌드가 아닐 때(BUILD_STANDALONE_OPS)만 사용되며,
 // 커널/런처에서 필요한 최소 타입/함수/매크로/유틸을 제공합니다.
+//
+// 업데이트 요약(캡처-세이프 강화):
+//  - CUDA Graph 캡처 상태 조회/가드 (host sync/malloc/동기 memcpy 금지)
+//  - memcpy/memset async 래퍼, malloc/free 캡처 금지 래퍼
+//  - 커널 런치 에러 수거 매크로(AI_CUDA_CHECK_LAUNCH)
+//  - 입력 검증 유틸(2D row-major, Per-N bias 등)
+//  - 스트림 핸들 캐스터(as_cuda_stream), dtype/numel 보강
+//  - (옵션) NVTX 범위 태깅 매크로
 // -----------------------------------------------------------------------------
 
 #ifdef BUILD_STANDALONE_OPS
@@ -16,7 +23,13 @@
   #include <map>
   #include <stdexcept>
   #include <type_traits>
+  #include <limits>
   #include <cuda_runtime_api.h> // cudaStream_t, cudaMemcpy 등
+
+  // (옵션) NVTX
+  #ifdef AI_USE_NVTX
+    #include "nvToolsExt.h"
+  #endif
 
   namespace ai {
 
@@ -36,7 +49,7 @@
     TransposeNotSupported = 105,
 
     MissingInput   = 110,
-    MissingOutput  = 111,  // NEW: save_z 요청인데 Z가 없을 때 등
+    MissingOutput  = 111,  // save_z 요청인데 Z가 없을 때 등
     RegistryNotFound = 120,
 
     CUDA_ERROR = 130,
@@ -45,12 +58,29 @@
 
   using StreamHandle = void*; // reinterpret_cast<cudaStream_t>(s)
 
+  // 타입-세이프 스트림 변환
+  inline cudaStream_t as_cuda_stream(StreamHandle s) {
+    return reinterpret_cast<cudaStream_t>(s);
+  }
+
+  // 캡처 상태 조회
+  enum class CapturePhase { None, Active, Invalid };
+
+  inline CapturePhase get_capture_phase(StreamHandle s) {
+    cudaStreamCaptureStatus st; unsigned long long id = 0;
+    cudaError_t e = cudaStreamGetCaptureInfo_v2(as_cuda_stream(s), &st, &id, nullptr, nullptr);
+    if (e != cudaSuccess) return CapturePhase::Invalid;
+    if (st == cudaStreamCaptureStatusActive) return CapturePhase::Active;
+    if (st == cudaStreamCaptureStatusNone)   return CapturePhase::None;
+    return CapturePhase::Invalid;
+  }
+
   // ---------------- Scalar / layout ----------------
   enum class Device { CPU, CUDA };
   enum class DType  { F32, F16, BF16, I32, I8 };
   enum class Layout { RowMajor, ColMajor };
 
-  inline std::size_t dtype_size(DType dt) {
+  [[nodiscard]] inline constexpr std::size_t dtype_size(DType dt) {
     switch (dt) {
       case DType::F32:  return 4;
       case DType::F16:  return 2;
@@ -59,6 +89,24 @@
       case DType::I8:   return 1;
       default:          return 0;
     }
+  }
+
+  // ---------------- Size helpers ----------------
+  inline int64_t safe_mul_nonneg(int64_t a, int64_t b) {
+    if (a == 0 || b == 0) return 0;
+    if (a > (std::numeric_limits<int64_t>::max() / b)) return -1; // overflow
+    return a * b;
+  }
+
+  inline int64_t numel_of(const std::vector<int64_t>& shape) {
+    if (shape.empty()) return 0;
+    int64_t n = 1;
+    for (auto v : shape) {
+      if (v < 0) return 0;
+      n = safe_mul_nonneg(n, v);
+      if (n < 0) return 0;
+    }
+    return n;
   }
 
   // ---------------- Tensor ----------------
@@ -92,13 +140,7 @@
 
     // Number of elements
     int64_t numel() const {
-      if (desc.shape.empty()) return 0;
-      int64_t n = 1;
-      for (auto v : desc.shape) {
-        if (v < 0) return 0; // guard
-        n *= v;
-      }
-      return n;
+      return numel_of(desc.shape);
     }
 
     // Byte size
@@ -126,12 +168,15 @@
 
   // Leading dimension helpers (row/col-major)
   inline int64_t lda(const Tensor& A){
+    if (A.desc.stride.size() != 2) return -1;
     return (A.desc.layout==Layout::RowMajor) ? A.desc.stride[0] : A.desc.stride[1];
   }
   inline int64_t ldb(const Tensor& B){
+    if (B.desc.stride.size() != 2) return -1;
     return (B.desc.layout==Layout::RowMajor) ? B.desc.stride[0] : B.desc.stride[1];
   }
   inline int64_t ldd(const Tensor& D){
+    if (D.desc.stride.size() != 2) return -1;
     return (D.desc.layout==Layout::RowMajor) ? D.desc.stride[0] : D.desc.stride[1];
   }
 
@@ -180,13 +225,13 @@
     ActKind  act{ActKind::None};
     bool     with_bias{false};
     float    leaky_slope{0.01f};
-    bool     save_z{false}; // NEW: Z(pre-activation) 저장 의도
+    bool     save_z{false}; // Z(pre-activation) 저장 의도
   };
 
   // ---------------- Registry stubs (declaration only) ----------------
   enum class OpKind { GEMM, GEMM_BWD };
 
-  // NEW: FWD 커널 시그니처에 Z_saved 추가 (nullptr 허용)
+  // FWD 커널 시그니처(Z_saved는 nullable)
   using KernelFn = Status(*)(const Tensor& A, const Tensor& B, const Tensor* Bias,
                              Tensor& Y, const GemmAttrs&, StreamHandle, Tensor* Z_saved);
 
@@ -241,7 +286,6 @@
     }
   };
 
-  // NEW: BWD 쿼리(대칭 구조)
   struct BwdOpQuery {
     OpKind         kind;     // GEMM_BWD
     const Tensor&  A;
@@ -256,14 +300,14 @@
   public:
     static BwdOpRegistry& inst();
     void      reg(const BwdOpKey& key, GemmBwdFn fn);
-    GemmBwdFn find_best(const BwdOpQuery& q) const; // NEW: 인자화
+    GemmBwdFn find_best(const BwdOpQuery& q) const;
   };
 
   namespace ops {
     // Forward GEMM entry used by other modules (provided by core)
     // Returns 0 on success, non-zero on failure
 
-    // NEW: Z 저장 지원 버전
+    // Z 저장 지원 버전
     int gemm_run_ex(const Tensor& A, const Tensor& B, const Tensor* Bias,
                     Tensor& Y, const GemmAttrs& attrs, StreamHandle s,
                     Tensor* Z_saved);
@@ -277,6 +321,54 @@
                      Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
                      const GemmAttrs& attrs, StreamHandle s);
   } // namespace ops
+
+  // ---------------- Capture-safe guards & wrappers ----------------
+
+  // 캡처 중 금지: host sync, malloc/free, 동기 memcpy 등
+  #ifndef AI_CAPTURE_FORBID_IF_ACTIVE
+  #define AI_CAPTURE_FORBID_IF_ACTIVE(stream_handle, what)                           \
+    do {                                                                             \
+      ::ai::CapturePhase _ph = ::ai::get_capture_phase(stream_handle);               \
+      if (_ph == ::ai::CapturePhase::Active) {                                       \
+        (void)(what);                                                                \
+        return ::ai::Status::RuntimeError;                                           \
+      }                                                                              \
+    } while(0)
+  #endif
+
+  // Async memcpy/memset 래퍼(항상 지정 스트림 사용)
+  inline Status ai_memcpy_async(void* dst, const void* src, size_t nbytes,
+                                cudaMemcpyKind kind, StreamHandle s) {
+    if (get_capture_phase(s) == CapturePhase::Invalid) return Status::RuntimeError;
+    cudaError_t e = cudaMemcpyAsync(dst, src, nbytes, kind, as_cuda_stream(s));
+    return (e == cudaSuccess) ? Status::Ok : Status::RuntimeError;
+  }
+
+  inline Status ai_memset_async(void* dst, int value, size_t nbytes, StreamHandle s) {
+    cudaError_t e = cudaMemsetAsync(dst, value, nbytes, as_cuda_stream(s));
+    return (e == cudaSuccess) ? Status::Ok : Status::RuntimeError;
+  }
+
+  // 캡처 중 cudaMalloc/Free 금지 (워크스페이스 사전 준비 유도)
+  inline Status ai_malloc(void** p, size_t nbytes, StreamHandle s) {
+    AI_CAPTURE_FORBID_IF_ACTIVE(s, "cudaMalloc");
+    cudaError_t e = cudaMalloc(p, nbytes);
+    return (e == cudaSuccess) ? Status::Ok : Status::RuntimeError;
+  }
+  inline Status ai_free(void* p, StreamHandle s) {
+    AI_CAPTURE_FORBID_IF_ACTIVE(s, "cudaFree");
+    cudaError_t e = cudaFree(p);
+    return (e == cudaSuccess) ? Status::Ok : Status::RuntimeError;
+  }
+
+  // 커널 런치 에러 수거(launch-time)
+  #ifndef AI_CUDA_CHECK_LAUNCH
+  #define AI_CUDA_CHECK_LAUNCH()                                                     \
+    do {                                                                             \
+      cudaError_t _e1 = cudaGetLastError();                                          \
+      if (_e1 != cudaSuccess) return ::ai::Status::RuntimeError;                     \
+    } while(0)
+  #endif
 
   // ---------------- Error propagation macros ----------------
   #ifndef AI_RETURN_IF_ERROR
@@ -294,6 +386,41 @@
       if (_cerr__ != cudaSuccess) return ::ai::Status::RuntimeError;        \
     } while(0)
   #endif
+
+  // ---------------- NVTX(옵션) ----------------
+  #ifdef AI_USE_NVTX
+    struct NvtxRange {
+      const char* name;
+      explicit NvtxRange(const char* n): name(n) { nvtxRangePushA(name); }
+      ~NvtxRange(){ nvtxRangePop(); }
+    };
+    #define AI_NVTX_RANGE(name) ::ai::NvtxRange _nvtx_range__(name)
+  #else
+    #define AI_NVTX_RANGE(name) ((void)0)
+  #endif
+
+  // ---------------- Common validators ----------------
+  inline Status expect_rowmajor_2d(const Tensor& T, const char* /*name*/) {
+    if (!T.is_cuda()) return Status::DeviceMismatch;
+    if (!T.is_contiguous_rowmajor_2d()) return Status::LayoutMismatch;
+    if (T.desc.dtype != DType::F32 && T.desc.dtype != DType::F16 && T.desc.dtype != DType::BF16)
+      return Status::DtypeMismatch;
+    if (T.numel() <= 0) return Status::ShapeMismatch;
+    return Status::Ok;
+  }
+
+  // Bias는 Per-N(1,N) or (N,)만 허용
+  inline Status expect_bias_perN_or_null(const Tensor* B, int64_t N) {
+    if (!B) return Status::Ok;
+    const Tensor& t = *B;
+    if (!t.is_cuda()) return Status::DeviceMismatch;
+    if (t.desc.shape.size()==1) {
+      if (t.desc.shape[0] != N) return Status::ShapeMismatch;
+    } else if (t.desc.shape.size()==2) {
+      if (!(t.desc.shape[0]==1 && t.desc.shape[1]==N)) return Status::ShapeMismatch;
+    } else return Status::ShapeMismatch;
+    return Status::Ok;
+  }
 
   } // namespace ai
 
