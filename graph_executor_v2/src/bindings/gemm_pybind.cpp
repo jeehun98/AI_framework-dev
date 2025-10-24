@@ -123,6 +123,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
             NVTX_RANGE("gemm.forward", NVTX_COLOR::Orange);
             
             auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+            raise_if_not_ok(st, "forward");
+
             
         },
         py::arg("A"),
@@ -171,6 +173,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
             auto st = ai::GemmCudaBackward(
                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
             );
+            raise_if_not_ok(st, "backward");
+
             
         },
         py::arg("A"),
@@ -228,6 +232,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
             NVTX_RANGE("gemm.forward_ex", NVTX_COLOR::Teal);
             
             auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+            raise_if_not_ok(st, "forward_ex");
+
             
         },
         py::arg("A"),
@@ -289,6 +295,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
             NVTX_RANGE("gemm.backward_ex", NVTX_COLOR::Magenta);
             
             auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
+            raise_if_not_ok(st, "backward_ex");
+
             
         },
         py::arg("A"),
@@ -419,6 +427,8 @@ PYBIND11_MODULE(_ops_gemm, m) {
             auto st = ai::GemmCudaBackward(
                 A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream, &ws
             );
+            raise_if_not_ok(st, "backward_into");
+
             
         },
         py::arg("A"), py::arg("B"),

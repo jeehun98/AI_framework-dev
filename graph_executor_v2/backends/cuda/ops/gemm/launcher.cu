@@ -5,7 +5,6 @@
 #include <stdexcept>
 #include <limits>
 
-#include "backends/cuda/ops/epilogue/api.hpp"         // ⟵ 추가: Standalone Epilogue
 // NVTX 공용 shim
 #include "backends/cuda/ops/_common/shim/nvtx.hpp"
 #include "backends/cuda/ops/gemm/detail/nvtx_shim.h" // ← 추가 (NVTX_COLOR, NVTX_MARK 제공)
