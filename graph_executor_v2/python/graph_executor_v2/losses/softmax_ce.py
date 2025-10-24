@@ -1,14 +1,11 @@
 # python/graph_executor_v2/losses/softmax_ce.py
 from __future__ import annotations
+
 from typing import Tuple
 import numpy as np
 
-# (선택) Loss 베이스가 있으면 임포트, 없으면 더미 베이스로 대체
-try:
-    from .base import Loss  # type: ignore
-except Exception:
-    class Loss:
-        pass
+# 공통 타입/베이스
+from .base import Loss, Array
 
 # CUDA 경로: CuPy + ops.cross_entropy 사용 가능 여부 확인
 try:
@@ -16,8 +13,8 @@ try:
     from graph_executor_v2.ops import cross_entropy as ce_ops  # type: ignore
     _HAS_GPU = True
 except Exception:
-    cp = None
-    ce_ops = None
+    cp = None  # type: ignore[assignment]
+    ce_ops = None  # type: ignore[assignment]
     _HAS_GPU = False
 
 
@@ -27,6 +24,7 @@ def _numpy_logsumexp(x: np.ndarray, axis: int = -1, keepdims: bool = False) -> n
     z = x - m
     y = np.log(np.exp(z).sum(axis=axis, keepdims=True)) + m
     return y if keepdims else y.squeeze(axis)
+
 
 def _numpy_forward(
     logits: np.ndarray,
@@ -44,7 +42,7 @@ def _numpy_forward(
 
     valid = (t != ignore_index)
     n_valid = int(valid.sum())
-    n_valid = max(n_valid, 1)
+    n_valid = max(n_valid, 1)  # div0 방지
 
     # one-hot + label smoothing
     oh = np.zeros((N, C), np.float32)
@@ -71,17 +69,19 @@ def _numpy_forward(
     loss_all = np.where(valid, loss_all, 0.0).astype(np.float32)
     dx *= valid[:, None].astype(np.float32)
 
-    # reduction
-    if reduction == "none":
-        loss_scalar = float(loss_all.mean())  # 관찰 편의를 위해 평균값을 반환(스칼라)
-    elif reduction == "sum":
+    # scalar reduction (항상 Python float 반환)
+    if reduction == "sum":
         loss_scalar = float(loss_all.sum())
+    elif reduction == "none":
+        # 베이스 규약상 스칼라는 항상 float -> 표시용 mean 반환
+        loss_scalar = float(loss_all.mean())
     else:  # "mean"
         loss_scalar = float(loss_all.sum() / n_valid)
 
-    # backward 스케일: reduction='mean'이면 n_valid로 나눔, 'sum'이면 그대로, 'none'이면 추가 스케일 없음
+    # backward 스케일: reduction='mean'이면 n_valid로 나눔
     if reduction == "mean":
         dx /= n_valid
+    # 'sum' / 'none' -> 스케일 없음
 
     return loss_scalar, dx.astype(np.float32, copy=False)
 
@@ -89,14 +89,14 @@ def _numpy_forward(
 # --------- 공개 Loss 클래스 ---------
 class SoftmaxCrossEntropy(Loss):
     """
-    Softmax + Cross-Entropy (GPU가용시 CUDA 커널 사용, 불가 시 NumPy 폴백)
+    Softmax + Cross-Entropy (GPU가용 시 CUDA 커널 사용, 불가 시 NumPy 폴백)
 
     Args:
-      label_smoothing: float in [0,1]
+      label_smoothing: float in [0, 1]
       reduction: 'mean' | 'sum' | 'none'
-      ignore_index: 무시할 라벨 인덱스
-      from_logits: True면 내부에서 log-softmax 처리
-      eps: 확률 입력일 때의 안정성 epsilon
+      ignore_index: 무시할 라벨 인덱스(해당 샘플은 loss/grad에서 제외)
+      from_logits: True면 내부에서 log-softmax 처리 (일반적)
+      eps: 확률 입력일 때(clipped 확률) 안정성 epsilon
     """
     def __init__(
         self,
@@ -113,35 +113,58 @@ class SoftmaxCrossEntropy(Loss):
         self.from_logits = bool(from_logits)
         self.eps = float(eps)
 
-    def forward(self, logits, target_idx, *, return_scalar: bool = True):
-        if _HAS_GPU and isinstance(logits, cp.ndarray):
-            x = logits
-            t = target_idx
-            if x.dtype != cp.float32:
-                x = x.astype(cp.float32, copy=False)
-            if t.dtype != cp.int32:
-                t = t.astype(cp.int32, copy=False)
+    def forward(self, logits: Array, target_idx: Array) -> Tuple[float, Array]:
+        # ---------- GPU 경로 ----------
+        if _HAS_GPU:
+            try:
+                if isinstance(logits, cp.ndarray):  # type: ignore[attr-defined]
+                    x = logits
+                    t = target_idx
+                    if x.dtype != cp.float32:  # type: ignore[attr-defined]
+                        x = x.astype(cp.float32, copy=False)  # type: ignore[attr-defined]
+                    # 정수 인덱스는 int32 (CUDA 커널과 합의)
+                    if t.dtype != cp.int32:  # type: ignore[attr-defined]
+                        t = t.astype(cp.int32, copy=False)  # type: ignore[attr-defined]
 
-            loss_dev = ce_ops.forward(
-                x, t,
-                from_logits=self.from_logits,
-                reduction=self.reduction,
-                ignore_index=self.ignore_index,
-                eps=self.eps,
-                ls_eps=self.ls_eps,
-            )
-            dx = ce_ops.backward(
-                x, t,
-                from_logits=self.from_logits,
-                reduction=self.reduction,
-                ignore_index=self.ignore_index,
-                eps=self.eps,
-                ls_eps=self.ls_eps,
-            )
+                    loss_dev = ce_ops.forward(  # type: ignore[union-attr, call-arg]
+                        x, t,
+                        from_logits=self.from_logits,
+                        reduction=self.reduction,
+                        ignore_index=self.ignore_index,
+                        eps=self.eps,
+                        ls_eps=self.ls_eps,
+                    )
+                    dx = ce_ops.backward(  # type: ignore[union-attr, call-arg]
+                        x, t,
+                        from_logits=self.from_logits,
+                        reduction=self.reduction,
+                        ignore_index=self.ignore_index,
+                        eps=self.eps,
+                        ls_eps=self.ls_eps,
+                    )
 
-            if not return_scalar:
-                return loss_dev, dx
+                    # 항상 Python float 반환
+                    if self.reduction == "none":
+                        loss_scalar = float(cp.mean(loss_dev))  # type: ignore[attr-defined]
+                    else:
+                        loss_scalar = float(loss_dev.ravel()[0])  # type: ignore[call-arg]
+                    return loss_scalar, dx
+            except Exception:
+                # GPU 경로 실패 시 폴백 (안전장치)
+                pass
 
-            if self.reduction == "none":
-                return float(cp.mean(loss_dev)), dx
-            return float(loss_dev.ravel()[0]), dx
+        # ---------- CPU 폴백 ----------
+        logits_np = np.asarray(logits, dtype=np.float32)
+        target_np = np.asarray(target_idx)
+        return _numpy_forward(
+            logits_np,
+            target_np,
+            from_logits=self.from_logits,
+            reduction=self.reduction,
+            ignore_index=self.ignore_index,
+            eps=self.eps,
+            ls_eps=self.ls_eps,
+        )
+
+
+__all__ = ["SoftmaxCrossEntropy"]
