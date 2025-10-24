@@ -62,7 +62,6 @@ endfunction()
 option(USE_NVTX "Enable NVTX ranges" ON)
 
 if (USE_NVTX)
-  # 사용자가 -DNVTX_ROOT=... 넘길 수 있게
   if (NOT DEFINED NVTX_ROOT)
     if (WIN32)
       set(NVTX_ROOT "C:/Program Files/NVIDIA Corporation/NVToolsExt")
@@ -71,7 +70,6 @@ if (USE_NVTX)
     endif()
   endif()
 
-  # 헤더 & 라이브러리 탐색
   find_path(NVTX_INCLUDE_DIR nvToolsExt.h
             HINTS "${NVTX_ROOT}/include" "$ENV{CUDA_PATH}/include")
   if (WIN32)
@@ -92,33 +90,44 @@ endif()
 
 # =========================
 # 런타임 DLL 복사 헬퍼 (Windows)
-#  - Python 패키지 폴더로 필수 DLL을 동반 복사
 # =========================
 function(copy_runtime_dlls tgt outdir)
   if (WIN32)
-    # cudart/cublas 계열은 CUDA 12.x 기준 이름; 환경에 맞게 $ENV{CUDA_PATH} 사용
     add_custom_command(TARGET ${tgt} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E make_directory "${outdir}"
-      # CUDA 런타임/BLAS (있으면 복사)
       COMMAND ${CMAKE_COMMAND} -E copy_if_different "$ENV{CUDA_PATH}/bin/cudart64_12.dll" "${outdir}" || ${CMAKE_COMMAND} -E echo "cudart64_12.dll not found; skip"
       COMMAND ${CMAKE_COMMAND} -E copy_if_different "$ENV{CUDA_PATH}/bin/cublas64_12.dll" "${outdir}" || ${CMAKE_COMMAND} -E echo "cublas64_12.dll not found; skip"
       COMMAND ${CMAKE_COMMAND} -E copy_if_different "$ENV{CUDA_PATH}/bin/cublasLt64_12.dll" "${outdir}" || ${CMAKE_COMMAND} -E echo "cublasLt64_12.dll not found; skip"
-      # NVTX 사용 시
       $<$<BOOL:${USE_NVTX}>:${CMAKE_COMMAND}> -E copy_if_different "$ENV{CUDA_PATH}/bin/nvToolsExt64_1.dll" "${outdir}"
-      # (선택) OpenMP 사용 시
-      # COMMAND ${CMAKE_COMMAND} -E copy_if_different "$ENV{VCToolsRedistDir}/x64/Microsoft.VC143.OpenMP/vcomp140.dll" "${outdir}"
     )
   endif()
 endfunction()
 
 # =========================
+# Arena OBJECT 라이브러리 (Capture-Safe Allocator)
+#  - core와 _ops_memory 양쪽에서 재사용
+# =========================
+add_library(gev2_arena OBJECT
+  src/executor/mem_planner.cpp
+)
+target_include_directories(gev2_arena PUBLIC
+  ${CMAKE_SOURCE_DIR}
+  ${PROJECT_INCLUDE_DIR}
+)
+
+target_include_directories(gev2_arena PUBLIC ${CUDAToolkit_INCLUDE_DIRS})  # 방법 B
+
+apply_win_warnings(gev2_arena)
+
+# =========================
 # ai_core (디스패치/실행기/ops)
+#  - mem_planner.cpp는 직접 빼고, OBJECT 주입으로 포함
 # =========================
 add_library(ai_core STATIC
   src/dispatch/registry.cpp
   src/dispatch/selector_rules.cpp
   src/executor/scheduler.cpp
-  src/executor/mem_planner.cpp
+  # src/executor/mem_planner.cpp  # <- 제거 (OBJECT로 분리)
   src/executor/autograd_engine.cpp
   src/ops/gemm.cpp
   src/ops/rmsnorm.cpp
@@ -140,6 +149,9 @@ add_library(ai_core STATIC
   src/ops/view.cpp
   src/ops/rnn.cpp
 )
+# Arena OBJECT 주입
+target_sources(ai_core PRIVATE $<TARGET_OBJECTS:gev2_arena>)
+
 target_include_directories(ai_core
   PUBLIC
     ${PROJECT_INCLUDE_DIR}
@@ -161,7 +173,6 @@ set(GE2_REGEMM_SOURCES
   backends/cuda/ops/gemm/kernels/regemm_backward.cu
 )
 
-# Epilogue 소스(독립 모듈화)
 set(EPILOGUE_SRCS
   backends/cuda/ops/epilogue/launcher.cu
   backends/cuda/ops/epilogue/kernels.cu
@@ -181,7 +192,6 @@ apply_win_warnings(ge2_regemm_core)
 if (USE_NVTX)
   target_include_directories(ge2_regemm_core PRIVATE ${NVTX_INCLUDE_DIR})
 endif()
-# NOTE: OBJECT 라이브러리는 직접 링크 불가 → 소비자(ai_backend_cuda, _ops_gemm)가 NVTX 링크를 가진다.
 
 # (2) 독립 모듈용
 add_library(ge2_regemm_standalone OBJECT ${GE2_REGEMM_SOURCES} ${EPILOGUE_SRCS})
@@ -200,7 +210,6 @@ apply_win_warnings(ge2_regemm_standalone)
 if (USE_NVTX)
   target_include_directories(ge2_regemm_standalone PRIVATE ${NVTX_INCLUDE_DIR})
 endif()
-# NOTE: OBJECT 라이브러리는 직접 링크 불가 → 소비자(_ops_gemm)가 NVTX 링크를 가진다.
 
 # =========================
 # ai_backend_cuda (CUDA 백엔드 + 모든 CUDA ops)
@@ -237,11 +246,9 @@ add_library(ai_backend_cuda STATIC
   backends/cuda/ops/reduction/kernels.cu
   backends/cuda/ops/reduction/launcher.cu
 
-  # Concat
   backends/cuda/ops/concat/kernels.cu
   backends/cuda/ops/concat/launcher.cu
 
-  # Slice
   backends/cuda/ops/slice/kernels.cu
   backends/cuda/ops/slice/launcher.cu
 
@@ -252,14 +259,12 @@ add_library(ai_backend_cuda STATIC
 
   backends/cuda/ops/upsample2d/launcher.cu
 
-  # View (커널/런처 사용)
   backends/cuda/ops/view/kernels.cu
   backends/cuda/ops/view/launcher.cu
 
   backends/cuda/ops/indexing/kernels.cu
   backends/cuda/ops/indexing/launcher.cu
 
-  # RNN
   backends/cuda/ops/rnn/kernels.cu
   backends/cuda/ops/rnn/launcher.cu
 
@@ -431,6 +436,8 @@ target_include_directories(_ops_memory PRIVATE
   backends/cuda/ops/_common/shim
   backends/cuda/ops/memory
 )
+# ⬇️ Arena OBJECT를 모듈에 포함 (핵심 변경)
+target_sources(_ops_memory PRIVATE $<TARGET_OBJECTS:gev2_arena>)
 target_link_libraries(_ops_memory PRIVATE CUDA::cudart)
 set_target_properties(_ops_memory PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
@@ -832,7 +839,7 @@ endif()
 apply_win_warnings(_ops_slice)
 
 # =========================
-# Python 모듈 (_ops_view) — (커널/런처 사용)
+# Python 모듈 (_ops_view)
 # =========================
 pybind11_add_module(_ops_view MODULE
   src/bindings/view_pybind.cpp
@@ -877,7 +884,6 @@ endforeach()
 
 # =========================
 # 필수 DLL 동반 복사 적용 (Windows)
-#  - 모든 _ops_* 모듈 및 _core에 적용
 # =========================
 if (WIN32)
   set(_PY_OUT_CORE "${CMAKE_SOURCE_DIR}/python/graph_executor_v2")

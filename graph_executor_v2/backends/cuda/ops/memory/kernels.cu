@@ -1,40 +1,52 @@
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <cstddef>
 
+// ===== 내부 커널 =====
 namespace {
 
-// grid-stride fill
-template <typename T>
-__global__ void fill_kernel(T* __restrict__ dst, int64_t N, T v) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  int stride = blockDim.x * gridDim.x;
-  for (int64_t i = tid; i < N; i += stride) {
+template<typename T>
+__global__ void kfill(T* __restrict__ dst, T v, size_t n)
+{
+  for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+       i < n;
+       i += (size_t)blockDim.x * gridDim.x)
+  {
     dst[i] = v;
   }
 }
 
-static inline dim3 pick_block(int64_t) { return dim3(256); }
-static inline dim3 pick_grid (int64_t N) {
-  int64_t blocks = (N + 256 - 1) / 256;
-  if (blocks < 32)   blocks = 32;    // 캡처 친화: SM 조회 없이 보수적
-  if (blocks > 4096) blocks = 4096;
-  return dim3(static_cast<unsigned>(blocks));
+} // anonymous
+
+// ===== 외부로 노출되는 C-링크 런처 (host 함수) =====
+extern "C" void fill_f32_kernel_launcher(
+    uint64_t dst_ptr,
+    size_t n,
+    float value,
+    cudaStream_t s)
+{
+  if (n == 0) return;
+  constexpr int BS = 256;
+  int grid = (int)((n + BS - 1) / BS);
+  grid = grid > 0 ? grid : 1;
+  grid = grid > 65535 ? 65535 : grid;
+
+  auto* p = reinterpret_cast<float*>(dst_ptr);
+  kfill<float><<<grid, BS, 0, s>>>(p, value, n);
 }
 
-} // anon
+extern "C" void fill_i32_kernel_launcher(
+    uint64_t dst_ptr,
+    size_t n,
+    int32_t value,
+    cudaStream_t s)
+{
+  if (n == 0) return;
+  constexpr int BS = 256;
+  int grid = (int)((n + BS - 1) / BS);
+  grid = grid > 0 ? grid : 1;
+  grid = grid > 65535 ? 65535 : grid;
 
-namespace ai {
-
-void fill_scalar_f32_kernel_launcher(void* dst, int64_t N, float value, cudaStream_t s) {
-  if (N <= 0) return;
-  dim3 b = pick_block(N), g = pick_grid(N);
-  fill_kernel<float><<<g, b, 0, s>>>(reinterpret_cast<float*>(dst), N, value);
+  auto* p = reinterpret_cast<int32_t*>(dst_ptr);
+  kfill<int32_t><<<grid, BS, 0, s>>>(p, value, n);
 }
-
-void fill_scalar_i32_kernel_launcher(void* dst, int64_t N, int32_t value, cudaStream_t s) {
-  if (N <= 0) return;
-  dim3 b = pick_block(N), g = pick_grid(N);
-  fill_kernel<int32_t><<<g, b, 0, s>>>(reinterpret_cast<int32_t*>(dst), N, value);
-}
-
-} // namespace ai

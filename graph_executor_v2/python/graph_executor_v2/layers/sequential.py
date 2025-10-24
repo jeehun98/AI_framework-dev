@@ -8,12 +8,26 @@ import cupy as cp
 from graph_executor_v2.graph.capture_plan import (
     make_plan_for_sequential,
     make_plan_for_path,
+    advance_dropout,
 )
 from graph_executor_v2.graph.graph_exec import record_step_graph, TrainGraph
 from graph_executor_v2.optim.rebind import try_rebind_grads
 from .base import Layer
 
 import inspect
+import time
+
+# ===== NVTX (optional) =====
+try:
+    from graph_executor_v2.backends.cuda.ops.gemm.detail.nvtx_shim import nvtx_range  # type: ignore
+except Exception:
+    class _DummyNvtx:
+        def __call__(self, *_a, **_k):
+            class _Ctx:
+                def __enter__(self): return None
+                def __exit__(self, *args): return False
+            return _Ctx()
+    nvtx_range = _DummyNvtx()  # type: ignore
 
 # ✅ 런타임 임포트 우선: 실제 클래스 로드 실패시 스텁으로 폴백
 try:
@@ -41,14 +55,8 @@ try:
 except Exception:
     graph_pool = None  # type: ignore
 
-# 폴백: 프로세스 내 간단한 캐시(dict)
+# 폴백: 프로세스 내 간단한 캐시(dict) + LRU
 _FALLBACK_POOL: Dict[Any, Any] = {}
-
-# ✅ 추가: 캡처 플랜 기반 grad 재바인딩 유틸(선택)
-try:
-    from graph_executor_v2.optim.adamw import collect_params_from_plan  # type: ignore
-except Exception:
-    collect_params_from_plan = None  # 런타임에 체크
 
 CANDIDATE_PARAM_GRAD_NAMES = [
     ("W", "dW"),
@@ -77,6 +85,9 @@ class _ModelLayersProxy:
 
 
 class Sequential(Layer):
+    # 폴백 풀 상한/LRU 제어용
+    _FALLBACK_POOL_MAX = 8
+
     def __init__(self, *layers: Layer, name: Optional[str] = None):
         super().__init__(name=name)
         self.layers: List[Layer] = list(layers)
@@ -86,6 +97,13 @@ class Sequential(Layer):
         self._tg: Optional[TrainGraph] = None
         self._loss_buf: Optional[cp.ndarray] = None
         self._stream: Optional[cp.cuda.Stream] = None
+
+        # LRU tick
+        self._pool_ticks: int = 0
+
+    def _tick(self) -> int:
+        self._pool_ticks += 1
+        return self._pool_ticks
 
     def add(self, layer: Layer) -> None:
         self.layers.append(layer)
@@ -307,16 +325,17 @@ class Sequential(Layer):
         y_buf = cp.zeros((N,), dtype=cp.int32)
         loss_buf = cp.zeros((), dtype=cp.float32)
 
-        gexec = record_step_graph(
-            self,
-            loss,
-            optimizer.step_into,
-            plan,
-            X_buf=X_buf,
-            y_buf=y_buf,
-            stream=stream,
-            loss_out=loss_buf,
-        )
+        with nvtx_range("[CAPTURE][static]"):
+            gexec = record_step_graph(
+                self,
+                loss,
+                optimizer.step_into,
+                plan,
+                X_buf=X_buf,
+                y_buf=y_buf,
+                stream=stream,
+                loss_out=loss_buf,
+            )
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
         tg = TrainGraph(gexec, io, stream)
@@ -339,7 +358,8 @@ class Sequential(Layer):
         assert yb.dtype == cp.int32, f"labels must be int32 for current CE kernel (got {yb.dtype})"
 
         self._tg.set_batch(x_arr, y_arr)
-        self._tg.launch()
+        with nvtx_range("[REPLAY][static]"):
+            self._tg.launch()
         return float(self._loss_buf.get())
 
     @property
@@ -375,10 +395,14 @@ class Sequential(Layer):
     def _pool_get(self, key: Any) -> Optional[Any]:
         if graph_pool is not None and hasattr(graph_pool, "get"):
             try:
-                return graph_pool.get(key)  # type: ignore[attr-defined]
+                entry = graph_pool.get(key)  # type: ignore[attr-defined]
+                return entry
             except Exception:
                 return None
-        return _FALLBACK_POOL.get(key)
+        entry = _FALLBACK_POOL.get(key)
+        if entry is not None:
+            entry["last_used"] = time.monotonic()
+        return entry
 
     def _pool_put(self, key: Any, entry: Any) -> None:
         if graph_pool is not None and hasattr(graph_pool, "put"):
@@ -387,22 +411,35 @@ class Sequential(Layer):
                 return
             except Exception:
                 pass
+        # Fallback with LRU cap
+        entry["last_used"] = time.monotonic()
         _FALLBACK_POOL[key] = entry
+        if len(_FALLBACK_POOL) > self._FALLBACK_POOL_MAX:
+            # evict LRU
+            victim = min(_FALLBACK_POOL.items(), key=lambda kv: kv[1].get("last_used", 0.0))[0]
+            _FALLBACK_POOL.pop(victim, None)
 
-    def _make_pool_key(self, sig: Any, ctx: Dict[str, Any]) -> Any:
+    def _make_pool_key(self, sig: Any, ctx: Dict[str, Any], *, loss) -> Any:
+        # 경로 fingerprint/변형/모드/dtype/loss_kind/AMP 등 포함
         branch_id = ctx.get("branch", "default")
-        # variant는 정렬된 튜플로 동결
         vdict = dict(ctx.get("variant", {}))
+        vdict["path_fp"] = tuple(ctx.get("path_fingerprint", ()))
+        vdict["training"] = bool(self.training)
+        vdict["dtype"] = str(getattr(sig, "dtype", "fp32"))
+        vdict["loss_kind"] = getattr(loss, "name", "softmax_ce")
+        vdict["amp"] = bool(ctx.get("amp", False))
         variant = tuple(sorted((str(k), self._freeze_value(v)) for k, v in vdict.items()))
-        # GraphKey가 있으면 써도 되고, 없어도 단순 튜플로 충분
         try:
             if GraphKey not in (None, object):  # 약식 가드
                 return GraphKey(signature=sig, branch_id=str(branch_id), variant=variant)  # type: ignore[call-arg]
         except Exception:
             pass
-        # 폴백 키(해시 가능한 튜플)
-        return ("dyn", tuple(getattr(sig, "shape", ())), str(getattr(sig, "dtype", "")),
-                str(getattr(sig, "layout", "")), str(branch_id), variant)
+        return ("dyn",
+                tuple(getattr(sig, "shape", ())),
+                str(getattr(sig, "dtype", "")),
+                str(getattr(sig, "layout", "")),
+                str(branch_id),
+                variant)
 
     @staticmethod
     def _freeze_value(v: Any) -> Any:
@@ -464,14 +501,25 @@ class Sequential(Layer):
 
         # ✅ 컨트롤 레이어 잔존 가드 (평탄화 누락 방지)
         leftovers = []
+        def _is_ctrl(x):
+            return _is_if(x) or _is_repeat(x) or _is_early(x)
         for x in linear:
-            if _is_if(x) or _is_repeat(x) or _is_early(x):
+            if _is_ctrl(x):
                 leftovers.append(type(x).__name__)
         if leftovers:
             raise RuntimeError(
                 f"[dynamic] control layers must be flattened, but found in path: {leftovers}"
             )
+
+        # 경로 fingerprint 저장 (레이어 클래스 시퀀스)
+        ctx["path_fingerprint"] = tuple(type(l).__name__ for l in linear)
         return linear
+
+    @staticmethod
+    def _ensure_path_captureable(layers: Sequence[Layer]) -> None:
+        for lyr in layers:
+            if not (hasattr(lyr, "forward_into") and hasattr(lyr, "backward_into")):
+                raise AssertionError(f"Layer {type(lyr).__name__} not capture-ready")
 
     def _get_or_capture_dynamic_entry(
         self,
@@ -486,10 +534,11 @@ class Sequential(Layer):
     ) -> Dict[str, Any]:
         # 1) 경로 평탄화
         path_layers = self._linearize_path(X, ctx)
+        self._ensure_path_captureable(path_layers)
 
         # 2) 키 구성
         sig = self._infer_signature(X, ctx)
-        key = self._make_pool_key(sig, ctx)
+        key = self._make_pool_key(sig, ctx, loss=loss)
 
         # 3) 풀 조회
         entry = self._pool_get(key)
@@ -524,7 +573,7 @@ class Sequential(Layer):
             stream = cp.cuda.Stream(non_blocking=True)
 
         # 동적 경로 전용 플랜
-        plan = make_plan_for_path(path_layers, in_shape, loss_kind="softmax_ce", lt_bytes=lt_bytes)
+        plan = make_plan_for_path(path_layers, in_shape, loss_kind=getattr(loss, "name", "softmax_ce"), lt_bytes=lt_bytes)
 
         # ---- 경로 전용 (param, grad) 트리플 수집: 정확 매핑 ----
         def _collect_triplets_from_path(plan, layers):
@@ -589,7 +638,7 @@ class Sequential(Layer):
                     pass
             opt_for_path.rebind_grads(triplets)
 
-        # 5) 고정 I/O 버퍼
+        # 5) 고정 I/O 버퍼 (현재 커널 제약상 fp32 고정이 안전)
         X_buf = cp.zeros(in_shape, dtype=cp.float32)
         N = int(in_shape[0])
         y_buf = cp.zeros((N,), dtype=cp.int32)
@@ -602,35 +651,42 @@ class Sequential(Layer):
         except Exception:
             has_layers_override = False
 
-        if has_layers_override:
-            gexec = record_step_graph(
-                self,
-                loss,
-                opt_for_path.step_into,
-                plan,
-                X_buf=X_buf,
-                y_buf=y_buf,
-                stream=stream,
-                loss_out=loss_buf,
-                layers_override=path_layers,
-            )
-        else:
-            proxy_model = _ModelLayersProxy(self, path_layers)
-            gexec = record_step_graph(
-                proxy_model,
-                loss,
-                opt_for_path.step_into,
-                plan,
-                X_buf=X_buf,
-                y_buf=y_buf,
-                stream=stream,
-                loss_out=loss_buf,
-            )
+        with nvtx_range(f"[CAPTURE][dynamic] path={ctx.get('path_fingerprint')}"):
+            if has_layers_override:
+                gexec = record_step_graph(
+                    self,
+                    loss,
+                    opt_for_path.step_into,
+                    plan,
+                    X_buf=X_buf,
+                    y_buf=y_buf,
+                    stream=stream,
+                    loss_out=loss_buf,
+                    layers_override=path_layers,
+                )
+            else:
+                proxy_model = _ModelLayersProxy(self, path_layers)
+                gexec = record_step_graph(
+                    proxy_model,
+                    loss,
+                    opt_for_path.step_into,
+                    plan,
+                    X_buf=X_buf,
+                    y_buf=y_buf,
+                    stream=stream,
+                    loss_out=loss_buf,
+                )
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
         tg = TrainGraph(gexec, io, stream)
 
-        entry = {"tg": tg, "loss_buf": loss_buf, "stream": stream, "optimizer": opt_for_path}
+        entry = {
+            "tg": tg,
+            "loss_buf": loss_buf,
+            "stream": stream,
+            "optimizer": opt_for_path,
+            "plan": plan,  # Dropout counter advance 등에 사용
+        }
         self._pool_put(key, entry)
         return entry
 
@@ -661,6 +717,7 @@ class Sequential(Layer):
 
         tg: TrainGraph = entry["tg"]
         loss_buf: cp.ndarray = entry["loss_buf"]
+        plan = entry.get("plan", None)
 
         # ✅ 현재 동적 경로 그래프 핸들을 모델 수준 핸들로 노출
         self._tg = tg
@@ -671,17 +728,32 @@ class Sequential(Layer):
         assert tuple(tg.X_buf.shape) == tuple(x_arr.shape), \
             f"[dynamic] X shape mismatch: {x_arr.shape} vs {tg.X_buf.shape}"
         assert tg.y_buf.shape == (tg.X_buf.shape[0],), \
-            f"[dynamic] y shape must be (N,), got {tg.y_buf.shape} vs N={tg.X_buf.shape[0]}"
+            f"[dynamic] y shape must be (N,), got {tg.Y_buf.shape} vs N={tg.X_buf.shape[0]}"
         assert tg.y_buf.dtype == cp.int32, \
             f"[dynamic] labels must be int32 (got {tg.y_buf.dtype})"
 
         # 고정 버퍼에 배치 복사
         tg.set_batch(x_arr, y_arr)
 
+        # Dropout counter advance (원하면 step마다 변화)
+        if plan is not None:
+            advance_dropout(plan, seed_bump=int(ctx.get("rng_epoch", 0)))
+
         # Repeat: 캡처는 1 step 기준, 실행 시 T회 launch
         T = int(ctx.get("repeat_steps", 1))
-        for _ in range(max(1, T)):
-            tg.launch()
+        rep_batches = ctx.get("repeat_batches", None)  # [(X_t, y_t), ...] 가능
+        with nvtx_range(f"[REPLAY][dynamic] path={ctx.get('path_fingerprint')} x{T}"):
+            if isinstance(rep_batches, (list, tuple)) and len(rep_batches) >= T:
+                for t in range(T):
+                    xb_t = cp.asarray(rep_batches[t][0])
+                    yb_t = cp.asarray(rep_batches[t][1])
+                    assert tuple(tg.X_buf.shape) == tuple(xb_t.shape), "[dynamic] repeat batch X shape mismatch"
+                    assert tg.y_buf.shape == (tg.X_buf.shape[0],), "[dynamic] repeat batch y shape mismatch"
+                    tg.set_batch(xb_t, yb_t)
+                    tg.launch()
+            else:
+                for _ in range(max(1, T)):
+                    tg.launch()
 
         # 손실 스칼라 반환
         return float(loss_buf.get())

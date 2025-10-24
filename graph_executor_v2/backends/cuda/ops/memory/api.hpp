@@ -1,25 +1,44 @@
 #pragma once
 
-// 통합 빌드(코어) vs 독립 빌드(shim) 동시 지원
 #ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"  // Tensor, Status, StreamHandle 등
+  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #else
   #include "ai/tensor.hpp"
-  #include "ai/dispatch.hpp" // Status, StreamHandle
+  #include "ai/dispatch.hpp"
 #endif
+
+#include <cstdint>
+#include <cstddef>
 
 namespace ai {
 
-// dst 전체에 동일 스칼라 값을 채우는 간단한 메모리 연산 (CUDA Graph 캡처 안전)
-// - dst: 임의 차원, 연속(RowMajor) float32 텐서 (CUDA)
-// - value: 채울 값
-Status FillScalarF32CudaLaunch(Tensor& dst,
-                               float value,
-                               StreamHandle stream);
+// ---- 통계 구조 (Arena에서 읽어오기) ----
+struct MemoryStats {
+  uint64_t total_reserved{0};  // cudaMalloc 총합
+  uint64_t peak_in_use{0};     // 동시에 사용된 최대 바이트
+  uint64_t curr_in_use{0};     // 현재 사용 중
+  int32_t  slabs{0};           // 슬랩 개수
+};
 
-// int32 버전
-Status FillScalarI32CudaLaunch(Tensor& dst,
-                               int32_t value,
-                               StreamHandle stream);
+// ---- Fill Ops (캡처-세이프) ----
+Status FillF32Cuda(Tensor& dst, float value, StreamHandle stream);
+Status FillI32Cuda(Tensor& dst, int32_t value, StreamHandle stream);
+
+// ---- Capture-Safe Allocator 어댑터 ----
+//  - Arena 본체는 executor에 구현되어 있어야 함
+//  - 캡처 중 추가 cudaMalloc 금지 (Arena에서 보장)
+Status MemoryReserveBytesCuda(uint64_t bytes);         // 캡처 전 사전예약
+Status MemoryResetPoolCuda();                          // bump/LIFO 리셋(슬랩 유지)
+Status MemoryStatsCuda(MemoryStats& out);              // 통계 조회
+
+// 임시 워크스페이스 토큰 기반 API (연산자 내부에서 사용)
+//  - token은 (ptr,size) 인코딩/혹은 핸들: Arena 구현에 따름
+Status MemoryAllocTempCuda(uint64_t nbytes,
+                           uint32_t align,
+                           uint64_t& out_token,
+                           StreamHandle stream);
+
+Status MemoryFreeTempCuda(uint64_t token,
+                          StreamHandle stream);
 
 } // namespace ai

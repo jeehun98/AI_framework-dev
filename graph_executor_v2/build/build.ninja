@@ -41,13 +41,39 @@ include CMakeFiles\rules.ninja
 
 cmake_ninja_workdir = C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\build\
 # =============================================================================
+# Object build statements for OBJECT_LIBRARY target gev2_arena
+
+
+#############################################
+# Order-only phony target for gev2_arena
+
+build cmake_object_order_depends_target_gev2_arena: phony || .
+
+build CMakeFiles\gev2_arena.dir\src\executor\mem_planner.cpp.obj: CXX_COMPILER__gev2_arena_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\executor\mem_planner.cpp || cmake_object_order_depends_target_gev2_arena
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DUSE_NVTX
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
+  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include"
+  OBJECT_DIR = CMakeFiles\gev2_arena.dir
+  OBJECT_FILE_DIR = CMakeFiles\gev2_arena.dir\src\executor
+  TARGET_COMPILE_PDB = CMakeFiles\gev2_arena.dir\
+  TARGET_PDB = ""
+
+
+
+#############################################
+# Object library gev2_arena
+
+build gev2_arena: phony CMakeFiles\gev2_arena.dir\src\executor\mem_planner.cpp.obj
+
+# =============================================================================
 # Object build statements for STATIC_LIBRARY target ai_core
 
 
 #############################################
 # Order-only phony target for ai_core
 
-build cmake_object_order_depends_target_ai_core: phony || .
+build cmake_object_order_depends_target_ai_core: phony || cmake_object_order_depends_target_gev2_arena
 
 build CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\dispatch\registry.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
@@ -70,16 +96,6 @@ build CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj: CXX_COMPILER__
   TARGET_PDB = ai_core.pdb
 
 build CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\executor\scheduler.cpp || cmake_object_order_depends_target_ai_core
-  CONFIG = Release
-  DEFINES = -DNOMINMAX -DUSE_NVTX
-  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
-  INCLUDES = -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\include -IC:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2 -I"C:\Program Files\NVIDIA Corporation\NVToolsExt\include"
-  OBJECT_DIR = CMakeFiles\ai_core.dir
-  OBJECT_FILE_DIR = CMakeFiles\ai_core.dir\src\executor
-  TARGET_COMPILE_PDB = CMakeFiles\ai_core.dir\ai_core.pdb
-  TARGET_PDB = ai_core.pdb
-
-build CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj: CXX_COMPILER__ai_core_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\executor\mem_planner.cpp || cmake_object_order_depends_target_ai_core
   CONFIG = Release
   DEFINES = -DNOMINMAX -DUSE_NVTX
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8
@@ -287,7 +303,7 @@ build CMakeFiles\ai_core.dir\src\ops\rnn.cpp.obj: CXX_COMPILER__ai_core_unscanne
 #############################################
 # Link the static library ai_core.lib
 
-build ai_core.lib: CXX_STATIC_LIBRARY_LINKER__ai_core_Release CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj CMakeFiles\ai_core.dir\src\executor\mem_planner.cpp.obj CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\softmax.cpp.obj CMakeFiles\ai_core.dir\src\ops\layernorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\cross_entropy.cpp.obj CMakeFiles\ai_core.dir\src\ops\dropout.cpp.obj CMakeFiles\ai_core.dir\src\ops\sdpa.cpp.obj CMakeFiles\ai_core.dir\src\ops\pool2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\elementwise.cpp.obj CMakeFiles\ai_core.dir\src\ops\reduction.cpp.obj CMakeFiles\ai_core.dir\src\ops\concat.cpp.obj CMakeFiles\ai_core.dir\src\ops\slice.cpp.obj CMakeFiles\ai_core.dir\src\ops\indexing.cpp.obj CMakeFiles\ai_core.dir\src\ops\pad.cpp.obj CMakeFiles\ai_core.dir\src\ops\memory.cpp.obj CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\view.cpp.obj CMakeFiles\ai_core.dir\src\ops\rnn.cpp.obj
+build ai_core.lib: CXX_STATIC_LIBRARY_LINKER__ai_core_Release CMakeFiles\gev2_arena.dir\src\executor\mem_planner.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\registry.cpp.obj CMakeFiles\ai_core.dir\src\dispatch\selector_rules.cpp.obj CMakeFiles\ai_core.dir\src\executor\scheduler.cpp.obj CMakeFiles\ai_core.dir\src\executor\autograd_engine.cpp.obj CMakeFiles\ai_core.dir\src\ops\gemm.cpp.obj CMakeFiles\ai_core.dir\src\ops\rmsnorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\softmax.cpp.obj CMakeFiles\ai_core.dir\src\ops\layernorm.cpp.obj CMakeFiles\ai_core.dir\src\ops\cross_entropy.cpp.obj CMakeFiles\ai_core.dir\src\ops\dropout.cpp.obj CMakeFiles\ai_core.dir\src\ops\sdpa.cpp.obj CMakeFiles\ai_core.dir\src\ops\pool2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\elementwise.cpp.obj CMakeFiles\ai_core.dir\src\ops\reduction.cpp.obj CMakeFiles\ai_core.dir\src\ops\concat.cpp.obj CMakeFiles\ai_core.dir\src\ops\slice.cpp.obj CMakeFiles\ai_core.dir\src\ops\indexing.cpp.obj CMakeFiles\ai_core.dir\src\ops\pad.cpp.obj CMakeFiles\ai_core.dir\src\ops\memory.cpp.obj CMakeFiles\ai_core.dir\src\ops\upsample2d.cpp.obj CMakeFiles\ai_core.dir\src\ops\view.cpp.obj CMakeFiles\ai_core.dir\src\ops\rnn.cpp.obj || gev2_arena
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64
@@ -1151,7 +1167,7 @@ build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_ex
 #############################################
 # Order-only phony target for _ops_memory
 
-build cmake_object_order_depends_target__ops_memory: phony || cmake_object_order_depends_target__ops_common
+build cmake_object_order_depends_target__ops_memory: phony || cmake_object_order_depends_target__ops_common cmake_object_order_depends_target_gev2_arena
 
 build CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj: CXX_COMPILER___ops_memory_unscanned_Release C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\src\bindings\memory_pybind.cpp || cmake_object_order_depends_target__ops_memory
   CONFIG = Release
@@ -1193,7 +1209,7 @@ build CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj: CUDA_C
 #############################################
 # Link the shared module CMakeFiles\_ops_memory.dir\cmake_device_link.obj
 
-build CMakeFiles\_ops_memory.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_memory_Release CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd
+build CMakeFiles\_ops_memory.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVICE_LINKER___ops_memory_Release CMakeFiles\gev2_arena.dir\src\executor\mem_planner.cpp.obj CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd gev2_arena
   LANGUAGE_COMPILE_FLAGS = -D_WINDOWS -Xcompiler=" /EHsc" -Xcompiler="-O2 -Ob2" -DNDEBUG "--generate-code=arch=compute_86,code=[compute_86,sm_86]" -Xcompiler=-MD
   LINK_FLAGS = -Xcompiler=-LTCG
   LINK_LIBRARIES = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64\cudart.lib" cudadevrt.lib cudart_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib
@@ -1211,7 +1227,7 @@ build CMakeFiles\_ops_memory.dir\cmake_device_link.obj: CXX_MODULE_LIBRARY_DEVIC
 #############################################
 # Link the shared module C:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_memory.pyd
 
-build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_memory.pyd: CXX_MODULE_LIBRARY_LINKER___ops_memory_Release CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj CMakeFiles\_ops_memory.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd
+build C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_memory.pyd: CXX_MODULE_LIBRARY_LINKER___ops_memory_Release CMakeFiles\gev2_arena.dir\src\executor\mem_planner.cpp.obj CMakeFiles\_ops_memory.dir\src\bindings\memory_pybind.cpp.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\launcher.cu.obj CMakeFiles\_ops_memory.dir\backends\cuda\ops\memory\kernels.cu.obj CMakeFiles\_ops_memory.dir\cmake_device_link.obj | C$:\Program$ Files\NVIDIA$ GPU$ Computing$ Toolkit\CUDA\v12.6\lib\x64\cudart.lib C$:\Users\owner\AppData\Local\Programs\Python\Python312\libs\python312.lib || C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd gev2_arena
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64 /INCREMENTAL:NO -LTCG
@@ -2463,7 +2479,7 @@ build ai_core: phony ai_core.lib
 #############################################
 # Folder: C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build
 
-build all: phony ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_memory.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rmsnorm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rnn.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_optimizer.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_softmax.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_batchnorm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_embedding.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_layernorm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_concat.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_slice.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_view.pyd
+build all: phony gev2_arena ai_core.lib ge2_regemm_core ge2_regemm_standalone ai_backend_cuda.lib C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\_core.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_common.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_gemm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_conv2d.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_memory.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_dropout.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rmsnorm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_cross_entropy.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pad.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_pool2d.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_rnn.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_optimizer.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_softmax.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_batchnorm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_embedding.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_layernorm.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_concat.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_slice.pyd C$:\Users\owner\Desktop\AI_framework-dev\graph_executor_v2\python\graph_executor_v2\ops\_ops_view.pyd
 
 # =============================================================================
 # Built-in targets

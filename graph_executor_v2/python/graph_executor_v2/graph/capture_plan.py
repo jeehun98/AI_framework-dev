@@ -7,6 +7,7 @@ import cupy as cp
 __all__ = [
     "PerLayerBufs", "LossBufs", "CapturePlan",
     "register_planner", "make_plan_for_sequential", "make_plan_for_path",
+    "advance_dropout",
 ]
 
 # ============================================================
@@ -581,3 +582,22 @@ def make_plan_for_path(
         per_layer=per_layer,
         loss=LossBufs(dY=dY, out_shape=tuple(out_shape)),
     )
+
+# ============================================================
+# Utilities
+# ============================================================
+
+def advance_dropout(plan: CapturePlan, seed_bump: int = 1) -> None:
+    """
+    Dropout 마스크 변화를 위해 counter_base를 증가시키는 헬퍼.
+    - replay 직전/매 스텝마다 호출하여 새로운 마스크를 유도할 수 있다.
+    """
+    if seed_bump == 0:
+        return
+    for per in plan.per_layer:
+        work = getattr(per, "work", None)
+        if work is not None and hasattr(work, "counter_base"):
+            try:
+                work.counter_base += int(seed_bump)
+            except Exception:
+                pass

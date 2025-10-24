@@ -1,6 +1,12 @@
 [
 {
   "directory": "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DNOMINMAX -DUSE_NVTX -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2 -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -I\"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\include\" /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /FoCMakeFiles\\gev2_arena.dir\\src\\executor\\mem_planner.cpp.obj /FdCMakeFiles\\gev2_arena.dir\\ /FS -c C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\executor\\mem_planner.cpp",
+  "file": "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\executor\\mem_planner.cpp",
+  "output": "CMakeFiles\\gev2_arena.dir\\src\\executor\\mem_planner.cpp.obj"
+},
+{
+  "directory": "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build",
   "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DNOMINMAX -DUSE_NVTX -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2 -I\"C:\\Program Files\\NVIDIA Corporation\\NVToolsExt\\include\" /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /FoCMakeFiles\\ai_core.dir\\src\\dispatch\\registry.cpp.obj /FdCMakeFiles\\ai_core.dir\\ai_core.pdb /FS -c C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\dispatch\\registry.cpp",
   "file": "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\dispatch\\registry.cpp",
   "output": "CMakeFiles\\ai_core.dir\\src\\dispatch\\registry.cpp.obj"
@@ -16,12 +22,6 @@
   "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DNOMINMAX -DUSE_NVTX -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2 -I\"C:\\Program Files\\NVIDIA Corporation\\NVToolsExt\\include\" /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /FoCMakeFiles\\ai_core.dir\\src\\executor\\scheduler.cpp.obj /FdCMakeFiles\\ai_core.dir\\ai_core.pdb /FS -c C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\executor\\scheduler.cpp",
   "file": "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\executor\\scheduler.cpp",
   "output": "CMakeFiles\\ai_core.dir\\src\\executor\\scheduler.cpp.obj"
-},
-{
-  "directory": "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build",
-  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1442~1.344\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DNOMINMAX -DUSE_NVTX -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\include -IC:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2 -I\"C:\\Program Files\\NVIDIA Corporation\\NVToolsExt\\include\" /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++17 -MD /W4 /Zc:__cplusplus /bigobj /permissive- /EHsc /utf-8 /FoCMakeFiles\\ai_core.dir\\src\\executor\\mem_planner.cpp.obj /FdCMakeFiles\\ai_core.dir\\ai_core.pdb /FS -c C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\executor\\mem_planner.cpp",
-  "file": "C:\\Users\\owner\\Desktop\\AI_framework-dev\\graph_executor_v2\\src\\executor\\mem_planner.cpp",
-  "output": "CMakeFiles\\ai_core.dir\\src\\executor\\mem_planner.cpp.obj"
 },
 {
   "directory": "C:/Users/owner/Desktop/AI_framework-dev/graph_executor_v2/build",
