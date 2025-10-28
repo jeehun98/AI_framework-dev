@@ -1,4 +1,4 @@
-# python/graph_executor_v2/layers/conditional.py
+# File: python/graph_executor_v2/layers/conditional.py
 from __future__ import annotations
 from typing import Callable, Tuple, Optional, Iterable, Any, Dict, List
 from .base import Layer
@@ -6,7 +6,10 @@ from .base import Layer
 class _MetaControlLayer(Layer):
     """
     공통 유틸: control 레이어들은 실제 연산을 수행하지 않고
-    '경로 평탄화(Sequential._linearize_path)' 단계에서만 사용된다.
+    '경로 평탄화(Sequential._linearize_path)' 단계에서만 사용됩니다.
+
+    - __call__/forward는 사용 시도 자체를 막기 위해 예외를 던집니다.
+    - parameters/zero_grad/train은 내부 블록으로 위임될 수 있도록 각 서브클래스에서 override합니다.
     """
     def __call__(self, *args, **kwargs):
         raise RuntimeError(

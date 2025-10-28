@@ -1,12 +1,21 @@
-# graph_executor_v2/optim/adamw.py
+# File: graph_executor_v2/optim/adamw.py
 from __future__ import annotations
 from typing import Iterable, List, Tuple, Optional, Callable
 import cupy as cp
 
-# (param, grad, is_bias_or_exempt)
+"""
+AdamWOpt: CUDA Graph 친화 AdamW (Decoupled)
+- 모든 하이퍼파라미터/모멘트/타임스텝을 0-D device 텐서로 보관하여 host round-trip 제거
+- step() / step_into() 동일 경로(_apply) → 그래프 캡처/이저 공용
+- 파라미터가 fp16이어도 grad는 fp32로 들어올 수 있도록 허용 (CapturePlan gW/gB가 fp32인 설계 호환)
+- bias-correction 분모 0 가드
+"""
+
+# (param, grad, is_exempt_from_weight_decay)
 ParamTriplet = Tuple[cp.ndarray, cp.ndarray, bool]
 
 # ---------- Fused Elementwise Kernels (모듈 로드 시 1회 생성: 캡처 전) ----------
+# NOTE: 두 커널 모두 grad(g)는 float32를 받는다. (혼합정밀 호환)
 _adamw_fused_fp32 = cp.ElementwiseKernel(
     in_params='''
       float32 p, float32 g, float32 m, float32 v,
@@ -15,21 +24,16 @@ _adamw_fused_fp32 = cp.ElementwiseKernel(
     ''',
     out_params='float32 p_out, float32 m_out, float32 v_out',
     operation=r'''
-      // grad scaling
       float ge = grad_scale * g;
 
-      // moments
       float m_new = b1 * m + (1.f - b1) * ge;
       float v_new = b2 * v + (1.f - b2) * ge * ge;
 
-      // bias correction (분모 0 가드는 inv_bc* 계산 시 보장)
       float m_hat = m_new * inv_bc1;
       float v_hat = v_new * inv_bc2;
 
-      // update
       float upd = m_hat / (sqrtf(v_hat) + eps);
 
-      // decoupled weight decay (branchless)
       float w = p - lr * upd;
       float decay = (exempt == 0) ? (lr * wd * p) : 0.f;
       w = w - decay;
@@ -41,17 +45,14 @@ _adamw_fused_fp32 = cp.ElementwiseKernel(
 
 _adamw_fused_fp16 = cp.ElementwiseKernel(
     in_params='''
-      float16 p, float16 g, float32 m, float32 v,
+      float16 p, float32 g, float32 m, float32 v,
       float32 lr, float32 b1, float32 b2, float32 eps, float32 wd,
       float32 inv_bc1, float32 inv_bc2, float32 grad_scale, int32 exempt
     ''',
     out_params='float16 p_out, float32 m_out, float32 v_out',
     operation=r'''
-      // promote to fp32 for math
       float pf = (float)p;
-      float gf = (float)g;
-
-      float ge = grad_scale * gf;
+      float ge = grad_scale * g;
 
       float m_new = b1 * m + (1.f - b1) * ge;
       float v_new = b2 * v + (1.f - b2) * ge * ge;
@@ -71,30 +72,37 @@ _adamw_fused_fp16 = cp.ElementwiseKernel(
 )
 
 def _adamw_fused_update(p, g, m, v, lr, b1, b2, eps, wd, inv_bc1, inv_bc2, grad_scale, exempt):
-    """텐서 1개에 대해 커널 1회로 AdamW 업데이트."""
+    """텐서 1개 업데이트. param fp16/fp32 모두 지원, grad는 float32 입력."""
     ex = cp.int32(1 if exempt else 0)
-    # m, v는 항상 float32 누적(안정성)
     if p.dtype == cp.float16:
         p_out, m_out, v_out = _adamw_fused_fp16(
-            p, g, m, v, lr, b1, b2, eps, wd, inv_bc1, inv_bc2, grad_scale, ex
+            p, g.astype(cp.float32, copy=False), m, v,
+            lr, b1, b2, eps, wd,
+            inv_bc1, inv_bc2, grad_scale, ex
         )
     elif p.dtype == cp.float32:
+        # g는 이미 float32여야 함
         p_out, m_out, v_out = _adamw_fused_fp32(
-            p, g, m, v, lr, b1, b2, eps, wd, inv_bc1, inv_bc2, grad_scale, ex
+            p, g.astype(cp.float32, copy=False), m, v,
+            lr, b1, b2, eps, wd,
+            inv_bc1, inv_bc2, grad_scale, ex
         )
     else:
         raise TypeError(f"Unsupported dtype for param: {p.dtype}")
-    # in-place 반영
     p[...] = p_out; m[...] = m_out; v[...] = v_out
 
 
 class AdamWOpt:
     """
     CUDA Graph 친화 AdamW (Decoupled, in-place, pointer-stable).
-    - 모든 하이퍼/모멘트/타임스텝을 0-D 디바이스 텐서로 유지 (host round-trip 금지)
-    - step() = step_into() = _apply() : 경로별 부호/로직 불일치 제거
-    - bias-correction 분모 안정 가드 포함
-    - fp16 파라미터도 모멘트는 fp32 누적
+
+    groups: List[dict] = [{
+        "p": param (fp16|fp32),
+        "g": grad  (fp32 권장; fp16도 허용),
+        "m": moment1 (fp32),
+        "v": moment2 (fp32),
+        "exempt": bool (WD 제외 여부)
+    }, ...]
     """
 
     def __init__(
@@ -110,26 +118,25 @@ class AdamWOpt:
         self.groups: List[dict] = []
         for (p, g, is_exempt) in params:
             assert isinstance(p, cp.ndarray), "param must be cupy ndarray"
-            assert isinstance(g, cp.ndarray), "grad placeholder must be cupy ndarray"
+            assert isinstance(g, cp.ndarray), "grad must be cupy ndarray"
             assert p.dtype in (cp.float32, cp.float16), "param dtype should be fp16/fp32"
-            assert g.dtype == p.dtype, "grad dtype must match param dtype"
-            # 모멘트는 항상 fp32로 누적(수치 안정성)
+            # grad는 param과 같거나 fp32여야 함 (CapturePlan gW/gB=fp32 호환)
+            assert g.dtype in (p.dtype, cp.float32), f"grad dtype {g.dtype} not compatible with param {p.dtype}"
             self.groups.append({
                 "p": p,
-                "g": g,              # 캡처 후 rebind_grads로 교체될 수 있음
+                "g": g,
                 "exempt": bool(is_exempt),
                 "m": cp.zeros(p.shape, dtype=cp.float32),
                 "v": cp.zeros(p.shape, dtype=cp.float32),
             })
 
-        # 0-D device scalars
+        # 0-D device scalars (host round-trip 금지)
         self.lr   = cp.array(lr,   dtype=cp.float32)
         self.wd   = cp.array(wd,   dtype=cp.float32)
         self.b1   = cp.array(beta1, dtype=cp.float32)
         self.b2   = cp.array(beta2, dtype=cp.float32)
         self.eps  = cp.array(eps,  dtype=cp.float32)
         self.t    = cp.array(0,    dtype=cp.int32)
-
         self.grad_scale = cp.array(1.0, dtype=cp.float32)
 
         # bias-correction work buffers (0-D)
@@ -145,36 +152,28 @@ class AdamWOpt:
 
     # ---------------- core update (공통 진입점) ----------------
     def _apply(self):
-        """
-        그래프/이저 공통 경로. host로 값을 끌어오지 않는다 (float()/item() 금지).
-        - 텐서당 커널 1회로 업데이트
-        """
-        # t <- t + 1 (디바이스 in-place)
+        """그래프/이저 공통 경로. host로 값을 끌어오지 않는다 (float()/item() 금지)."""
         cp.add(self.t, 1, out=self.t)
 
-        # pow/bias-correction (in-place, 0-D)
         cp.power(self.b1, self.t, out=self._b1_pow_t)   # b1^t
         cp.power(self.b2, self.t, out=self._b2_pow_t)   # b2^t
         self._bc1[...] = 1.0 - self._b1_pow_t
         self._bc2[...] = 1.0 - self._b2_pow_t
 
-        # 안정 가드: 분모 하한
+        # 분모 안정 가드
         cp.maximum(self._bc1, cp.float32(1e-12), out=self._bc1)
         cp.maximum(self._bc2, cp.float32(1e-12), out=self._bc2)
 
-        # 역수(0-D)
         self._inv_bc1[...] = 1.0 / self._bc1
         self._inv_bc2[...] = 1.0 / self._bc2
 
-        # 파라미터 루프(텐서당 1커널)
         for slot in self.groups:
             p = slot["p"]; g = slot["g"]; m = slot["m"]; v = slot["v"]
-            exempt = slot["exempt"]
             _adamw_fused_update(
                 p, g, m, v,
                 self.lr, self.b1, self.b2, self.eps, self.wd,
                 self._inv_bc1, self._inv_bc2, self.grad_scale,
-                exempt
+                slot["exempt"]
             )
 
     def step_into(self):  # 그래프 캡처 내부
@@ -211,21 +210,20 @@ class AdamWOpt:
         for slot in self.groups:
             assert isinstance(slot["p"], cp.ndarray)
             assert isinstance(slot["g"], cp.ndarray)
-            assert isinstance(slot["m"], cp.ndarray)
-            assert isinstance(slot["v"], cp.ndarray)
-            # m,v는 float32 누적
-            assert slot["m"].dtype == cp.float32 and slot["v"].dtype == cp.float32
+            assert isinstance(slot["m"], cp.ndarray) and slot["m"].dtype == cp.float32
+            assert isinstance(slot["v"], cp.ndarray) and slot["v"].dtype == cp.float32
         self._initialized = True
 
     def rebind_grads(self, params: Iterable[ParamTriplet]):
         """
         그래프 캡처 전 호출 권장.
         파라미터 객체 동일성(pointer-stable) 검증 + grad 텐서만 교체.
+        grad dtype은 {param.dtype, fp32} 허용.
         """
         params = list(params)
         if len(self.groups) == 0:
             for (p_new, g_new, is_exempt_new) in params:
-                assert g_new.dtype == p_new.dtype
+                assert g_new.dtype in (p_new.dtype, cp.float32)
                 self.groups.append({
                     "p": p_new,
                     "g": g_new,
@@ -240,24 +238,26 @@ class AdamWOpt:
 
         for slot, (p_new, g_new, is_exempt_new) in zip(self.groups, params):
             assert slot["p"] is p_new, "parameter object mismatch on rebind"
-            assert g_new.dtype == p_new.dtype
             assert g_new.shape == p_new.shape
+            assert g_new.dtype in (p_new.dtype, cp.float32)
             slot["g"] = g_new
             slot["exempt"] = bool(is_exempt_new)
 
 
-# --------- 수집 유틸 ---------
+# --------- 파라미터 수집 유틸 ---------
 def collect_params_from(
     model,
     allow_missing_grad: bool = True,
     decay_exempt_pred: Optional[Callable[[str], bool]] = None,
 ) -> List[ParamTriplet]:
+    """
+    (레거시) model.parameters()에서 수집.
+    프로젝트 내 CapturePlan 기반 경로보다 거칠지만, 빠른 프로토타입에 유용.
+    """
     if decay_exempt_pred is None:
         def decay_exempt_pred(nm: str) -> bool:
             n = nm.lower()
-            if n.endswith(".b") or (".b" in n) or ("bias" in n):
-                return True
-            return False
+            return (n.endswith(".b") or (".b" in n) or ("bias" in n))
 
     triplets: List[ParamTriplet] = []
     for (p, g, name) in model.parameters():
@@ -267,33 +267,80 @@ def collect_params_from(
             if not allow_missing_grad:
                 continue
             g = cp.zeros_like(p)  # placeholder
-        # dtype 정합성 보증
-        assert g.dtype == p.dtype, f"grad dtype must match param dtype: {g.dtype} vs {p.dtype}"
+        # grad dtype은 {param.dtype, fp32} 허용
+        assert g.dtype in (p.dtype, cp.float32), f"grad dtype must be {p.dtype} or fp32, got {g.dtype}"
         triplets.append((p, g, is_exempt))
     return triplets
 
 
-def collect_params_from_plan(model, capture_plan, decay_exempt_pred: Optional[Callable[[str], bool]] = None) -> List[ParamTriplet]:
+def collect_params_from_plan(
+    model,
+    plan,
+    decay_exempt_pred: Optional[Callable[[str], bool]] = None
+) -> List[ParamTriplet]:
+    """
+    CapturePlan(per_layer) 기반 수집기.
+    - Dense/Conv: (W, gW), (b/bias/B, gB)
+    - BN/LN: (gamma, gW), (beta, gB)  (shape 매칭으로 판별)
+    - RNN(Elman): (Wx, gWx), (Wh, gWh), (b, gB), (h0, dh0?)  (존재하는 경우)
+    - Embedding: (W|weight, gW)
+    """
     if decay_exempt_pred is None:
         def decay_exempt_pred(nm: str) -> bool:
             n = nm.lower()
-            if n.endswith(".b") or (".b" in n) or ("bias" in n):
-                return True
-            return False
+            return (n.endswith(".b") or (".b" in n) or ("bias" in n))
+
+    def _has(x): return (x is not None) and hasattr(x, "shape")
 
     triplets: List[ParamTriplet] = []
-    bwd_bufs = capture_plan["buffers"]["bwd"]
-    for idx, lyr in enumerate(model.layers):
-        if hasattr(lyr, "W") and hasattr(lyr, "b"):
-            b = bwd_bufs[idx]
-            gW = b.get("gW", None)
-            gB = b.get("gB", None)
-            assert gW is not None and gB is not None, f"missing gW/gB for layer {idx}"
-            # dtype 정합성
-            assert gW.dtype == lyr.W.dtype and gB.dtype == lyr.b.dtype, \
-                f"dtype mismatch in grads for layer {idx}"
-            w_exempt = bool(decay_exempt_pred(getattr(lyr, "name", f"layer{idx}") + ".W"))
-            b_exempt = True  # bias는 decay 제외
-            triplets.append((lyr.W, gW, w_exempt))
-            triplets.append((lyr.b, gB, b_exempt))
+    WEIGHT_NAMES = ("W", "weight")
+    BIAS_NAMES   = ("b", "bias", "B")
+    GAMMA_NAMES  = ("gamma", "weight")
+    BETA_NAMES   = ("beta", "bias")
+
+    for i, (lyr, per) in enumerate(zip(getattr(model, "layers", []), plan.per_layer)):
+        # Dense/Conv 공통
+        if _has(per.gW):
+            pW = next((getattr(lyr, nm) for nm in WEIGHT_NAMES if _has(getattr(lyr, nm, None))), None)
+            if _has(pW):
+                gW = per.gW
+                # grad dtype 허용: {p.dtype, fp32}
+                assert gW.dtype in (pW.dtype, cp.float32), f"[L{i}] gW dtype {gW.dtype} not compatible with {pW.dtype}"
+                triplets.append((pW, gW, bool(decay_exempt_pred(getattr(lyr, "name", f"layer{i}") + ".W"))))
+        if _has(per.gB):
+            pb = next((getattr(lyr, nm) for nm in BIAS_NAMES if _has(getattr(lyr, nm, None))), None)
+            if _has(pb):
+                gB = per.gB
+                assert gB.dtype in (pb.dtype, cp.float32), f"[L{i}] gB dtype {gB.dtype} not compatible with {pb.dtype}"
+                triplets.append((pb, gB, True))  # bias는 WD 제외 기본
+
+        # BN/LN: gamma/beta
+        if _has(per.gW):
+            pgamma = next((getattr(lyr, nm) for nm in GAMMA_NAMES
+                           if _has(getattr(lyr, nm, None)) and getattr(lyr, nm).shape == per.gW.shape), None)
+            if _has(pgamma):
+                triplets.append((pgamma, per.gW, True))
+        if _has(per.gB):
+            pbeta = next((getattr(lyr, nm) for nm in BETA_NAMES
+                          if _has(getattr(lyr, nm, None)) and getattr(lyr, nm).shape == per.gB.shape), None)
+            if _has(pbeta):
+                triplets.append((pbeta, per.gB, True))
+
+        # RNN(Elman)
+        if _has(getattr(per, "gWx", None)) and _has(getattr(lyr, "Wx", None)):
+            triplets.append((lyr.Wx, per.gWx, False))
+        if _has(getattr(per, "gWh", None)) and _has(getattr(lyr, "Wh", None)):
+            triplets.append((lyr.Wh, per.gWh, False))
+        if _has(getattr(per, "gB", None)) and _has(getattr(lyr, "b", None)):
+            triplets.append((lyr.b, per.gB, True))
+        if _has(getattr(per, "dh0", None)) and _has(getattr(lyr, "h0", None)):
+            triplets.append((lyr.h0, per.dh0, True))
+
+        # Embedding
+        if _has(per.gW):
+            pE = getattr(lyr, "W", None) or getattr(lyr, "weight", None)
+            if _has(pE) and pE.shape == per.gW.shape:
+                # WD 적용 여부는 정책에 따라. 여기서는 기본 False(적용)로 두고 옵티마이저가 exempt 해석 가능.
+                triplets.append((pE, per.gW, False))
+
     return triplets
