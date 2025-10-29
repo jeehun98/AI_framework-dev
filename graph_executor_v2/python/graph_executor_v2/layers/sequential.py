@@ -917,6 +917,7 @@ class Sequential(Layer):
         assert tuple(tg.X_buf.shape) == tuple(x_arr.shape), \
             f"[dynamic] X shape mismatch: {x_arr.shape} vs {tg.X_buf.shape}"
         assert tg.y_buf.shape == (tg.X_buf.shape[0],), \
+            f"[dynamic] y shape must be (N,), got {tg.Y_buf.shape} vs N={tg.X_buf.shape[0]}" if hasattr(tg, "Y_buf") else \
             f"[dynamic] y shape must be (N,), got {tg.y_buf.shape} vs N={tg.X_buf.shape[0]}"
         assert tg.y_buf.dtype == cp.int32, \
             f"[dynamic] labels must be int32 (got {tg.y_buf.dtype})"

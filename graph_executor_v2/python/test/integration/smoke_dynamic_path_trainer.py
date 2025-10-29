@@ -179,7 +179,7 @@ def run_smoke_dynamic_if(tag: str):
 def run_smoke_dynamic_repeat(tag: str):
     """
     - Repeat 캡처/리플레이: 같은 서명/variant면 steps_fn 변화에도 같은 그래프 재사용
-    - NVTX로는 [REPLAY][dynamic] ... xT 확인 가능(수동)
+    - NVTX로는 [DYN] replay ... xT 확인 가능(수동)
     """
     C = 7
     cp.random.seed(2025)
@@ -327,7 +327,7 @@ def main():
     run_dropout_rng_epoch_change("case-rng-1")
     run_pool_lru_cap("case-lru-1")
     print("[ALL OK] dynamic path smoke completed.")
-    print("Tip) Nsight 타임라인에서 [CAPTURE]/[REPLAY] NVTX 태그를 함께 확인하세요.")
+    print("Tip) Nsight 타임라인에서 [CAPTURE]/[DYN] replay 태그를 함께 확인하세요.")
 
 if __name__ == "__main__":
     main()
