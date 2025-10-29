@@ -45,7 +45,12 @@ from graph_executor_v2.graph.capture_plan import (
 )
 from graph_executor_v2.graph.graph_exec import record_step_graph, TrainGraph
 from graph_executor_v2.optim.rebind import try_rebind_grads
+from graph_executor_v2.graph.rewriter import run as rewrite
+
 from .base import Layer
+
+# 🔽 패턴 패스 (현재 no-op) — 이후 최적화/퓨전 추가 시 활성화
+from graph_executor_v2.graph.pattern_registry import run_patterns
 
 import inspect
 import time
@@ -387,21 +392,7 @@ class Sequential(Layer):
         lt_bytes: int = (8 << 20),
         stream: Optional[cp.cuda.Stream] = None,
     ) -> "TrainGraph":
-        """정적(Graph) 경로: 전체 모델 1-step을 CUDA Graph로 캡처해 재생 준비.
-
-        흐름:
-          1) (필요시) build()
-          2) capture-safe 가드(supports_capture)
-          3) make_plan_for_sequential(...)  → 전체 DAG/바인딩 준비
-          4) try_rebind_grads(...)         → 옵티마이저에 그래드 버퍼 재바인딩
-          5) 고정 I/O 버퍼(X/y/loss) 생성  → capture-safe를 위해 shape/dtype 고정
-          6) record_step_graph(...)        → fwd→loss→bwd→opt 1-step 캡처
-          7) TrainGraph 생성/보관          → 이후 one_step()에서 replay
-
-        TODO(Planner 통합):
-          - ExecPlanner().build(plan.dag, ...) 를 3) 이후에 호출
-          - record_step_graph(..., exec_plan=exec_plan) 으로 전달
-        """
+        """정적(Graph) 경로: 전체 모델 1-step을 CUDA Graph로 캡처해 재생 준비."""
         in_shape = tuple(map(int, input_shape))
         if not self.built:
             self.build(in_shape)
@@ -411,13 +402,17 @@ class Sequential(Layer):
         if stream is None:
             stream = cp.cuda.Stream(non_blocking=True)
 
+        # ==== Pattern pass (no-op) ====
+        layers_opt = run_patterns(self.layers)
+        model_for_plan = self if layers_opt is self.layers else _ModelLayersProxy(self, layers_opt)
+
         # 3) 전체 모델용 캡처 플랜 생성
         plan = make_plan_for_sequential(
-            self, in_shape, loss_kind="softmax_ce", lt_bytes=lt_bytes
+            model_for_plan, in_shape, loss_kind="softmax_ce", lt_bytes=lt_bytes
         )
 
         # 4) 옵티마이저-그래드 버퍼 리바인드 (캡처 전 일관화)
-        try_rebind_grads(self, optimizer, plan)
+        try_rebind_grads(model_for_plan, optimizer, plan)
 
         # 5) 캡처-세이프 I/O 버퍼 (커널 제약 고려해 fp32/labels=int32)
         X_buf = cp.zeros(in_shape, dtype=cp.float32)
@@ -428,7 +423,7 @@ class Sequential(Layer):
         # 6) CUDA Graph 캡처
         with nvtx_range("[CAPTURE][static]"):
             gexec = record_step_graph(
-                self,
+                model_for_plan,
                 loss,
                 optimizer.step_into,
                 plan,
@@ -436,7 +431,6 @@ class Sequential(Layer):
                 y_buf=y_buf,
                 stream=stream,
                 loss_out=loss_buf,
-                # exec_plan=... (Planner 통합 시 전달)
             )
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
@@ -449,11 +443,7 @@ class Sequential(Layer):
         return tg
 
     def one_step(self, X, y) -> float:
-        """정적(Graph) 경로의 1 step 재생(replay).
-
-        전제: compile()로 캡처/준비 완료 상태.
-        - 고정 버퍼에 현재 배치 복사 → cudaGraphLaunch → loss 읽기
-        """
+        """정적(Graph) 경로의 1 step 재생(replay)."""
         assert self._tg is not None, "call compile() first"
         assert self._loss_buf is not None, "loss buffer not initialized"
 
@@ -482,11 +472,7 @@ class Sequential(Layer):
     # =========================================================
 
     def _infer_signature(self, X, ctx: Dict[str, Any]) -> "GraphSignature":
-        """GraphSignature 생성 (shape/dtype/layout 등 최소 정보).
-
-        - GraphSignature 타입이 런타임에 없을 수도 있으므로 Any 폴백 클래스 사용.
-        - 서명은 GraphKey 구성의 일부로 사용되어 그래프 풀 캐시 키를 안정화.
-        """
+        """GraphSignature 생성 (shape/dtype/layout 등 최소 정보)."""
         from typing import Any as _AnyType
         if GraphSignature is _AnyType:  # type: ignore[comparison-overlap]
             class _Sig:
@@ -536,13 +522,7 @@ class Sequential(Layer):
             _FALLBACK_POOL.pop(victim, None)
 
     def _make_pool_key(self, sig: Any, ctx: Dict[str, Any], *, loss) -> Any:
-        """GraphPool 키 생성.
-
-        - 누적 경로(branch_path)를 우선 사용 → 동일 모델 내 복수 분기 충돌 방지
-        - variant: training/amp/loss_kind/dtype/경로지문(path_fingerprint) 등 불변화하여 튜플로 고정
-        - GraphKey 타입이 있으면 사용, 없으면 해시안정 튜플로 폴백
-        """
-        # 누적 경로 우선
+        """GraphPool 키 생성."""
         branch_path = ctx.get("branch_path")
         if branch_path:
             branch_id = "->".join(map(str, branch_path))
@@ -580,21 +560,7 @@ class Sequential(Layer):
         return str(v)
 
     def _linearize_path(self, X, ctx: Dict[str, Any]) -> List[Layer]:
-        """동적 제어 레이어(If/Repeat/EarlyExit)를 '실행된 경로'로 평탄화.
-
-        처리 규칙:
-          - If: l.decide(X, ctx) → (branch, block)
-                · ctx['branch_path'] += (branch,)
-                · block이 Sequential이면 내부 layers를 전개
-          - Repeat: T = l.steps(X, ctx)
-                · ctx['repeat_steps'] = T (캡처는 1step, 재생 T회)
-                · body 전개
-          - EarlyExit: stages를 순차 전개; 각 stage 전개 후 exit_fn(ctx) True면 종료
-                · ctx['branch_path'] += (f"ee:{k}",)
-                · ctx['earlyexit'] = True
-          - 컨트롤 레이어가 전개 후에도 남아있으면 예외 (평탄화 누락 가드)
-          - ctx['path_fingerprint'] = (레이어 클래스 명 시퀀스) 기록
-        """
+        """동적 제어 레이어(If/Repeat/EarlyExit)를 '실행된 경로'로 평탄화."""
         def _is_if(obj):
             return callable(getattr(obj, "decide", None)) and \
                 hasattr(obj, "then_block") and hasattr(obj, "else_block")
@@ -630,7 +596,6 @@ class Sequential(Layer):
                     linear.append(body)
 
             elif _is_early(l):
-                # 각 stage를 순차 전개, stage마다 exit_fn(ctx) 검사하여 조기 종료
                 stages = list(l.stages)
                 for k, s in enumerate(stages):
                     if isinstance(s, Sequential):
@@ -679,21 +644,15 @@ class Sequential(Layer):
         lt_bytes: int,
         stream: Optional[cp.cuda.Stream],
     ) -> Dict[str, Any]:
-        """동적 경로의 핵심 진입점: 평탄화→키생성→캐시조회→(미스)캡처→엔트리반환.
-
-        반환 엔트리:
-          {
-            "tg": TrainGraph,         # 경로별 TrainGraph
-            "loss_buf": ndarray,      # 손실 스칼라 버퍼
-            "stream": Stream,         # 사용 스트림
-            "optimizer": Optimizer,   # 경로 전용 옵티마이저(리바인드 끝난)
-            "plan": CapturePlan,      # advance_dropout 등에 사용
-          }
-        """
+        """동적 경로의 핵심 진입점: 평탄화→패턴→키→캐시→(미스)캡처."""
         # 1) 경로 평탄화
         with nvtx_range("[DYN] path_linearize"):
             path_layers = self._linearize_path(X, ctx)
         self._ensure_path_captureable(path_layers)
+
+        # ==== Pattern pass (no-op) ====
+        with nvtx_range("[DYN] patterns"):
+            path_layers = rewrite(path_layers)
 
         # 2) 키 구성 (GraphSignature + branch_path 등)
         with nvtx_range("[DYN] make_pool_key"):
@@ -739,16 +698,11 @@ class Sequential(Layer):
                 path_layers, in_shape, loss_kind=getattr(loss, "name", "softmax_ce"), lt_bytes=lt_bytes
             )
 
-        # TODO(Planner 통합): 여기서 ExecPlanner().build(plan.dag, ...) 호출 → exec_plan
-        # TODO(GraphRuntime 통합): record_step_graph(..., exec_plan=exec_plan)
-
         # ---- 경로 전용 (param, grad) 트리플 수집: 정확 매핑 + 중복 방지 ----
         def _collect_triplets_from_path(plan, layers):
-            """캡처 플랜(per_layer.* grad 버퍼)을 경로 레이어 파라미터에 정확 매핑."""
             triplets = []
             seen = set()
             def push(p, g, tag):
-                # Tensor-like라 가정: (data.ptr) 또는 id 기반으로 유일성 판단
                 key = (
                     int(getattr(getattr(p, "data", p), "ptr", id(p))),
                     int(getattr(getattr(g, "data", g), "ptr", id(g)))
@@ -793,7 +747,6 @@ class Sequential(Layer):
         opt_for_path = optimizer
 
         def _new_opt_like(base_opt):
-            """기본 옵티마이저 하이퍼파라미터를 복사해 경로전용 인스턴스를 생성."""
             OptCls = base_opt.__class__
             hyper = {}
             for k in ("lr", "wd", "weight_decay", "beta1", "beta2", "betas", "eps"):
@@ -811,7 +764,6 @@ class Sequential(Layer):
                 else:
                     raise AssertionError("optimizer has no rebind_grads")
             except AssertionError:
-                # 원본이 rebind를 지원하지 않으면 경로전용 옵티마이저를 새로 생성
                 opt_for_path = _new_opt_like(optimizer)
                 if hasattr(opt_for_path, "ensure_initialized"):
                     try:
@@ -845,7 +797,6 @@ class Sequential(Layer):
                     stream=stream,
                     loss_out=loss_buf,
                     layers_override=path_layers,
-                    # exec_plan=... (Planner 통합 시)
                 )
             else:
                 # layers_override 미지원 record_step_graph에 대한 호환
@@ -859,7 +810,6 @@ class Sequential(Layer):
                     y_buf=y_buf,
                     stream=stream,
                     loss_out=loss_buf,
-                    # exec_plan=... (Planner 통합 시)
                 )
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
@@ -886,15 +836,7 @@ class Sequential(Layer):
         lt_bytes: int = (8 << 20),
         stream: Optional[cp.cuda.Stream] = None,
     ) -> float:
-        """동적(Graph) 경로: If/Repeat/EarlyExit 포함한 '현재 실행된 경로'를 캡처/재생.
-
-        흐름:
-          1) _get_or_capture_dynamic_entry(...) 호출
-             - 평탄화 → 키 구성 → 캐시 조회 → (미스) 플랜/옵티마이저 리바인드 → record_step_graph
-          2) entry.tg.set_batch(...) 로 고정버퍼에 배치 복사
-          3) Repeat: ctx['repeat_steps']=T 이면 advance_dropout(plan, t) 후 tg.launch() T회
-          4) loss_buf 읽어 반환
-        """
+        """동적(Graph) 경로: If/Repeat/EarlyExit 포함한 '현재 실행된 경로'를 캡처/재생."""
         ctx = dict(ctx or {})
         x_arr = cp.asarray(X)
         y_arr = cp.asarray(y)
@@ -917,7 +859,6 @@ class Sequential(Layer):
         assert tuple(tg.X_buf.shape) == tuple(x_arr.shape), \
             f"[dynamic] X shape mismatch: {x_arr.shape} vs {tg.X_buf.shape}"
         assert tg.y_buf.shape == (tg.X_buf.shape[0],), \
-            f"[dynamic] y shape must be (N,), got {tg.Y_buf.shape} vs N={tg.X_buf.shape[0]}" if hasattr(tg, "Y_buf") else \
             f"[dynamic] y shape must be (N,), got {tg.y_buf.shape} vs N={tg.X_buf.shape[0]}"
         assert tg.y_buf.dtype == cp.int32, \
             f"[dynamic] labels must be int32 (got {tg.y_buf.dtype})"
@@ -932,7 +873,6 @@ class Sequential(Layer):
         with nvtx_range(f"[DYN] replay path={ctx.get('path_fingerprint')} x{T}"):
             if isinstance(rep_batches, (list, tuple)) and len(rep_batches) >= T:
                 for t in range(T):
-                    # 드롭아웃: 회차마다 카운터/시드 전진 (정책적으로 끌 수도 있음)
                     if plan is not None:
                         advance_dropout(plan, seed_bump=t)
                     xb_t = cp.asarray(rep_batches[t][0])
