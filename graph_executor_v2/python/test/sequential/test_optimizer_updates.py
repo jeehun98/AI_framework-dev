@@ -1,4 +1,4 @@
-# File: debug_optimizer_update_check.py
+# File: test_optimizer_updates.py
 from __future__ import annotations
 import os, sys, math, traceback
 

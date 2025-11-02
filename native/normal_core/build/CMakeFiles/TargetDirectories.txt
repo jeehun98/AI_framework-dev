@@ -1,7 +1,0 @@
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/normal_core.dir
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/normal_example.dir
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/edit_cache.dir
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/rebuild_cache.dir
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/list_install_components.dir
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/install.dir
-C:/Users/owner/Desktop/AI_framework-dev/native/normal_core/build/CMakeFiles/install/local.dir

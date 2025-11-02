@@ -1,8 +1,0 @@
-# ninja log v5
-16	207	7791030821084169	CMakeFiles/decision_core.dir/src/reject.cpp.obj	79dae7f5951454e9
-14	212	7791030821124234	CMakeFiles/decision_core.dir/src/loss.cpp.obj	91f2758c47eaa6c8
-11	278	7791030821775182	CMakeFiles/decision_core.dir/src/decision.cpp.obj	e1901f4d98bbbc12
-19	317	7791030822165711	CMakeFiles/decision_core.dir/src/regression.cpp.obj	2b946a2fbe77ad9f
-318	360	7791030822574137	decision_core.lib	3a4805ca0c6fcdb
-21	499	7791030823974083	CMakeFiles/decision_example.dir/examples/main.cpp.obj	5e82ec16d1276b2f
-499	583	7791030824713628	decision_example.exe	e366e6d4415c1b34

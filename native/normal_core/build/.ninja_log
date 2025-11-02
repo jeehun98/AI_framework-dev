@@ -1,6 +1,0 @@
-# ninja log v5
-14	350	7790044895806871	CMakeFiles/normal_example.dir/examples/main.cpp.obj	87c8e945ae30e9c5
-11	369	7790044895990196	CMakeFiles/normal_core.dir/src/normal_cpu.cpp.obj	72ba35b0babed857
-369	456	7790044896767893	normal_core.dll	26007f516122714e
-369	456	7790044896767893	normal_core.lib	26007f516122714e
-456	534	7790044897551354	normal_example.exe	d6acff053174bc1f

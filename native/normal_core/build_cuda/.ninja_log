@@ -1,8 +1,0 @@
-# ninja log v5
-16	343	7790030947189779	CMakeFiles/normal_example.dir/examples/main.cpp.obj	3d2db09c77181468
-11	359	7790030947340122	CMakeFiles/normal_core.dir/src/normal_cpu.cpp.obj	27d03c78c3830f3c
-14	1988	7790030963502853	CMakeFiles/normal_cuda.dir/src/normal_cuda.cu.obj	fd79930802725f46
-1990	3149	7790030975204932	CMakeFiles/normal_core.dir/cmake_device_link.obj	3bb417a29aaafc5e
-3149	3234	7790030975976278	normal_core.dll	3f4816c4efe85f69
-3149	3234	7790030975976278	normal_core.lib	3f4816c4efe85f69
-3235	3315	7790030976784891	normal_example.exe	d6acff053174bc1f
