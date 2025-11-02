@@ -232,12 +232,18 @@ class Sequential(Layer):
     # Eager 실행 (참고/디버깅/테스트용)
     # -------------------------------------------------------------------------
     def call(self, x: Any):
-        """즉시 실행 forward (캡처 없이). 디버깅/테스트에 유용."""
+        """즉시 실행 forward (캡처 없이). 디버깅/테스트용 + None 가드."""
         out = x
-        for lyr in self.layers:
+        for i, lyr in enumerate(self.layers):
             if hasattr(lyr, "training"):
                 lyr.training = self.training
             out = lyr(out)
+            if out is None:
+                lname = f"{type(lyr).__name__}:{i}"
+                raise RuntimeError(
+                    f"[Sequential.call] layer '{lname}' returned None in forward. "
+                    f"Check its call() implementation to ensure it returns a tensor."
+                )
         return out
 
     def backward(self, grad_output: Any):
@@ -305,13 +311,17 @@ class Sequential(Layer):
         return self.train(False)
 
     def parameters(self) -> Iterable[Tuple[Any, Any, str]]:
-        """(param, grad, tag) 를 순회하며 방출.
+        """(param, grad, tag)를 순회하며 방출.
 
-        - 레이어가 `parameters()`를 제공하면 그것을 우선 사용
-        - 없으면 후보 속성명(CANDIDATE_PARAM_GRAD_NAMES)로 덕타이핑 수집
+        우선순위:
+          1) 레이어가 parameters()를 제공하면 그대로 사용
+          2) 후보 속성명 쌍(CANDIDATE_PARAM_GRAD_NAMES)
+          3) ★ 일반 탐색: 파라미터 객체의 `.grad` 존재 여부로 수집
         """
         for idx, lyr in enumerate(self.layers):
             lname = f"{lyr.__class__.__name__}:{idx}"
+
+            # 1) 레이어 자체 제공
             if hasattr(lyr, "parameters") and callable(getattr(lyr, "parameters")):
                 for t in lyr.parameters():  # type: ignore
                     if isinstance(t, tuple) and len(t) == 3:
@@ -320,11 +330,27 @@ class Sequential(Layer):
                         p, g = t
                         yield (p, g, lname)
                 continue
+
+            # 2) 이름 쌍 덕 타이핑
+            found_named = False
             for p_name, g_name in CANDIDATE_PARAM_GRAD_NAMES:
                 if hasattr(lyr, p_name) and hasattr(lyr, g_name):
                     p = getattr(lyr, p_name)
                     g = getattr(lyr, g_name)
                     yield (p, g, f"{lname}.{p_name}")
+                    found_named = True
+            if found_named:
+                continue
+
+            # 3) ★ 일반 탐색: 자주 쓰는 파라미터 이름에서 .grad 붙은 객체 수집
+            #    - weight/kernel/bias/b/gamma/beta 등에서 .grad 탐색
+            generic_names = ("W", "weight", "kernel", "b", "bias", "gamma", "beta")
+            for p_name in generic_names:
+                if hasattr(lyr, p_name):
+                    p = getattr(lyr, p_name)
+                    g = getattr(p, "grad", None)
+                    if g is not None:
+                        yield (p, g, f"{lname}.{p_name}")
 
     def zero_grad(self):
         """모든 파라미터 그래드를 0으로 설정(가능하면 in-place)."""

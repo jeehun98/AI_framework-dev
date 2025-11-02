@@ -119,44 +119,83 @@ class Dense(Layer):
             raise ValueError(f"Dense expects 2D input (batch, in_dim), got {input_shape}")
         _, in_dim = map(int, input_shape)
         self.W, self.b = self._init_weights(in_dim)
+        
+        # 🔧 grad 버퍼를 build 시점에 미리 준비 (0으로 초기화)
+        self.dW = cp.zeros_like(self.W)
+        self.db = cp.zeros_like(self.b)        
+        
         # 동적 배치
         self.output_shape = (None, self.units)
+
 
     def call(self, x: cp.ndarray) -> cp.ndarray:
         """
         Forward (fused):
-          - 필요 시 pre-activation Z를 save_z로 저장
-          - self.last_linear = Z(pre), self.last_input = x
+        - 필요 시 pre-activation Z를 save_z로 저장
+        - self.last_linear = Z(pre), self.last_input = x
         """
         if self.W is None or self.b is None:
             raise RuntimeError("Dense.call called before build")
 
         if x.dtype != cp.float32:
             x = x.astype(cp.float32, copy=False)
-        # 성능 민감 시 주석 해제(모든 텐서 C-연속성 보장)
+        # 성능 민감 시:
         # x = cp.ascontiguousarray(x)
 
-        # 학습 중 + 활성화 있을 때만 Z 저장
+        # 학습 중 + 활성화가 있을 때만 Z 저장
         save_z = bool(self.training) and (self.activation != "none")
 
-        if save_z:
-            Y, Z = gemm_ops.forward(
-                x, self.W, self.b,
-                act=self.activation, with_bias=True, leaky_slope=self.leaky_slope,
-                save_z=True, return_z=True
-            )
-            self.last_linear = Z
-            out = Y
-        else:
-            out = gemm_ops.forward(
-                x, self.W, self.b,
-                act=self.activation, with_bias=True, leaky_slope=self.leaky_slope,
-                save_z=False, return_z=False
-            )
-            self.last_linear = None
+        try:
+            if save_z:
+                # 커널 경로: (Y, Z) 반환
+                Y, Z = gemm_ops.forward(
+                    x, self.W, self.b,                    # b는 (1, units)
+                    act=self.activation, with_bias=True,
+                    leaky_slope=self.leaky_slope,
+                    save_z=True, return_z=True
+                )
+                out = Y
+                self.last_linear = Z
+            else:
+                # 커널 경로: Y만 반환
+                out = gemm_ops.forward(
+                    x, self.W, self.b,
+                    act=self.activation, with_bias=True,
+                    leaky_slope=self.leaky_slope,
+                    save_z=False, return_z=False
+                )
+                self.last_linear = None
+        except Exception:
+            # --- 안전 폴백 (순수 CuPy 연산) ---
+            z = x @ self.W + self.b  # (M,N) + (1,N)
+            if self.activation == "none":
+                out = z
+                self.last_linear = None
+            else:
+                self.last_linear = z
+                a = (self.activation or "none").lower()
+                if a == "relu":
+                    out = cp.maximum(z, 0)
+                elif a in ("leakyrelu", "leaky_relu", "lrelu"):
+                    out = cp.where(z > 0, z, self.leaky_slope * z)
+                elif a == "sigmoid":
+                    out = 1.0 / (1.0 + cp.exp(-z))
+                elif a == "tanh":
+                    out = cp.tanh(z)
+                elif a == "gelu":
+                    c = cp.sqrt(2.0 / cp.pi, dtype=cp.float32)
+                    t = cp.tanh(c * (z + 0.044715 * z * z * z))
+                    out = 0.5 * z * (1.0 + t)
+                else:
+                    raise ValueError(f"Unknown activation: {self.activation}")
 
+        # 공통 마무리
         self.last_input = x
+        if out is None:
+            raise RuntimeError("[Dense.call] out is None; every branch must produce a tensor")
         return out
+
+
 
     def backward(self, grad_output: cp.ndarray) -> cp.ndarray:
         """
@@ -184,8 +223,21 @@ class Dense(Layer):
                 act=self.activation, with_bias=True, leaky_slope=self.leaky_slope,
                 C=None, want_gA=True, want_gB=True, want_gBias=True
             )
-            self.dW = outs.get("gB", None)       # (in_dim, units)
-            self.db = outs.get("gBias", None)    # (1, units)
+            
+            gW_new = outs.get("gB", None)        # (in_dim, units)
+            gB_new = outs.get("gBias", None)     # (1, units)
+            if gW_new is None or gB_new is None:
+                raise RuntimeError("native backward did not return all required grads")
+            # ✅ in-place 덮어쓰기 (기존 버퍼가 있으면 유지)
+            if self.dW is None or self.dW.shape != gW_new.shape:
+                self.dW = gW_new
+            else:
+                self.dW[...] = gW_new
+            if self.db is None or self.db.shape != gB_new.shape:
+                self.db = gB_new
+            else:
+                self.db[...] = gB_new
+
             dx = outs.get("gA", None)            # (batch, in_dim)
             if dx is None or self.dW is None or self.db is None:
                 raise RuntimeError("native backward did not return all required grads")
@@ -213,8 +265,18 @@ class Dense(Layer):
         if not go.flags.c_contiguous:
             go = cp.ascontiguousarray(go)
 
-        self.dW = self.last_input.T @ go                        # (in_dim, units)
-        self.db = go.sum(axis=0, keepdims=True)                 # (1, units) Per-N
+        gW_new = self.last_input.T @ go
+        gB_new = go.sum(axis=0, keepdims=True)
+        if self.dW is None or self.dW.shape != gW_new.shape:
+            self.dW = gW_new
+        else:
+            self.dW[...] = gW_new
+        if self.db is None or self.db.shape != gB_new.shape:
+            self.db = gB_new
+        else:
+            self.db[...] = gB_new        
+
+
         dx = go @ self.W.T                                      # (batch, in_dim)
         return dx
 
@@ -224,8 +286,17 @@ class Dense(Layer):
         return (None if input_shape[0] is None else int(input_shape[0]), self.units)
 
     # ---------------- Trainer-friendly helpers ----------------
-    def parameters(self) -> List[cp.ndarray]:
-        return [p for p in (self.W, self.b) if p is not None]
+    def parameters(self):
+        """
+        Optimizer/Sequential에서 바로 소비할 수 있도록 (param, grad, tag) 튜플을 yield.
+        grad 버퍼는 build/backward에서 항상 준비되므로 그대로 노출.
+        """
+        lname = type(self).__name__
+        if self.W is not None:
+            # dW는 build()/backward()/backward_into()에서 준비됨
+            yield (self.W, self.dW, f"{lname}.W")
+        if self.b is not None:
+            yield (self.b, self.db, f"{lname}.b")    
 
     def grads(self) -> List[Optional[cp.ndarray]]:
         return [self.dW, self.db]
