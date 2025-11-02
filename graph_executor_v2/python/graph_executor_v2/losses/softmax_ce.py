@@ -7,15 +7,20 @@ import numpy as np
 # 공통 타입/베이스
 from .base import Loss, Array
 
-# CUDA 경로: CuPy + ops.cross_entropy 사용 가능 여부 확인
+# --- GPU 사용 가능성 감지 (cupy 유무와 C++ 커널 유무를 분리) ---
 try:
     import cupy as cp  # type: ignore
-    from graph_executor_v2.ops import cross_entropy as ce_ops  # type: ignore
-    _HAS_GPU = True
+    CUPY_AVAILABLE = True
 except Exception:
     cp = None  # type: ignore[assignment]
+    CUPY_AVAILABLE = False
+
+try:
+    from graph_executor_v2.ops import cross_entropy as ce_ops  # type: ignore
+    CE_OPS_AVAILABLE = True
+except Exception:
     ce_ops = None  # type: ignore[assignment]
-    _HAS_GPU = False
+    CE_OPS_AVAILABLE = False
 
 
 # --------- NumPy 폴백 구현 ---------
@@ -35,61 +40,128 @@ def _numpy_forward(
     ignore_index: int,
     eps: float,
     ls_eps: float,
-) -> Tuple[float, np.ndarray]:
+    return_scalar: bool,
+):
     x = logits.astype(np.float32, copy=False)
     t = target_idx.astype(np.int64, copy=False)
     N, C = x.shape
 
     valid = (t != ignore_index)
     n_valid = int(valid.sum())
-    n_valid = max(n_valid, 1)  # div0 방지
+    n_valid = max(n_valid, 1)
 
-    # one-hot + label smoothing
     oh = np.zeros((N, C), np.float32)
-    t_clip = np.clip(t, 0, C - 1)
+    t_clip = np.clip(np.where(valid, t, 0), 0, C - 1)
     oh[np.arange(N), t_clip] = 1.0
     if ls_eps > 0.0:
         oh = (1.0 - ls_eps) * oh + (ls_eps / C)
 
     if from_logits:
-        # log-softmax
         lse = _numpy_logsumexp(x, axis=1, keepdims=True)
         logp = x - lse
-        loss_all = -(oh * logp).sum(axis=1)
-        # grad = softmax - target
+        loss_all = -(oh * logp).sum(axis=1).astype(np.float32)
         p = np.exp(logp)
-        dx = (p - oh)
+        dx = (p - oh).astype(np.float32)
     else:
-        # 입력이 확률
         p = np.clip(x, eps, 1.0)
-        loss_all = -(oh * np.log(p)).sum(axis=1)
-        dx = -(oh / p)
+        loss_all = -(oh * np.log(p)).sum(axis=1).astype(np.float32)
+        dx = (-(oh / p)).astype(np.float32)
 
-    # ignore_index 마스킹
     loss_all = np.where(valid, loss_all, 0.0).astype(np.float32)
     dx *= valid[:, None].astype(np.float32)
 
-    # scalar reduction (항상 Python float 반환)
     if reduction == "sum":
-        loss_scalar = float(loss_all.sum())
+        loss_val = loss_all.sum(dtype=np.float32)
     elif reduction == "none":
-        # 베이스 규약상 스칼라는 항상 float -> 표시용 mean 반환
-        loss_scalar = float(loss_all.mean())
-    else:  # "mean"
-        loss_scalar = float(loss_all.sum() / n_valid)
+        loss_val = loss_all
+    else:
+        loss_val = loss_all.sum(dtype=np.float32) / float(n_valid)
 
-    # backward 스케일: reduction='mean'이면 n_valid로 나눔
     if reduction == "mean":
-        dx /= n_valid
-    # 'sum' / 'none' -> 스케일 없음
+        dx /= float(n_valid)
 
-    return loss_scalar, dx.astype(np.float32, copy=False)
+    if return_scalar:
+        if reduction == "none":
+            return float(loss_all.mean(dtype=np.float32)), dx
+        else:
+            return float(np.float32(loss_val).item()), dx
+    else:
+        return loss_val, dx
+
+
+# --------- CuPy 경로 (ce_ops 없을 때 순수 CuPy 연산으로 계산) ---------
+def _cupy_forward_pure(
+    logits: "cp.ndarray",
+    target_idx: "cp.ndarray",
+    *,
+    from_logits: bool,
+    reduction: str,
+    ignore_index: int,
+    eps: float,
+    ls_eps: float,
+    return_scalar: bool,
+):
+    xp = cp
+    x = logits.astype(xp.float32, copy=False)
+    t = target_idx
+    if not isinstance(t, xp.ndarray):
+        t = xp.asarray(t)
+    if t.dtype != xp.int32:
+        t = t.astype(xp.int32, copy=False)
+
+    N, C = x.shape
+    valid = (t != ignore_index)
+    n_valid = xp.maximum(valid.sum(dtype=xp.int32), 1)
+    n_valid_f = n_valid.astype(xp.float32)  # ← CuPy 스칼라, host 전송 없음
+
+    # one-hot + label smoothing
+    oh = xp.zeros((N, C), dtype=xp.float32)
+    t_clip = xp.clip(xp.where(valid, t, 0), 0, C - 1)
+    oh[xp.arange(N, dtype=xp.int32), t_clip] = 1.0
+    if ls_eps > 0.0:
+        oh = (1.0 - ls_eps) * oh + (ls_eps / C)
+
+    if from_logits:
+        m = x.max(axis=1, keepdims=True)
+        z = x - m
+        exp = xp.exp(z)
+        denom = exp.sum(axis=1, keepdims=True)
+        p = exp / denom
+        logp = z - xp.log(denom)
+        loss_all = -(oh * logp).sum(axis=1).astype(xp.float32)
+        dx = (p - oh).astype(xp.float32)
+    else:
+        p = xp.clip(x, eps, 1.0)
+        loss_all = -(oh * xp.log(p)).sum(axis=1).astype(xp.float32)
+        dx = (-(oh / p)).astype(xp.float32)
+
+    loss_all = xp.where(valid, loss_all, xp.float32(0.0))
+    dx = dx * valid[:, None].astype(xp.float32)
+
+    if reduction == "sum":
+        loss_val = loss_all.sum(dtype=xp.float32)
+    elif reduction == "none":
+        loss_val = loss_all
+    else:  # mean over valid
+        loss_val = loss_all.sum(dtype=xp.float32) / n_valid_f
+
+    if reduction == "mean":
+        dx = dx / n_valid_f
+
+    if return_scalar:
+        if reduction == "none":
+            return float(loss_all.mean(dtype=xp.float32).get()), dx
+        else:
+            return float(loss_val.get().item()), dx
+    else:
+        return loss_val, dx
+
 
 
 # --------- 공개 Loss 클래스 ---------
 class SoftmaxCrossEntropy(Loss):
     """
-    Softmax + Cross-Entropy (GPU가용 시 CUDA 커널 사용, 불가 시 NumPy 폴백)
+    Softmax + Cross-Entropy (GPU가용 시 CUDA 커널 or 순수 CuPy, 불가 시 NumPy 폴백)
 
     Args:
       label_smoothing: float in [0, 1]
@@ -113,47 +185,69 @@ class SoftmaxCrossEntropy(Loss):
         self.from_logits = bool(from_logits)
         self.eps = float(eps)
 
-    def forward(self, logits: Array, target_idx: Array) -> Tuple[float, Array]:
-        # ---------- GPU 경로 ----------
-        if _HAS_GPU:
-            try:
-                if isinstance(logits, cp.ndarray):  # type: ignore[attr-defined]
-                    x = logits
-                    t = target_idx
-                    if x.dtype != cp.float32:  # type: ignore[attr-defined]
-                        x = x.astype(cp.float32, copy=False)  # type: ignore[attr-defined]
-                    # 정수 인덱스는 int32 (CUDA 커널과 합의)
-                    if t.dtype != cp.int32:  # type: ignore[attr-defined]
-                        t = t.astype(cp.int32, copy=False)  # type: ignore[attr-defined]
+    def forward(
+        self,
+        logits: Array,
+        target_idx: Array,
+        *,
+        return_scalar: bool = False,
+    ):
+        """
+        Returns:
+            (loss, dY)
+            - return_scalar=False: loss는 텐서(디바이스/호스트) 그대로
+              - reduction='mean'/'sum': 0-d 텐서
+              - reduction='none': (N,) 텐서
+            - return_scalar=True: 항상 Python float 반환
+              - reduction='none'인 경우 mean(loss) 반환(표시용 규약)
+        """
+        # --- CuPy 텐서면 무조건 GPU 경로로 처리 ---
+        if CUPY_AVAILABLE and isinstance(logits, cp.ndarray):  # type: ignore[attr-defined]
+            if CE_OPS_AVAILABLE:
+                # C++ 커널 경로
+                x = logits.astype(cp.float32, copy=False)        # type: ignore[attr-defined]
+                t = target_idx
+                if not isinstance(t, cp.ndarray):                # type: ignore[attr-defined]
+                    t = cp.asarray(t)                             # type: ignore[attr-defined]
+                if t.dtype != cp.int32:                           # type: ignore[attr-defined]
+                    t = t.astype(cp.int32, copy=False)            # type: ignore[attr-defined]
 
-                    loss_dev = ce_ops.forward(  # type: ignore[union-attr, call-arg]
-                        x, t,
-                        from_logits=self.from_logits,
-                        reduction=self.reduction,
-                        ignore_index=self.ignore_index,
-                        eps=self.eps,
-                        ls_eps=self.ls_eps,
-                    )
-                    dx = ce_ops.backward(  # type: ignore[union-attr, call-arg]
-                        x, t,
-                        from_logits=self.from_logits,
-                        reduction=self.reduction,
-                        ignore_index=self.ignore_index,
-                        eps=self.eps,
-                        ls_eps=self.ls_eps,
-                    )
-
-                    # 항상 Python float 반환
+                loss_dev = ce_ops.forward(  # type: ignore[union-attr]
+                    x, t,
+                    from_logits=self.from_logits,
+                    reduction=self.reduction,
+                    ignore_index=self.ignore_index,
+                    eps=self.eps,
+                    ls_eps=self.ls_eps,
+                )
+                dx = ce_ops.backward(  # type: ignore[union-attr]
+                    x, t,
+                    from_logits=self.from_logits,
+                    reduction=self.reduction,
+                    ignore_index=self.ignore_index,
+                    eps=self.eps,
+                    ls_eps=self.ls_eps,
+                )
+                if return_scalar:
                     if self.reduction == "none":
-                        loss_scalar = float(cp.mean(loss_dev))  # type: ignore[attr-defined]
+                        return float(cp.mean(loss_dev).get()), dx  # type: ignore[attr-defined]
                     else:
-                        loss_scalar = float(loss_dev.ravel()[0])  # type: ignore[call-arg]
-                    return loss_scalar, dx
-            except Exception:
-                # GPU 경로 실패 시 폴백 (안전장치)
-                pass
+                        return float(loss_dev.get().item()), dx    # type: ignore[attr-defined]
+                else:
+                    return loss_dev, dx
+            else:
+                # 순수 CuPy 연산 경로
+                return _cupy_forward_pure(
+                    logits, target_idx,
+                    from_logits=self.from_logits,
+                    reduction=self.reduction,
+                    ignore_index=self.ignore_index,
+                    eps=self.eps,
+                    ls_eps=self.ls_eps,
+                    return_scalar=return_scalar,
+                )
 
-        # ---------- CPU 폴백 ----------
+        # --- 그 외는 NumPy 폴백 ---
         logits_np = np.asarray(logits, dtype=np.float32)
         target_np = np.asarray(target_idx)
         return _numpy_forward(
@@ -164,6 +258,7 @@ class SoftmaxCrossEntropy(Loss):
             ignore_index=self.ignore_index,
             eps=self.eps,
             ls_eps=self.ls_eps,
+            return_scalar=return_scalar,
         )
 
 

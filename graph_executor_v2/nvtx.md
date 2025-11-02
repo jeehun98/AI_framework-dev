@@ -145,3 +145,15 @@ NVTX 연동이 정상적으로 작동하면 CPU–GPU 경계의 실행 타임라
 gemm.fwd, gemm.bwd, epilogue 등의 구간별 성능 분리 및 병목 분석 용이
 
 Nsight Systems 2024.5.1 GUI(nsys-ui.exe)에서 같은 버전으로 열어야 오류 없이 표시됨
+
+
+
+
+cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DBUILD_PYTHON=ON -DUSE_NVTX=ON -DCMAKE_CUDA_ARCHITECTURES=86 -DPython3_EXECUTABLE="C:\Python312\python.exe" -Dpybind11_DIR="C:\Python312\Lib\site-packages\pybind11\share\cmake\pybind11"
+
+cmake --build build --target _ops_gemm -j
+
+
+cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DAI_BUILD_TESTS=ON -DUSE_NVTX=ON -DCMAKE_CUDA_ARCHITECTURES=86
+
+cmake --build build -j
