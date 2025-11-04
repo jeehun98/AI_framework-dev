@@ -152,14 +152,19 @@ class Sequential(Layer):
         super().__init__(name=name)
         self.layers: List[Layer] = list(layers)
         self.training: bool = True
-
-        # 정적 캡처 결과 핸들
         self._tg: Optional[TrainGraph] = None
         self._loss_buf: Optional[cp.ndarray] = None
         self._stream: Optional[cp.cuda.Stream] = None
-
-        # LRU tick (미사용이지만 향후 시간기반 정책 확장 용이)
         self._pool_ticks: int = 0
+        # === NEW: local telemetry counters ===
+        self._tm = {
+            "capture_count": 0,
+            "replay_count": 0,
+            "pool_hit": 0,
+            "pool_miss": 0,
+            "pool_put": 0,
+            "pool_evict_fallback": 0,
+        }
 
     def _tick(self) -> int:
         self._pool_ticks += 1
@@ -343,7 +348,6 @@ class Sequential(Layer):
                 continue
 
             # 3) ★ 일반 탐색: 자주 쓰는 파라미터 이름에서 .grad 붙은 객체 수집
-            #    - weight/kernel/bias/b/gamma/beta 등에서 .grad 탐색
             generic_names = ("W", "weight", "kernel", "b", "bias", "gamma", "beta")
             for p_name in generic_names:
                 if hasattr(lyr, p_name):
@@ -485,6 +489,8 @@ class Sequential(Layer):
         self._tg.set_batch(x_arr, y_arr)
         with nvtx_range("[REPLAY][static]"):
             self._tg.launch()
+        
+        self._tm["replay_count"] += 1  # === NEW ===
         return float(self._loss_buf.get())
 
     @property
@@ -522,30 +528,40 @@ class Sequential(Layer):
         """그래프 풀(있으면) 또는 로컬 폴백에서 엔트리 조회."""
         if graph_pool is not None and hasattr(graph_pool, "get"):
             try:
-                entry = graph_pool.get(key)  # type: ignore[attr-defined]
+                entry = graph_pool.get(key)  # global pool에서 hit/miss 자체 카운트
+                if entry is not None:
+                    self._tm["pool_hit"] += 1
+                else:
+                    self._tm["pool_miss"] += 1
                 return entry
             except Exception:
-                return None
+                pass
         entry = _FALLBACK_POOL.get(key)
         if entry is not None:
             entry["last_used"] = time.monotonic()
+            self._tm["pool_hit"] += 1
+        else:
+            self._tm["pool_miss"] += 1
         return entry
 
     def _pool_put(self, key: Any, entry: Any) -> None:
         """그래프 풀(있으면) 또는 로컬 폴백에 엔트리 저장 (LRU 상한 관리)."""
         if graph_pool is not None and hasattr(graph_pool, "put"):
             try:
-                graph_pool.put(key, entry)  # type: ignore[attr-defined]
+                graph_pool.put(key, entry)
+                self._tm["pool_put"] += 1
                 return
             except Exception:
                 pass
         # Fallback with LRU cap
         entry["last_used"] = time.monotonic()
         _FALLBACK_POOL[key] = entry
+        self._tm["pool_put"] += 1
         if len(_FALLBACK_POOL) > self._FALLBACK_POOL_MAX:
             # evict LRU
             victim = min(_FALLBACK_POOL.items(), key=lambda kv: kv[1].get("last_used", 0.0))[0]
             _FALLBACK_POOL.pop(victim, None)
+            self._tm["pool_evict_fallback"] += 1
 
     def _make_pool_key(self, sig: Any, ctx: Dict[str, Any], *, loss) -> Any:
         """GraphPool 키 생성."""
@@ -555,12 +571,17 @@ class Sequential(Layer):
         else:
             branch_id = ctx.get("branch", "default")
 
-        vdict = dict(ctx.get("variant", {}))
+        # === NEW === variant 구성 보정 (amp 문자열 반영 / variant 우선)
+        vdict = dict(ctx.get("variant", {}))  # variant 우선
+        if "amp" not in vdict and "amp" in ctx:
+            vdict["amp"] = ctx.get("amp")
+        vdict.setdefault("amp", "fp32")  # 기본값
+
         vdict["path_fp"] = tuple(ctx.get("path_fingerprint", ()))
         vdict["training"] = bool(self.training)
         vdict["dtype"] = str(getattr(sig, "dtype", "fp32"))
         vdict["loss_kind"] = getattr(loss, "name", "softmax_ce")
-        vdict["amp"] = bool(ctx.get("amp", False))
+
         variant = tuple(sorted((str(k), self._freeze_value(v)) for k, v in vdict.items()))
         try:
             if GraphKey not in (None, object):  # 약식 가드
@@ -848,6 +869,7 @@ class Sequential(Layer):
             "optimizer": opt_for_path,
             "plan": plan,  # Dropout counter advance 등에 사용
         }
+        self._tm["capture_count"] += 1  # === NEW ===
         self._pool_put(key, entry)
         return entry
 
@@ -914,4 +936,147 @@ class Sequential(Layer):
                     tg.launch()
 
         # 손실 스칼라 반환
+        self._tm["replay_count"] += max(1, int(ctx.get("repeat_steps", 1)))  # === NEW ===
+
         return float(loss_buf.get())
+
+    # ======== NEW: Frontend convenience APIs (fit/warmup/replay & pool tools) ========
+
+    def fit(
+        self,
+        data_loader,
+        *,
+        loss,
+        optimizer,
+        ctx: Optional[Dict[str, Any]] = None,
+        epochs: int = 1,
+        use_dynamic: bool = True,
+        static_input_shape: Optional[Tuple[int, ...]] = None,
+        prewarm_samples: Optional[Sequence[Tuple[Any, Any, Dict[str, Any]]]] = None,
+        report_every: int = 100,
+    ):
+        """
+        케라스/파이토치 느낌의 고수준 학습 루프.
+        - use_dynamic=True: one_step_dynamic 경로 사용(분기/반복 지원, on-demand capture)
+        - use_dynamic=False: 정적 compile/one_step 사용(입력 shape 고정 필요)
+        - prewarm_samples: [(X, y, ctx), ...] 형태로 미리 GraphKey를 캡처해 hit율↑
+        """
+        ctx = dict(ctx or {})
+
+        if not use_dynamic:
+            assert static_input_shape is not None, "static_input_shape is required for static fit"
+            self.compile(static_input_shape, loss=loss, optimizer=optimizer)
+
+        if prewarm_samples:
+            for Xw, yw, cw in prewarm_samples:
+                _ = self.one_step_dynamic(Xw, yw, loss=loss, optimizer=optimizer, ctx=cw)
+
+        step = 0
+        for ep in range(epochs):
+            for X, y in data_loader:
+                if use_dynamic:
+                    loss_val = self.one_step_dynamic(X, y, loss=loss, optimizer=optimizer, ctx=ctx)
+                else:
+                    loss_val = self.one_step(X, y)
+                step += 1
+                if report_every and (step % report_every == 0):
+                    print(f"[fit] epoch={ep} step={step} loss={loss_val:.6f}")
+
+    def warmup(
+        self,
+        samples: Sequence[Tuple[Any, Any, Dict[str, Any]]],
+        *,
+        loss,
+        optimizer,
+    ) -> Dict[Tuple[Tuple[str, Any], ...], "TrainGraph"]:
+        """
+        여러 (X,y,ctx) 조합으로 GraphKey를 미리 캡처해 둠.
+        반환: { variant_kv_tuple: TrainGraph }
+        """
+        out = {}
+        for X, y, ctx in samples:
+            _ = self.one_step_dynamic(X, y, loss=loss, optimizer=optimizer, ctx=ctx)
+            var = tuple(sorted((str(k), self._freeze_value(v)) for k, v in dict(ctx.get("variant", {})).items()))
+            out[var] = self.tg
+        return out
+
+    def replay_loop(
+        self,
+        batches: Iterable[Tuple[Any, Any]],
+        *,
+        steps: Optional[int] = None,
+    ):
+        """
+        이미 캡처된 self.tg(TrainGraph)로 핫루프 실행.
+        - set_batch() + launch()만 수행 → Python 오버헤드 최소화
+        - 사전에 self.tg가 존재해야 함 (compile() 또는 warmup/one_step_dynamic()으로 생성)
+        """
+        assert self._tg is not None, "No captured graph. Call compile() or warmup/one_step_dynamic() first."
+        n = 0
+        for X, y in batches:
+            self._tg.set_batch(cp.asarray(X), cp.asarray(y))
+            self._tg.launch()
+            n += 1
+            if steps and n >= steps:
+                break
+
+    def pool_stats(self) -> Dict[str, Any]:
+        """
+        현재 그래프 풀 요약.
+        - 글로벌 풀 사용 시: 크기만 노출(내부 구조 은닉 가정)
+        - 폴백 풀 사용 시: 키 수/최종 사용 시각 등 요약
+        """
+        stats = {"global": False, "fallback_size": 0, "fallback_cap": self._FALLBACK_POOL_MAX}
+        try:
+            if graph_pool is not None and hasattr(graph_pool, "_store"):
+                stats["global"] = True
+                stats["global_size"] = len(getattr(graph_pool, "_store"))
+        except Exception:
+            pass
+        try:
+            from time import monotonic
+            stats["fallback_size"] = len(_FALLBACK_POOL)
+            if _FALLBACK_POOL:
+                last_used = [v.get("last_used", 0.0) for v in _FALLBACK_POOL.values()]
+                stats["fallback_oldest_sec"] = max(0.0, (monotonic() - min(last_used)))
+        except Exception:
+            pass
+
+        stats["local_tm"] = dict(self._tm)
+
+        return stats
+
+    def get_graph_key_preview(self, X, *, ctx: Optional[Dict[str, Any]] = None, loss=None):
+        """
+        실제 캡처 없이 '현재 입력+컨텍스트'로 생성될 GraphKey를 미리 산출.
+        - 디버그/로깅/메트릭에 유용
+        """
+        ctx = dict(ctx or {})
+        sig = self._infer_signature(cp.asarray(X), ctx)
+        return self._make_pool_key(sig, ctx, loss=loss)
+
+    def evict_pool(self, *, predicate=None, max_remove: Optional[int] = None):
+        """
+        폴백 LRU 풀에서 조건부로 엔트리를 제거. (글로벌 풀은 운영 정책에 따름)
+        predicate(key, entry) → bool 이 True인 항목만 제거.
+        """
+        removed = 0
+        keys = list(_FALLBACK_POOL.keys())
+        for k in keys:
+            if predicate is None or predicate(k, _FALLBACK_POOL[k]):
+                _FALLBACK_POOL.pop(k, None)
+                removed += 1
+                if max_remove and removed >= max_remove:
+                    break
+        return removed
+    
+    # === NEW ===
+    def telemetry(self) -> Dict[str, int]:
+        """로컬 Sequential 단위 텔레메트리 카운터 반환."""
+        return dict(self._tm)
+
+    # === NEW ===
+    def reset_telemetry(self) -> None:
+        """로컬 Sequential 텔레메트리 초기화."""
+        for k in self._tm.keys():
+            self._tm[k] = 0
