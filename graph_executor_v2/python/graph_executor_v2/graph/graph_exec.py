@@ -1,21 +1,22 @@
 # File: python/graph_executor_v2/graph/graph_exec.py
 from __future__ import annotations
 from typing import Any, Optional, Sequence
+import os
 import cupy as cp
 
 from .capture_plan import CapturePlan
 from .execution_planner import ExecPlanner, ExecPlan
 from .runtime import GraphRuntime  # run_step 해석/실행 담당
 
-# Conv2D / WS 유틸
-from graph_executor_v2.layers.conv2d import Conv2D
-from graph_executor_v2.ops import conv2d as convops
+# Conv2D / WS 유틸 (미래 확장용; 현재 파일 내 직접 사용 안 할 수 있음)
+from graph_executor_v2.layers.conv2d import Conv2D  # noqa: F401
+from graph_executor_v2.ops import conv2d as convops  # noqa: F401
 
 # (선택) BN2d 타입 감지용
 try:
-    from graph_executor_v2.layers.batchnorm import BatchNorm2d as _BN2d
+    from graph_executor_v2.layers.batchnorm import BatchNorm2d as _BN2d  # noqa: F401
 except Exception:
-    _BN2d = None
+    _BN2d = None  # type: ignore
 
 # ===== NVTX (optional) =====
 try:
@@ -52,7 +53,7 @@ def record_step_graph(
     loss_fn,
     optimizer_step_fn,
     plan: CapturePlan,
-    * ,
+    *,
     X_buf: cp.ndarray,
     y_buf: cp.ndarray,
     stream: Optional[cp.cuda.Stream] = None,
@@ -60,6 +61,8 @@ def record_step_graph(
     # ---- 확장 인자 (동적 경로/플래너) ----
     layers_override: Optional[Sequence[Any]] = None, # 동적 경로 전개 결과(없으면 model.layers)
     exec_plan: Optional[ExecPlan] = None,            # Execution Planner 결과
+    # ---- 메타/디버그 ----
+    graph_key: Optional[Any] = None,                 # GraphPool에서 만든 키(있으면 TrainGraph에 전달 가능)
 ):
     """fwd → loss → bwd → opt '한 스텝'을 CUDA Graph로 캡처하여 실행자 반환.
 
@@ -154,11 +157,31 @@ class TrainGraph:
 
     - set_batch(): 호스트/다른 디바이스 텐서를 고정 I/O 버퍼로 복사
     - launch(): CUDA Graph 인스턴스(or 폴백)의 .launch 호출
+
+    디버그 표면:
+      - 환경변수 GEV2_EXPOSE_DEBUG=1 일 때만 plan/key/tags 노출
+      - io 바인딩은 문서/테스트 편의를 위해 항상 읽기용으로 공개
     """
-    def __init__(self, gexec, io, stream):
+    def __init__(self, gexec, io, stream,
+                 *,
+                 plan: Optional[CapturePlan] = None,
+                 graph_key: Optional[Any] = None,
+                 tags: Optional[dict] = None):
         self._gexec = gexec
         self._io = io
         self._stream = stream
+
+        # 디버그/문서용 노출은 게이트로 보호
+        self._expose_debug = os.getenv("GEV2_EXPOSE_DEBUG", "0") == "1"
+        self._plan = plan if self._expose_debug else None
+        self._key = graph_key if self._expose_debug else None
+        self._tags = (tags or {}) if self._expose_debug else {}
+
+    # ---- 공개 표면(테스트/문서 호환) ----
+    @property
+    def io(self):
+        """I/O 바인딩 테이블(문서·테스트 호환을 위해 공개)."""
+        return self._io
 
     @property
     def logits(self):
@@ -171,6 +194,30 @@ class TrainGraph:
     @property
     def y_buf(self):
         return self._io["y"]
+
+    # ---- 선택적 디버그 표면 ----
+    @property
+    def plan(self):
+        """CapturePlan 핸들(환경변수 GEV2_EXPOSE_DEBUG=1일 때만 노출)."""
+        return self._plan
+
+    @property
+    def key(self):
+        """GraphPool 키(환경변수 GEV2_EXPOSE_DEBUG=1일 때만 노출)."""
+        return self._key
+
+    @property
+    def tags(self):
+        """NVTX 등 캡처/리플레이 태그(환경변수 GEV2_EXPOSE_DEBUG=1일 때만 노출)."""
+        return self._tags
+
+    # pytest/문서 스크립트가 탐색 호출할 수 있는 얇은 헬퍼
+    def debug_capture_plan(self):
+        return self.plan
+
+    def debug_dump_ir(self):
+        # IR은 보통 Sequential/Builder 쪽에서 보관하므로 여기서는 None 반환
+        return None
 
     def set_batch(self, X_dev, y_dev):
         """현재 배치를 고정 I/O 버퍼(X/y)에 복사 (그래프와 동일 스트림)."""

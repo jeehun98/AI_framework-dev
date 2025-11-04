@@ -464,7 +464,10 @@ class Sequential(Layer):
             )
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
-        tg = TrainGraph(gexec, io, stream)
+
+        # ⬇️ 문서/테스트용 태그 전달(키는 정적 경로에선 None 유지)
+        tags = {"nvtx_capture_tag": "[CAPTURE][static]", "nvtx_replay_tag": "[REPLAY]"}
+        tg = TrainGraph(gexec, io, stream, plan=plan, graph_key=None, tags=tags)
 
         # 7) 내부 핸들 보관
         self._tg = tg
@@ -750,13 +753,13 @@ class Sequential(Layer):
             triplets = []
             seen = set()
             def push(p, g, tag):
-                key = (
+                key2 = (
                     int(getattr(getattr(p, "data", p), "ptr", id(p))),
                     int(getattr(getattr(g, "data", g), "ptr", id(g)))
                 )
-                if key not in seen:
+                if key2 not in seen:
                     triplets.append((p, g, tag))
-                    seen.add(key)
+                    seen.add(key2)
 
             for i, lyr in enumerate(layers):
                 per = plan.per_layer[i]
@@ -844,6 +847,8 @@ class Sequential(Layer):
                     stream=stream,
                     loss_out=loss_buf,
                     layers_override=path_layers,
+                    # graph_key는 TrainGraph로 전달만 하고 record_step_graph 내부에선 사용하지 않아도 OK
+                    graph_key=key,
                 )
             else:
                 # layers_override 미지원 record_step_graph에 대한 호환
@@ -857,10 +862,19 @@ class Sequential(Layer):
                     y_buf=y_buf,
                     stream=stream,
                     loss_out=loss_buf,
+                    graph_key=key,
                 )
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
-        tg = TrainGraph(gexec, io, stream)
+
+        # ⬇️ 문서/테스트용 태그 전달
+        tags = {
+            "nvtx_capture_tag": "[DYN][CAPTURE]",
+            "nvtx_replay_tag": "[DYN][REPLAY]",
+            "path_fingerprint": tuple(ctx.get("path_fingerprint", ())),
+            "branch_path": tuple(ctx.get("branch_path", ())),
+        }
+        tg = TrainGraph(gexec, io, stream, plan=plan, graph_key=key, tags=tags)
 
         entry = {
             "tg": tg,
