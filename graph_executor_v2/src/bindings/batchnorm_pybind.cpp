@@ -2,13 +2,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/tensor.hpp"
-  #include "ai/dispatch.hpp"
-#endif
-
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/batchnorm/api.hpp"
 
 namespace py = pybind11;
@@ -69,10 +63,6 @@ PYBIND11_MODULE(_ops_batchnorm, m) {
 - Layout: row-major contiguous tensors. X/Y are 4D; gamma/beta/running/save are 1D [C].
 )";
 
-  // (선택) 공통 enum/타입 재노출 예시:
-  // py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
-  // m.attr("DType") = common.attr("DType"); ...
-
   // ---------- Attrs ----------
   py::class_<BatchNormAttrs>(m, "BatchNormAttrs")
     .def(py::init<>())
@@ -125,6 +115,9 @@ PYBIND11_MODULE(_ops_batchnorm, m) {
       }
       if (attrs.with_affine && (!gamma || !beta)) {
         throw std::invalid_argument("[_ops_batchnorm.forward] with_affine=True requires gamma_ptr and beta_ptr");
+      }
+      if (!attrs.with_affine && (gamma || beta)) {
+        throw std::invalid_argument("[_ops_batchnorm.forward] with_affine=False requires gamma_ptr/beta_ptr=None");
       }
 
       Tensor running_mean = make_tensor_1d(running_mean_ptr, C);
@@ -206,9 +199,8 @@ PYBIND11_MODULE(_ops_batchnorm, m) {
         gammaT = make_tensor_1d(gptr, C);
         gamma = &gammaT;
       } else if (attrs.with_affine) {
-        // with_affine=True인데 gamma를 안 주면 dX 계산에서 γ=1로 처리해도 되지만,
-        // 일반적으로는 사용자가 전달하도록 강제하는 편이 안전.
-        // 필요 시 완화 가능.
+        // with_affine=True인데 gamma 미제공이면, 커널에서 γ=1로 처리 가능하지만
+        // 사용자 오류를 조기에 알리는 편이 안전. 필요시 완화 가능.
       }
 
       Tensor save_mean   = make_tensor_1d(save_mean_ptr,   C);

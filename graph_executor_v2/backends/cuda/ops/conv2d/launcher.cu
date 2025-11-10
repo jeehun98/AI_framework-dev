@@ -6,11 +6,8 @@
 
 #include "backends/cuda/ops/conv2d/api.hpp"
 #include "backends/cuda/ops/gemm/api.hpp"   // GemmCudaLaunch / GemmCudaBackward (epilogue 사용)
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/op_schema.hpp"
-#endif
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 
 namespace ai {
 

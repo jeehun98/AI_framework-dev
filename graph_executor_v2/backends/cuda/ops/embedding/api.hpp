@@ -1,12 +1,6 @@
 // backends/cuda/ops/embedding/api.hpp
 #pragma once
-
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/tensor.hpp"
-  #include "ai/dispatch.hpp"
-#endif
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 
 namespace ai {
 

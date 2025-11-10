@@ -16,6 +16,7 @@ enum class Status : int {
   ShapeMismatch  = 103,
   StrideMismatch = 104,
   TransposeNotSupported = 105,
+  InvalidArgument = 106,
 
   MissingInput   = 110,
   MissingOutput  = 111,

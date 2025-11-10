@@ -3,7 +3,6 @@
 #include <pybind11/stl.h>
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-
 #include "backends/cuda/ops/conv2d/api.hpp"
 
 namespace py = pybind11;

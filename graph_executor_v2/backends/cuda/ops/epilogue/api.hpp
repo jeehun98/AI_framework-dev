@@ -1,12 +1,6 @@
 #pragma once
 
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/op_schema.hpp"   // ActKind, Status 등
-  #include "ai/tensor.hpp"
-  #include "ai/dispatch.hpp"
-#endif
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 
 #include "backends/cuda/ops/gemm/detail/epilogue_adaptor.hpp" // regemm::BiasMode
 #include <cstdint>

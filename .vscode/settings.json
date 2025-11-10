@@ -101,7 +101,8 @@
     "stack": "cpp",
     "filesystem": "cpp",
     "queue": "cpp",
-    "stdfloat": "cpp"
+    "stdfloat": "cpp",
+    "__config": "cpp"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",

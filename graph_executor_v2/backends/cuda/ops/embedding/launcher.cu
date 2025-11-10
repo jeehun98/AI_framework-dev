@@ -2,11 +2,8 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include "backends/cuda/ops/embedding/api.hpp"
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/op_schema.hpp"
-#endif
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+
 
 namespace ai {
 
