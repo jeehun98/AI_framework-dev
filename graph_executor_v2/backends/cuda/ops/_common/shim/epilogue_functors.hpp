@@ -1,3 +1,5 @@
+// backends/cuda/ops/_common/shim/epilogue_functors.hpp
+
 #pragma once
 #include "ai_defs.hpp"
 #include "enums.hpp"        // ActKind, BiasKind

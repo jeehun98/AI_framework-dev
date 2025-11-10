@@ -1,3 +1,5 @@
+// backends/cuda/ops/_common/shim/tensor_layout.hpp
+
 #pragma once
 #include "ai_defs.hpp"
 #include "ai_tensor.hpp"
@@ -5,7 +7,7 @@
 #include <limits>
 #include <cstdint>
 
-namespace ai::cuda::shim {
+namespace ai {
 
 // RowMajor 2D의 유효 ld 추론 (stride[0] 우선, 없으면 N)
 [[nodiscard]] inline int64_t infer_ld_rowmajor_2d(const ai::Tensor& t) noexcept {
@@ -21,7 +23,7 @@ namespace ai::cuda::shim {
 [[nodiscard]] inline bool
 validate_z_buffer(const ai::Tensor* Z, int64_t M, int64_t N, int& out_ldZ) noexcept {
   if (!Z) return false;
-  if (!ai::cuda::shim::is_cuda_f32_rowmajor(*Z)) return false;
+  if (!ai::is_cuda_f32_rowmajor(*Z)) return false;
   if (Z->desc.shape[0] != M || Z->desc.shape[1] != N) return false;
   const int64_t ldZ64 = infer_ld_rowmajor_2d(*Z);
   if (ldZ64 < N) return false;
