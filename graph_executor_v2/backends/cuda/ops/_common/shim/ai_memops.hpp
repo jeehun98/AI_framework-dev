@@ -39,4 +39,12 @@ inline Status ai_free(void* p, StreamHandle s) {
   return (e == cudaSuccess) ? Status::Ok : Status::RuntimeError;
 }
 
+inline ai::Status copy_d2d_async(void* dst, const void* src, std::size_t nbytes, ai::StreamHandle stream) noexcept {
+  if (nbytes == 0 || dst == src) return ai::Status::Ok;
+  if (!dst || !src)              return ai::Status::Invalid;
+  auto s = reinterpret_cast<cudaStream_t>(stream);
+  const cudaError_t err = cudaMemcpyAsync(dst, src, nbytes, cudaMemcpyDeviceToDevice, s);
+  return (err == cudaSuccess) ? ai::Status::Ok : ai::Status::RuntimeError;
+}
+
 } // namespace ai

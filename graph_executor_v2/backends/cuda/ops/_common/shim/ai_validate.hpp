@@ -114,4 +114,11 @@ inline Status expect_same_except_axis(const std::vector<Tensor>& Xs, int rank, i
   return Status::Ok;
 }
 
+[[nodiscard]] inline bool is_cuda_f32_rowmajor(const ai::Tensor& T) noexcept {
+  return T.is_cuda()
+      && T.desc.dtype  == ai::DType::F32
+      && T.desc.layout == ai::Layout::RowMajor
+      && T.desc.shape.size() == 2;
+}
+
 } // namespace ai
