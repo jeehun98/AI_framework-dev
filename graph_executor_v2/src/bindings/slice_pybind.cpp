@@ -1,11 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/tensor.hpp"
-#endif
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 
 #include "backends/cuda/ops/slice/api.hpp"
 

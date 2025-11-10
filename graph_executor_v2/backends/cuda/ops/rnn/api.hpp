@@ -1,11 +1,5 @@
 #pragma once
-
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/tensor.hpp"
-  #include "ai/dispatch.hpp"
-#endif
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 
 namespace ai {
 
@@ -31,16 +25,17 @@ struct RnnWorkspaceFwd {
 // ========== 캡처-세이프 워크스페이스 (Backward) ==========
 struct RnnWorkspaceBwd {
   // [필수]
-  float* XH_cat {nullptr}; // [N, I+H] : concat buffer per time
-  float* G_rows {nullptr}; // [N, H]   : gy_post ⊙ act'(Z)
-  float* Z_rows {nullptr}; // [N, H]   : Z slice
-  float* W_cat  {nullptr}; // [I+H, H] : [Wx; Wh]
-  float* dXH_cat{nullptr}; // [N, I+H] : dX|dh_prev temp (우측 H는 dh_next 저장에 재사용)
-  float* dWcat  {nullptr}; // [I+H, H] : accumulated dWcat
-  float* TmpW   {nullptr}; // [I+H, H] : GEMM 임시 (dWcat step)
+  float* XH_cat {nullptr}; // [N, I+H]
+  float* G_rows {nullptr}; // [N, H]
+  float* Z_rows {nullptr}; // [N, H]
+  float* W_cat  {nullptr}; // [I+H, H]
+  float* dXH_cat{nullptr}; // [N, I+H]
+  float* dWcat  {nullptr}; // [I+H, H]
+  float* TmpW   {nullptr}; // [I+H, H]
 };
 
 // ========== 커널 런처 (kernels.cu 에서 제공) ==========
+// (아래 심볼명은 통일된 공용 시그니처)
 void apply_dact_rows_launcher(const float* gy_post, const float* Z_rows, float* gy_rows,
                               int M, int N, int act_code, float slope, cudaStream_t s);
 void add_rows_strided_launcher(float* A_MN, const float* B_Mstride,
@@ -50,8 +45,7 @@ void reduce_db_rows_kernel_launcher(const float* G_MN, float* db_N,
 void kadd_vec_launcher(float* A, const float* B, int n, cudaStream_t s);
 void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStream_t s);
 void pack_wcat_from_wx_wh_launcher(const float* Wx, const float* Wh, float* Wcat,
-                                   int I, int H, cudaStream_t s); // (선택: memcpy 2회로 대체 가능)
-// 커널 런처 선언부에 추가
+                                   int I, int H, cudaStream_t s);
 void apply_act_rows_launcher(const float* Z_rows, float* H_rows,
                              int M, int N, int act_code, float slope, cudaStream_t s);
 

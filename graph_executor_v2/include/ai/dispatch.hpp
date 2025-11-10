@@ -1,60 +1,30 @@
 #pragma once
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include <map>
-#include <tuple>        // std::tie
-#include "ai/tensor.hpp"
-#include "ai/op_schema.hpp"   // Device, DType, Layout, ActKind, GemmAttrs
+#include <tuple>
+#include <mutex>
 
 namespace ai {
 
-// ------------------------------
-// 공통 타입
-// ------------------------------
-enum class OpKind { GEMM, GEMM_BWD };
+enum class OpKind : uint8_t { GEMM=0, GEMM_BWD=1 };
 
-using StreamHandle = void*;   // reinterpret_cast<cudaStream_t>
-
-// 단순 상태 코드
-enum class Status {
-  Ok = 0,
-
-  // 공통 범주
-  Invalid        = 1,
-  Unimplemented  = 2,
-  RuntimeError   = 3,
-
-  // 세부 오류
-  DeviceMismatch = 100,
-  DtypeMismatch  = 101,
-  LayoutMismatch = 102,
-  ShapeMismatch  = 103,
-  StrideMismatch = 104,
-  TransposeNotSupported = 105,
-
-  MissingInput   = 110,
-  MissingOutput  = 111,
-  RegistryNotFound = 120,
-
-  Unknown        = 999
-};
-
-// ==============================
-// Forward (GEMM + bias + act)
-// ==============================
-// NOTE: Z_saved는 nullptr 가능. save_z 옵션일 때 상위가 버퍼를 넘김.
 using KernelFn = Status(*)(const Tensor& A, const Tensor& B, const Tensor* Bias,
                            Tensor& Y, const GemmAttrs&, StreamHandle, Tensor* Z_saved);
 
 struct OpKey {
-  OpKind  kind;      // GEMM
+  OpKind  kind;
   Device  dev;
   DType   dtype;
   Layout  layout;
-  ActKind act;       // None/ReLU/LeakyReLU/GELU/Sigmoid/Tanh
+  bool    trans_a;
+  bool    trans_b;
+  ActKind act;
   bool    with_bias;
+  bool    save_z;
 
   bool operator<(const OpKey& o) const {
-    return std::tie(kind,dev,dtype,layout,act,with_bias)
-         < std::tie(o.kind,o.dev,o.dtype,o.layout,o.act,o.with_bias);
+    return std::tie(kind,dev,dtype,layout,trans_a,trans_b,act,with_bias,save_z)
+         < std::tie(o.kind,o.dev,o.dtype,o.layout,o.trans_a,o.trans_b,o.act,o.with_bias,o.save_z);
   }
 };
 
@@ -64,49 +34,56 @@ struct OpQuery {
   const Tensor& B;
   const Tensor* Bias;
   Tensor&       Y;
-  GemmAttrs     attrs;   // leaky_slope 포함
+  GemmAttrs     attrs;
 };
 
 class OpRegistry {
 public:
-  static OpRegistry& inst();
-  void     reg(const OpKey& key, KernelFn fn);
-  KernelFn find_best(const OpQuery& q) const; // 초기 버전: 단순 키 매칭
+  static OpRegistry& inst() { static OpRegistry g; return g; }
+  void reg(const OpKey& key, KernelFn fn) {
+    std::lock_guard<std::mutex> g(mu_); table_[key] = fn;
+  }
+  KernelFn find_best(const OpQuery& q) const {
+    OpKey key{
+      q.kind, Device::CUDA, q.A.desc.dtype, q.A.desc.layout,
+      q.attrs.trans_a, q.attrs.trans_b, q.attrs.act,
+      q.Bias != nullptr, q.attrs.save_z
+    };
+    std::lock_guard<std::mutex> g(mu_);
+    auto it = table_.find(key);
+    return (it != table_.end()) ? it->second : nullptr;
+  }
 private:
+  mutable std::mutex mu_;
   std::map<OpKey, KernelFn> table_;
 };
 
-// ==============================
-// Backward (GEMM + bias + act BWD)
-//  입력: A,B,(C), gY, Z
-//  출력: gA,gB,(gC),(gBias)
-// ==============================
-
-// NOTE: attrs는 GemmAttrs 재사용 (act, leaky_slope)
 using GemmBwdFn = Status(*)(const Tensor& A, const Tensor& B, const Tensor* C,
                             const Tensor& gY, const Tensor& Z,
                             Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
                             const GemmAttrs&, StreamHandle);
 
 struct BwdOpKey {
-  OpKind  kind;      // GEMM_BWD
+  OpKind  kind;
   Device  dev;
   DType   dtype;
   Layout  layout;
+  bool    trans_a;
+  bool    trans_b;
   ActKind act;
   bool    with_bias;
 
   bool operator<(const BwdOpKey& o) const {
-    return std::tie(kind,dev,dtype,layout,act,with_bias)
-         < std::tie(o.kind,o.dev,o.dtype,o.layout,o.act,o.with_bias);
+    return std::tie(kind,dev,dtype,layout,trans_a,trans_b,act,with_bias)
+         < std::tie(o.kind,o.dev,o.dtype,o.layout,o.trans_a,o.trans_b,o.act,o.with_bias);
   }
 };
 
 struct BwdOpQuery {
-  OpKind         kind;     // GEMM_BWD
+  OpKind         kind;
   const Tensor&  A;
   const Tensor&  B;
-  const Tensor*  C;        // nullable
+  const Tensor*  C;
   const Tensor&  gY;
   const Tensor&  Z;
   GemmAttrs      attrs;
@@ -114,34 +91,38 @@ struct BwdOpQuery {
 
 class BwdOpRegistry {
 public:
-  static BwdOpRegistry& inst();
-  void      reg(const BwdOpKey& key, GemmBwdFn fn);
-  GemmBwdFn find_best(const BwdOpQuery& q) const; // 초기: 단순 키 매칭
+  static BwdOpRegistry& inst() { static BwdOpRegistry g; return g; }
+  void reg(const BwdOpKey& key, GemmBwdFn fn) {
+    std::lock_guard<std::mutex> g(mu_); table_[key] = fn;
+  }
+  GemmBwdFn find_best(const BwdOpQuery& q) const {
+    BwdOpKey key{
+      q.kind, Device::CUDA, q.A.desc.dtype, q.A.desc.layout,
+      q.attrs.trans_a, q.attrs.trans_b, q.attrs.act,
+      /*with_bias=*/ (q.C != nullptr)
+    };
+    std::lock_guard<std::mutex> g(mu_);
+    auto it = table_.find(key);
+    return (it != table_.end()) ? it->second : nullptr;
+  }
 private:
+  mutable std::mutex mu_;
   std::map<BwdOpKey, GemmBwdFn> table_;
 };
 
-// ==============================
-// 상위 진입점(디스패치 래퍼) 선언
-//  - 정의는 src/dispatch/registry.cpp 에서
-// ==============================
 namespace ops {
 
-// FWD: 확장 엔트리 (Z 저장 지원)
-int gemm_run_ex(const Tensor& A, const Tensor& B, const Tensor* Bias,
-                Tensor& Y, const GemmAttrs& attrs, StreamHandle s,
-                Tensor* Z_saved);
+inline Status gemm_run_ex(const Tensor& A, const Tensor& B, const Tensor* Bias,
+                          Tensor& Y, const GemmAttrs& attrs, StreamHandle s,
+                          Tensor* Z_saved);
 
-// FWD: 기존 엔트리 (호환용, Z 저장 없음)
-int gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
-             Tensor& Y, const GemmAttrs& attrs, StreamHandle s);
+inline Status gemm_run(const Tensor& A, const Tensor& B, const Tensor* Bias,
+                       Tensor& Y, const GemmAttrs& attrs, StreamHandle s);
 
-// BWD: 새 엔트리
-int gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
-                 const Tensor& gY, const Tensor& Z,
-                 Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
-                 const GemmAttrs& attrs, StreamHandle s);
+inline Status gemm_bwd_run(const Tensor& A, const Tensor& B, const Tensor* C,
+                           const Tensor& gY, const Tensor& Z,
+                           Tensor* gA, Tensor* gB, Tensor* gC, Tensor* gBias,
+                           const GemmAttrs& attrs, StreamHandle s);
 
 } // namespace ops
-
 } // namespace ai

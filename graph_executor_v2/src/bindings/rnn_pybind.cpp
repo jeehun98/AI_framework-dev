@@ -1,14 +1,10 @@
 // src/bindings/rnn_pybind.cpp
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <stdexcept>
+#include <cstdint>
 
-#ifdef BUILD_STANDALONE_OPS
-  #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
-#else
-  #include "ai/tensor.hpp"
-  #include "ai/dispatch.hpp"
-#endif
-
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
 #include "backends/cuda/ops/rnn/api.hpp"
 
 namespace py = pybind11;
@@ -30,8 +26,8 @@ static Tensor make_tensor_3d(uintptr_t ptr_u64,
   // contiguous row-major stride
   t.desc.stride.resize(3);
   t.desc.stride[2] = 1;
-  t.desc.stride[1] = shape[2] * t.desc.stride[2];
-  t.desc.stride[0] = shape[1] * t.desc.stride[1];
+  t.desc.stride[1] = shape[2];
+  t.desc.stride[0] = shape[1] * shape[2];
   return t;
 }
 
@@ -49,7 +45,7 @@ static Tensor make_tensor_2d(uintptr_t ptr_u64,
   t.desc.shape = shape;
   t.desc.stride.resize(2);
   t.desc.stride[1] = 1;
-  t.desc.stride[0] = shape[1] * t.desc.stride[1];
+  t.desc.stride[0] = shape[1];
   return t;
 }
 
@@ -91,14 +87,10 @@ PYBIND11_MODULE(_ops_rnn, m) {
   * Backward: XH_cat[N,I+H], G_rows[N,H], Z_rows[N,H], W_cat[I+H,H],
               dXH_cat[N,I+H], dWcat[I+H,H], TmpW[I+H,H]
 )";
-  // conv2d처럼 동일하게 설정 (중복 줄도 동일 톤로 유지해도 무방)
-  m.attr("__package__") = "graph_executor_v2.ops";
-  m.doc() = R"(Independent rnn CUDA ops binding ... )";
 
-  // ===== re-export common types to avoid duplicate registration =====
+  // ===== re-export common enums to avoid duplicate registration =====
   py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
   m.attr("ActKind") = common.attr("ActKind");
-  // (필요하면 Device/DType/Layout/TensorDesc/Tensor 등도 같은 방식으로 재노출 가능)
 
   // ----- RnnAttrs -----
   py::class_<RnnAttrs>(m, "RnnAttrs")
@@ -110,7 +102,6 @@ PYBIND11_MODULE(_ops_rnn, m) {
 
   // ========================= forward =========================
   // forward(..., z_ptr=None, attrs, stream, *, XH_cat_ptr=0, Y_rows_ptr=0, W_cat_ptr=0, Z_rows_ptr=0)
-  // attrs.save_z=True면 z_ptr과 Z_rows_ptr 필수
   m.def("forward",
     [](uintptr_t x_ptr,  const std::vector<int64_t>& x_shape,   // [N,T,I]
        uintptr_t wx_ptr, const std::vector<int64_t>& wx_shape,  // [I,H]
@@ -180,7 +171,7 @@ PYBIND11_MODULE(_ops_rnn, m) {
     py::arg("z_ptr")    = py::none(),
     py::arg("attrs")    = RnnAttrs{},
     py::arg("stream")   = static_cast<uintptr_t>(0),
-    // workspace args (keyword-only 권장)
+    // workspace args
     py::arg("XH_cat_ptr") = static_cast<uintptr_t>(0),
     py::arg("Y_rows_ptr") = static_cast<uintptr_t>(0),
     py::arg("W_cat_ptr")  = static_cast<uintptr_t>(0),
@@ -203,7 +194,7 @@ PYBIND11_MODULE(_ops_rnn, m) {
        py::object dx_ptr_obj,                                     // int or None
        RnnAttrs attrs,
        uintptr_t stream_ptr,
-       // --- workspace pointers (all required to avoid mallocs) ---
+       // --- workspace pointers (all required) ---
        uintptr_t XH_cat_ptr,
        uintptr_t G_rows_ptr,
        uintptr_t Z_rows_ptr,
@@ -284,7 +275,7 @@ PYBIND11_MODULE(_ops_rnn, m) {
     py::arg("dx_ptr")   = py::none(),
     py::arg("attrs")    = RnnAttrs{},
     py::arg("stream")   = static_cast<uintptr_t>(0),
-    // workspace args (keyword-only 권장)
+    // workspace args
     py::arg("XH_cat_ptr")  = static_cast<uintptr_t>(0),
     py::arg("G_rows_ptr")  = static_cast<uintptr_t>(0),
     py::arg("Z_rows_ptr")  = static_cast<uintptr_t>(0),

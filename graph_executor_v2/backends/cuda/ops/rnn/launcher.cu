@@ -4,8 +4,8 @@
 #include <algorithm>
 #include <cassert>
 
-#include "backends/cuda/ops/gemm/api.hpp"   // GemmCudaLaunch / GemmCudaBackward (epilogue FWD/BWD)
-#include "backends/cuda/ops/rnn/api.hpp"    // this module's API
+#include "backends/cuda/ops/gemm/api.hpp"   // GemmCudaLaunch / GemmCudaBackward
+#include "backends/cuda/ops/rnn/api.hpp"
 
 #ifdef BUILD_STANDALONE_OPS
   #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
@@ -15,13 +15,11 @@
 
 namespace ai {
 
-// ========== 커널 런처 전방선언(Prototype) — cuh 없이 사용 ==========
-void apply_act_rows_local_launcher(const float* Z, float* Y,
-                                   int N, int H, int act_code, float slope,
-                                   cudaStream_t s);
-void apply_dact_rows_local_launcher(const float* gy_post, const float* Z, float* gy,
-                                    int N, int H, int act_code, float slope,
-                                    cudaStream_t s);
+// ---------- 커널 전방 선언 ----------
+void apply_act_rows_launcher(const float* Z, float* Y,
+                             int M, int N, int act_code, float slope, cudaStream_t s);
+void apply_dact_rows_launcher(const float* gy_post, const float* Z, float* gy,
+                              int M, int N, int act_code, float slope, cudaStream_t s);
 void add_dhnext_into_grows_launcher(const float* dXH, float* dG,
                                     int N, int I, int H, cudaStream_t s);
 void transpose_kernel_launcher(const float* A, float* AT, int M, int N, cudaStream_t s);
@@ -29,20 +27,51 @@ void add_transpose_into_launcher(float* dWcat, const float* Tmp_H_IpH,
                                  int IpH, int H, cudaStream_t s);
 void reduce_db_rows_NH_launcher(const float* G, float* db, int N, int H, cudaStream_t s);
 
-// ---- helpers ----
-static inline bool is3_f32_cuda(const Tensor& t){
-  return t.device==Device::CUDA && t.desc.dtype==DType::F32 &&
-         t.desc.layout==Layout::RowMajor && t.desc.shape.size()==3;
+// ---------- 간단 검증 래퍼 ----------
+static inline Status validate_fwd(const Tensor& X, const Tensor& Wx, const Tensor& Wh,
+                                  const Tensor* B, const Tensor& h0, Tensor& Y,
+                                  const RnnAttrs& a, bool want_z, const Tensor* Z_saved) {
+  AI_RETURN_IF_ERROR(expect_rowmajor_3d_f32_any(X)); // [N,T,I]
+  AI_RETURN_IF_ERROR(expect_rowmajor_2d(Wx, "Wx"));
+  AI_RETURN_IF_ERROR(expect_rowmajor_2d(Wh, "Wh"));
+  AI_RETURN_IF_ERROR(expect_rowmajor_2d(h0, "h0"));
+  AI_RETURN_IF_ERROR(expect_rowmajor_3d_f32_any(Y));
+
+  const int64_t N=X.desc.shape[0], T=X.desc.shape[1], I=X.desc.shape[2];
+  const int64_t H=Wx.desc.shape[1];
+  if (Wx.desc.shape[0]!=I || Wh.desc.shape[0]!=H || Wh.desc.shape[1]!=H) return Status::ShapeMismatch;
+  if (Y.desc.shape[0]!=N || Y.desc.shape[1]!=T || Y.desc.shape[2]!=H) return Status::ShapeMismatch;
+  if (a.with_bias) AI_RETURN_IF_ERROR(expect_bias_per_out_or_null(B, H));
+  if (want_z) {
+    if (!Z_saved) return Status::MissingOutput;
+    AI_RETURN_IF_ERROR(expect_rowmajor_3d_f32_any(*Z_saved));
+    if (Z_saved->desc.shape[0]!=N || Z_saved->desc.shape[1]!=T || Z_saved->desc.shape[2]!=H) return Status::ShapeMismatch;
+    if (Z_saved->data == Y.data) return Status::Invalid; // alias 금지
+  }
+  return Status::Ok;
 }
-static inline bool is2_f32_cuda(const Tensor& t){
-  return t.device==Device::CUDA && t.desc.dtype==DType::F32 &&
-         t.desc.layout==Layout::RowMajor && t.desc.shape.size()==2;
+
+static inline Status validate_bwd(const Tensor& X, const Tensor& Wx, const Tensor& Wh,
+                                  const Tensor& h0, const Tensor& dY_post, const Tensor& Z,
+                                  const Tensor* dWx, const Tensor* dWh, const Tensor* dB,
+                                  const Tensor* dh0, const Tensor* dX, const RnnAttrs& a) {
+  AI_RETURN_IF_ERROR(expect_rowmajor_3d_f32_any(X));
+  AI_RETURN_IF_ERROR(expect_rowmajor_2d(Wx, "Wx"));
+  AI_RETURN_IF_ERROR(expect_rowmajor_2d(Wh, "Wh"));
+  AI_RETURN_IF_ERROR(expect_rowmajor_2d(h0, "h0"));
+  AI_RETURN_IF_ERROR(expect_rowmajor_3d_f32_any(dY_post));
+  AI_RETURN_IF_ERROR(expect_rowmajor_3d_f32_any(Z));
+
+  const int64_t N=X.desc.shape[0], T=X.desc.shape[1], I=X.desc.shape[2];
+  const int64_t H=Wx.desc.shape[1];
+  if (Z.desc.shape[0]!=N || Z.desc.shape[1]!=T || Z.desc.shape[2]!=H) return Status::ShapeMismatch;
+  if (dWx && (dWx->desc.shape.size()!=2 || dWx->desc.shape[0]!=I || dWx->desc.shape[1]!=H)) return Status::ShapeMismatch;
+  if (dWh && (dWh->desc.shape.size()!=2 || dWh->desc.shape[0]!=H || dWh->desc.shape[1]!=H)) return Status::ShapeMismatch;
+  if (a.with_bias && dB && (dB->desc.shape.size()!=1 || dB->desc.shape[0]!=H)) return Status::ShapeMismatch;
+  if (dh0 && (dh0->desc.shape.size()!=2 || dh0->desc.shape[0]!=N || dh0->desc.shape[1]!=H)) return Status::ShapeMismatch;
+  if (dX  && (dX->desc.shape.size()!=3 || dX->desc.shape[0]!=N || dX->desc.shape[1]!=T || dX->desc.shape[2]!=I)) return Status::ShapeMismatch;
+  return Status::Ok;
 }
-static inline bool is1_f32_cuda(const Tensor& t){
-  return t.device==Device::CUDA && t.desc.dtype==DType::F32 &&
-         t.desc.layout==Layout::RowMajor && t.desc.shape.size()==1;
-}
-static inline cudaStream_t to_cuda(StreamHandle h){ return reinterpret_cast<cudaStream_t>(h); }
 
 // ======================= Forward =======================
 Status RnnCudaLaunch(const Tensor& X,   // [N,T,I]
@@ -56,54 +85,26 @@ Status RnnCudaLaunch(const Tensor& X,   // [N,T,I]
                      Tensor* Z_saved,               // [N,T,H] optional
                      const RnnWorkspaceFwd* ws)     // workspace (no alloc)
 {
-  if (!is3_f32_cuda(X) || !is2_f32_cuda(Wx) || !is2_f32_cuda(Wh) || !is2_f32_cuda(h0)) return Status::Invalid;
-  if (B && a.with_bias && !is1_f32_cuda(*B)) return Status::Invalid;
-  if (!is3_f32_cuda(Y)) return Status::Invalid;
-
-  const int64_t N = X.desc.shape[0];
-  const int64_t T = X.desc.shape[1];
-  const int64_t I = X.desc.shape[2];
-
-  const int64_t Iw = Wx.desc.shape[0];
-  const int64_t H  = Wx.desc.shape[1];
-  if (Iw != I) return Status::ShapeMismatch;
-  if (Wh.desc.shape[0]!=H || Wh.desc.shape[1]!=H) return Status::ShapeMismatch;
-
-  if (Y.desc.shape[0]!=N || Y.desc.shape[1]!=T || Y.desc.shape[2]!=H) return Status::ShapeMismatch;
-  if (N<=0 || T<=0 || I<=0 || H<=0) return Status::Invalid;
-
+  const int64_t N=X.desc.shape[0], T=X.desc.shape[1], I=X.desc.shape[2], H=Wx.desc.shape[1];
   const bool want_z = a.save_z && (Z_saved!=nullptr);
-  if (want_z) {
-    if (!is3_f32_cuda(*Z_saved)) return Status::Invalid;
-    if (Z_saved->desc.shape[0]!=N || Z_saved->desc.shape[1]!=T || Z_saved->desc.shape[2]!=H) return Status::ShapeMismatch;
-    // ✅ 안전 가드: Z와 Y 버퍼 alias 금지
-    if (Z_saved->data == Y.data) return Status::Invalid;
-  }
+  AI_RETURN_IF_ERROR(validate_fwd(X,Wx,Wh,B,h0,Y,a,want_z,Z_saved));
+  if (!ws || !ws->XH_cat || !ws->Y_rows || !ws->W_cat || (want_z && !ws->Z_rows)) return Status::MissingInput;
 
-  if (!ws || !ws->XH_cat || !ws->Y_rows || !ws->W_cat || (want_z && !ws->Z_rows))
-    return Status::MissingInput;
+  auto s = as_cuda_stream(stream);
 
-  auto s = to_cuda(stream);
+  // W_cat = [Wx ; Wh] : [I+H, H]  (1D 복사는 ai_shim 래퍼로)
+  AI_RETURN_IF_ERROR(memcpy_d2d_async(ws->W_cat, Wx.data, (size_t)I*H*sizeof(float), s));
+  AI_RETURN_IF_ERROR(memcpy_d2d_async(ws->W_cat + (size_t)I*H, Wh.data, (size_t)H*H*sizeof(float), s));
 
-  // W_cat = [Wx ; Wh]  (row-major: [I+H, H])
-  cudaMemcpyAsync(ws->W_cat, Wx.data, (size_t)I*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
-  cudaMemcpyAsync(ws->W_cat + (size_t)I*H, Wh.data, (size_t)H*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
-
-  ai::GemmAttrs g{};
-  g.act         = a.act;
-  g.leaky_slope = a.leaky_slope;
-  g.with_bias   = (B && a.with_bias);
-  g.save_z      = want_z;
+  ai::GemmAttrs g{}; g.act=a.act; g.leaky_slope=a.leaky_slope; g.with_bias=(B && a.with_bias); g.save_z=want_z;
 
   const ai::Tensor* BiasPtr = nullptr;
   ai::Tensor tBias{};
   if (g.with_bias) {
-    tBias.data         = const_cast<float*>(static_cast<const float*>(B->data));
-    tBias.device       = ai::Device::CUDA; tBias.device_index = 0;
-    tBias.desc.dtype   = ai::DType::F32;
-    tBias.desc.layout  = ai::Layout::RowMajor;
-    tBias.desc.shape   = { (int64_t)H };
-    tBias.desc.stride  = { 1 };
+    tBias.data        = const_cast<void*>(B->data);
+    tBias.device      = ai::Device::CUDA; tBias.device_index = 0;
+    tBias.desc.dtype  = ai::DType::F32; tBias.desc.layout = ai::Layout::RowMajor;
+    tBias.desc.shape  = { (int64_t)H }; tBias.desc.stride = { 1 };
     BiasPtr = &tBias;
   }
 
@@ -138,12 +139,9 @@ Status RnnCudaLaunch(const Tensor& X,   // [N,T,I]
     tA = Tensor{ ws->XH_cat, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)(I+H)}, {(int64_t)(I+H), 1}}, Device::CUDA, 0 };
     tB = Tensor{ ws->W_cat,  {DType::F32, Layout::RowMajor, {(int64_t)(I+H), (int64_t)H}, {(int64_t)H, 1}},   Device::CUDA, 0 };
     tO = Tensor{ ws->Y_rows, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)H},     {(int64_t)H, 1}},   Device::CUDA, 0 };
-    if (want_z) {
-      tZcap = Tensor{ ws->Z_rows, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)H}, {(int64_t)H, 1}}, Device::CUDA, 0 };
-    }
+    if (want_z) tZcap = Tensor{ ws->Z_rows, {DType::F32, Layout::RowMajor, {(int64_t)N, (int64_t)H}, {(int64_t)H, 1}}, Device::CUDA, 0 };
 
-    Status st = GemmCudaLaunch(tA, tB, BiasPtr, tO, g, stream, (want_z ? &tZcap : nullptr));
-    if (st != Status::Ok) return st;
+    AI_RETURN_IF_ERROR(GemmCudaLaunch(tA, tB, BiasPtr, tO, g, stream, (want_z ? &tZcap : nullptr)));
 
     // Y_rows → Y[:,t,:]
     {
@@ -164,9 +162,10 @@ Status RnnCudaLaunch(const Tensor& X,   // [N,T,I]
                         cudaMemcpyDeviceToDevice, s);
     }
 
-    h_prev = ws->Y_rows;
+    h_prev = ws->Y_rows; // 다음 타임스텝 입력
   }
 
+  AI_CUDA_CHECK_LAUNCH();
   return Status::Ok;
 }
 
@@ -177,7 +176,7 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                              const Tensor* B,       // [H] optional (unused)
                              const Tensor& h0,      // [N,H]
                              const Tensor& dY_post, // [N,T,H]
-                             const Tensor& Z,       // [N,T,H] (pre-activation from FWD)
+                             const Tensor& Z,       // [N,T,H]
                              Tensor* dWx,           // [I,H]
                              Tensor* dWh,           // [H,H]
                              Tensor* dB,            // [H]
@@ -187,42 +186,27 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                              StreamHandle stream,
                              const RnnWorkspaceBwd* ws)
 {
-  if (!is3_f32_cuda(X) || !is2_f32_cuda(Wx) || !is2_f32_cuda(Wh) || !is2_f32_cuda(h0)) return Status::Invalid;
-  if (!is3_f32_cuda(dY_post) || !is3_f32_cuda(Z)) return Status::Invalid;
-  if (dWx && (!is2_f32_cuda(*dWx) || dWx->desc.shape[0]!=X.desc.shape[2] || dWx->desc.shape[1]!=Wx.desc.shape[1])) return Status::ShapeMismatch;
-  if (dWh && (!is2_f32_cuda(*dWh) || dWh->desc.shape[0]!=Wx.desc.shape[1] || dWh->desc.shape[1]!=Wx.desc.shape[1])) return Status::ShapeMismatch;
-  if (dB  && a.with_bias && (!is1_f32_cuda(*dB) || dB->desc.shape[0]!=Wx.desc.shape[1])) return Status::ShapeMismatch;
-  if (dh0 && (!is2_f32_cuda(*dh0) || dh0->desc.shape[0]!=X.desc.shape[0] || dh0->desc.shape[1]!=Wx.desc.shape[1])) return Status::ShapeMismatch;
-  if (dX  && (!is3_f32_cuda(*dX)  || dX->desc.shape[0]!=X.desc.shape[0] || dX->desc.shape[1]!=X.desc.shape[1] || dX->desc.shape[2]!=X.desc.shape[2])) return Status::ShapeMismatch;
-
-  const int64_t N = X.desc.shape[0];
-  const int64_t T = X.desc.shape[1];
-  const int64_t I = X.desc.shape[2];
-  const int64_t H = Wx.desc.shape[1];
-  if (N<=0 || T<=0 || I<=0 || H<=0) return Status::Invalid;
-
+  AI_RETURN_IF_ERROR(validate_bwd(X,Wx,Wh,h0,dY_post,Z,dWx,dWh,dB,dh0,dX,a));
   if (!ws || !ws->XH_cat || !ws->G_rows || !ws->Z_rows || !ws->W_cat || !ws->dXH_cat || !ws->dWcat || !ws->TmpW)
     return Status::MissingInput;
 
-  auto s = to_cuda(stream);
+  const int64_t N=X.desc.shape[0], T=X.desc.shape[1], I=X.desc.shape[2], H=Wx.desc.shape[1];
+  auto s = as_cuda_stream(stream);
 
-  // zero grads
-  if (dWx) cudaMemsetAsync(dWx->data, 0, sizeof(float)*(size_t)I*H, s);
-  if (dWh) cudaMemsetAsync(dWh->data, 0, sizeof(float)*(size_t)H*H, s);
-  if (dB  && a.with_bias) cudaMemsetAsync(dB->data, 0, sizeof(float)*(size_t)H, s);
-  if (dh0) cudaMemsetAsync(dh0->data, 0, sizeof(float)*(size_t)N*H, s);
-  if (dX)  cudaMemsetAsync(dX->data, 0, sizeof(float)*(size_t)N*T*I, s);
-  cudaMemsetAsync(ws->dWcat,   0, sizeof(float)*(size_t)(I+H)*H, s);
-  cudaMemsetAsync(ws->dXH_cat, 0, sizeof(float)*(size_t)N*(I+H), s);
+  // zero grads (ai_shim memset)
+  if (dWx) AI_RETURN_IF_ERROR(ai_memset_async(dWx->data, 0, sizeof(float)*(size_t)I*H, s));
+  if (dWh) AI_RETURN_IF_ERROR(ai_memset_async(dWh->data, 0, sizeof(float)*(size_t)H*H, s));
+  if (dB && a.with_bias) AI_RETURN_IF_ERROR(ai_memset_async(dB->data, 0, sizeof(float)*(size_t)H, s));
+  if (dh0) AI_RETURN_IF_ERROR(ai_memset_async(dh0->data, 0, sizeof(float)*(size_t)N*H, s));
+  if (dX)  AI_RETURN_IF_ERROR(ai_memset_async(dX->data,  0, sizeof(float)*(size_t)N*T*I, s));
+  AI_RETURN_IF_ERROR(ai_memset_async(ws->dWcat,   0, sizeof(float)*(size_t)(I+H)*H, s));
+  AI_RETURN_IF_ERROR(ai_memset_async(ws->dXH_cat, 0, sizeof(float)*(size_t)N*(I+H), s));
 
-  // W_cat = [Wx ; Wh] : [I+H, H]
-  cudaMemcpyAsync(ws->W_cat, Wx.data, (size_t)I*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
-  cudaMemcpyAsync(ws->W_cat + (size_t)I*H, Wh.data, (size_t)H*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
+  // W_cat = [Wx ; Wh]
+  AI_RETURN_IF_ERROR(memcpy_d2d_async(ws->W_cat, Wx.data, (size_t)I*H*sizeof(float), s));
+  AI_RETURN_IF_ERROR(memcpy_d2d_async(ws->W_cat + (size_t)I*H, Wh.data, (size_t)H*H*sizeof(float), s));
 
-  ai::GemmAttrs g{};
-  g.act         = a.act;                 // BWD 에필로그에서 act' 사용
-  g.leaky_slope = a.leaky_slope;
-  g.with_bias   = (a.with_bias && dB);  // dB 있을 때만 reduce
+  ai::GemmAttrs g{}; g.act=a.act; g.leaky_slope=a.leaky_slope; g.with_bias=(a.with_bias && dB);
 
   const size_t X_pitch_elems_dst = (size_t)(I + H);
   const size_t X_pitch_elems_src = (size_t)(T * I);
@@ -256,7 +240,7 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                           H * sizeof(float), (size_t)N,
                           cudaMemcpyDeviceToDevice, s);
       }
-      apply_act_rows_local_launcher(ws->Z_rows, ws->Z_rows, (int)N, (int)H, (int)a.act, a.leaky_slope, s);
+      apply_act_rows_launcher(ws->Z_rows, ws->Z_rows, (int)N, (int)H, (int)a.act, a.leaky_slope, s);
       {
         const void* src = ws->Z_rows;
         void* dst = ws->XH_cat + I;
@@ -276,10 +260,10 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
                         H * sizeof(float), (size_t)N,
                         cudaMemcpyDeviceToDevice, s);
     }
-    // + dh_next 누적 (tail of dXH_cat)
+    // + dh_next 누적
     add_dhnext_into_grows_launcher(ws->dXH_cat, ws->G_rows, (int)N, (int)I, (int)H, s);
 
-    // Z_rows <- Z[:,t,:] (BWD 에필로그 입력)
+    // Z_rows <- Z[:,t,:]
     {
       const void* src_z = static_cast<const float*>(Z.data) + (size_t)t * H;
       void* dst_z = ws->Z_rows;
@@ -299,18 +283,15 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
     Tensor* tGC = nullptr;
     Tensor* tGBias = (dB && a.with_bias) ? dB : nullptr;
 
-    // 내부 scratch(캡처-세이프 alloc/free)에 맡김
-    Status st_bwd = GemmCudaBackward(
-      tA, tB, /*C*/nullptr,
-      tGY, tZ,
+    AI_RETURN_IF_ERROR(GemmCudaBackward(
+      tA, tB, /*C*/nullptr, tGY, tZ,
       /*gA*/ &tGA, /*gB*/ &tGB, /*gC*/ tGC, /*gBias*/ tGBias,
-      g, stream, /*ws=*/nullptr);
-    if (st_bwd != Status::Ok) return st_bwd;
+      g, stream, /*ws=*/nullptr));
 
     // dX[:,t,:] = dXH_cat[:, :I]
     if (dX){
       void* dst = static_cast<float*>(dX->data) + (size_t)t * I;
-      const void* src = ws->dXH_cat; // [:, :I]
+      const void* src = ws->dXH_cat;
       cudaMemcpy2DAsync(dst, (size_t)(T*I) * sizeof(float),
                         src, (size_t)(I+H) * sizeof(float),
                         I * sizeof(float), (size_t)N,
@@ -323,23 +304,20 @@ Status RnnCudaBackwardLaunch(const Tensor& X,       // [N,T,I]
   } // for t
 
   // split dWcat -> dWx, dWh
-  if (dWx){
-    cudaMemcpyAsync(dWx->data, ws->dWcat, (size_t)I*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
-  }
-  if (dWh){
-    cudaMemcpyAsync(dWh->data, ws->dWcat + (size_t)I*H, (size_t)H*H*sizeof(float), cudaMemcpyDeviceToDevice, s);
-  }
+  if (dWx) AI_RETURN_IF_ERROR(memcpy_d2d_async(dWx->data, ws->dWcat, (size_t)I*H*sizeof(float), s));
+  if (dWh) AI_RETURN_IF_ERROR(memcpy_d2d_async(dWh->data, ws->dWcat + (size_t)I*H, (size_t)H*H*sizeof(float), s));
 
   // dh0 = dXH_cat[:, I:]
   if (dh0){
-    void* dst = dh0->data;             // [N,H]
-    const void* src = ws->dXH_cat + I; // [:, I:]
+    void* dst = dh0->data;
+    const void* src = ws->dXH_cat + I;
     cudaMemcpy2DAsync(dst, (size_t)H * sizeof(float),
                       src, (size_t)(I+H) * sizeof(float),
                       H * sizeof(float), (size_t)N,
                       cudaMemcpyDeviceToDevice, s);
   }
 
+  AI_CUDA_CHECK_LAUNCH();
   return Status::Ok;
 }
 
