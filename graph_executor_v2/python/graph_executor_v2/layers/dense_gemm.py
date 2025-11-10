@@ -315,6 +315,8 @@ class Dense(Layer):
         z_out: Optional[cp.ndarray] = None,
         *,
         stream: Optional[int] = None,
+        work: Optional[dict] = None,
+        **kwargs,
     ) -> None:
         """
         NO-alloc forward for CUDA Graph capture.
@@ -331,9 +333,18 @@ class Dense(Layer):
             raise ValueError("[capture] out must be float32[{M},{U}] with C-contiguous layout")
 
         save_z = (self.activation != "none")
-        if save_z:
-            if z_out is None or z_out.shape != (M, self.units) or z_out.dtype != cp.float32 or not z_out.flags.c_contiguous:
-                raise ValueError("[capture] z_out must be C-contiguous float32[(M, units)] when activation is used")
+
+        # z_out 자동 관리: 필요하면 work 캐시에 배정 (없으면 즉석 할당)
+        if save_z and z_out is None:
+            key = ("dense_z", int(out.data.ptr))
+            buf = None
+            if work is not None:
+                buf = work.get(key)
+            if buf is None or tuple(getattr(buf, "shape", ())) != (M, self.units) or getattr(buf, "dtype", None) != cp.float32:
+                buf = cp.empty_like(out)
+                if work is not None:
+                    work[key] = buf
+            z_out = buf
 
         # --- after ---
         gemm_ops.forward_into(
@@ -359,6 +370,8 @@ class Dense(Layer):
         work_dZ: cp.ndarray,
         lt_workspace: Optional[cp.ndarray] = None,
         stream: Optional[int] = None,
+        work: Optional[dict] = None,
+        **kwargs,
     ) -> None:
         """
         NO-alloc backward for CUDA Graph capture.
@@ -379,6 +392,18 @@ class Dense(Layer):
             raise ValueError("[capture] gW_out must be C-contiguous float32[(in_dim,units)]")
         if gB_out.shape != (1, self.units) or gB_out.dtype != cp.float32 or not gB_out.flags.c_contiguous:
             raise ValueError("[capture] gB_out must be C-contiguous float32[(1,units)]")
+
+        # dZ(work_dZ) 자동 관리: 없으면 work 캐시 활용 (형상은 last_linear와 동일)
+        if work_dZ is None:
+            key = ("dense_dZ", int(self.last_linear.data.ptr))
+            buf = None
+            if work is not None:
+                buf = work.get(key)
+            if buf is None or tuple(getattr(buf, "shape", ())) != tuple(self.last_linear.shape) or getattr(buf, "dtype", None) != cp.float32:
+                buf = cp.empty_like(self.last_linear)
+                if work is not None:
+                    work[key] = buf
+            work_dZ = buf
 
         gemm_ops.backward_into(
             self.last_input, self.W, grad_output, self.last_linear,
