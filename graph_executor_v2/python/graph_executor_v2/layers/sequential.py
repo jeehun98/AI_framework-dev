@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import (
     List, Tuple, Any, Iterable, Optional, Dict, Sequence, TYPE_CHECKING
 )
+import os
 import cupy as cp
 
 # ============================================================================
@@ -156,6 +157,8 @@ class Sequential(Layer):
         self._loss_buf: Optional[cp.ndarray] = None
         self._stream: Optional[cp.cuda.Stream] = None
         self._pool_ticks: int = 0
+        # 고유 모델 식별자(프로세스 내 충돌 방지)
+        self._model_uid: str = f"{type(self).__name__}:{id(self)}"
         # === NEW: local telemetry counters ===
         self._tm = {
             "capture_count": 0,
@@ -165,10 +168,66 @@ class Sequential(Layer):
             "pool_put": 0,
             "pool_evict_fallback": 0,
         }
+        # 🔒 불변 모델 지문을 생성·캐시 (빌드 전후 값 동일)
+        self._model_fp_static: tuple = self._compute_model_fp_static()
+
+    def _compute_model_fp_static(self) -> tuple:
+        """
+        빌드 전후로 값이 바뀌지 않는 '불변 지문':
+          - 레이어 클래스명
+          - 대표 하이퍼파라미터(정수/실수/문자, 작은 튜플/리스트)만 추출
+        절대 텐서/shape/ptr 등 런타임 가변 요소는 포함하지 않는다.
+        """
+        scalar_keys = (
+            "units", "hidden_size", "activation", "use_native_bwd",
+            "with_bias", "save_z_in_fwd", "leaky_slope",
+            "kernel_size", "stride", "padding", "dilation", "groups",
+            "bidirectional", "num_layers",
+        )
+        fp = []
+        for l in self.layers:
+            item = [type(l).__name__]
+            for k in scalar_keys:
+                if hasattr(l, k):
+                    v = getattr(l, k)
+                    if isinstance(v, (str, int, float, bool, type(None))):
+                        item.append((k, v))
+                    elif isinstance(v, (tuple, list)):
+                        ok = all(isinstance(x, (int, float, str, bool, type(None))) for x in v)
+                        if ok:
+                            item.append((k, tuple(v)))
+            fp.append(tuple(item))
+        return ("v2", tuple(fp))  # 포맷 버전 태그
 
     def _tick(self) -> int:
         self._pool_ticks += 1
         return self._pool_ticks
+
+    # -------------------------------------------------------------------------
+    # RNG 컨텍스트 초기화/증가 (NEW)
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _init_rng_ctx(ctx: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """ctx["rng"] 사전 생성/보강: {'seed': int, 'step': int, 'generator': Optional}"""
+        rng = dict((ctx or {}).get("rng", {}) or {})
+        if "seed" not in rng:
+            env_seed = os.environ.get("GEV2_RNG_SEED")
+            rng["seed"] = int(env_seed) if env_seed is not None else 2025
+        rng["step"] = int(rng.get("step", 0))
+        # 필요 시 CuPy RandomState를 넣고 싶다면 활성화
+        # if "generator" not in rng:
+        #     rng["generator"] = cp.random.RandomState(rng["seed"])
+        if ctx is not None:
+            ctx["rng"] = rng
+        return rng
+
+    @staticmethod
+    def _bump_rng_step(ctx: Optional[Dict[str, Any]], inc: int = 1) -> None:
+        if ctx is None:
+            return
+        rng = dict(ctx.get("rng", {}) or {})
+        rng["step"] = int(rng.get("step", 0)) + int(inc)
+        ctx["rng"] = rng
 
     # -------------------------------------------------------------------------
     # 구성/빌드
@@ -193,11 +252,7 @@ class Sequential(Layer):
         strict: bool = True,
         verify_output: bool = True
     ) -> None:
-        """모든 하위 레이어에 대해 build/compute_output_shape를 순차 수행.
-
-        - strict=True: 중간 레이어에서 예외 발생 시 즉시 실패
-        - verify_output=True: 전체 빌드 종료 후 결과 검증/오류 리포트
-        """
+        """모든 하위 레이어에 대해 build/compute_output_shape를 순차 수행."""
         cur = tuple(map(int, input_shape))
         errors = []
 
@@ -316,13 +371,7 @@ class Sequential(Layer):
         return self.train(False)
 
     def parameters(self) -> Iterable[Tuple[Any, Any, str]]:
-        """(param, grad, tag)를 순회하며 방출.
-
-        우선순위:
-          1) 레이어가 parameters()를 제공하면 그대로 사용
-          2) 후보 속성명 쌍(CANDIDATE_PARAM_GRAD_NAMES)
-          3) ★ 일반 탐색: 파라미터 객체의 `.grad` 존재 여부로 수집
-        """
+        """(param, grad, tag)를 순회하며 방출."""
         for idx, lyr in enumerate(self.layers):
             lname = f"{lyr.__class__.__name__}:{idx}"
 
@@ -347,7 +396,7 @@ class Sequential(Layer):
             if found_named:
                 continue
 
-            # 3) ★ 일반 탐색: 자주 쓰는 파라미터 이름에서 .grad 붙은 객체 수집
+            # 3) 일반 탐색
             generic_names = ("W", "weight", "kernel", "b", "bias", "gamma", "beta")
             for p_name in generic_names:
                 if hasattr(lyr, p_name):
@@ -405,7 +454,7 @@ class Sequential(Layer):
     # ===== Graph Capture =====
     # =========================
     def supports_capture(self) -> bool:
-        """모든 레이어가 capture-safe 인터페이스(forward_into/backward_into)를 지원하는가?"""
+        """모든 레이어가 capture-safe 인터페이스를 지원하는가?"""
         ok = True
         for lyr in self.layers:
             f_ok = hasattr(lyr, "forward_into") and callable(getattr(lyr, "forward_into"))
@@ -441,10 +490,18 @@ class Sequential(Layer):
             model_for_plan, in_shape, loss_kind="softmax_ce", lt_bytes=lt_bytes
         )
 
-        # 4) 옵티마이저-그래드 버퍼 리바인드 (캡처 전 일관화)
+        # === NEW: RNG 메타 기록 (정적 경로) ===
+        _rng = self._init_rng_ctx({})
+        try:
+            setattr(plan, "seed", int(_rng["seed"]))
+            setattr(plan, "rng_step", int(_rng["step"]))
+        except Exception:
+            pass
+
+        # 4) 옵티마이저-그래드 버퍼 리바인드
         try_rebind_grads(model_for_plan, optimizer, plan)
 
-        # 5) 캡처-세이프 I/O 버퍼 (커널 제약 고려해 fp32/labels=int32)
+        # 5) 캡처-세이프 I/O 버퍼
         X_buf = cp.zeros(in_shape, dtype=cp.float32)
         N = int(in_shape[0])
         y_buf = cp.zeros((N,), dtype=cp.int32)
@@ -465,11 +522,11 @@ class Sequential(Layer):
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
 
-        # ⬇️ 문서/테스트용 태그 전달(키는 정적 경로에선 None 유지)
+        # 문서/테스트용 태그
         tags = {"nvtx_capture_tag": "[CAPTURE][static]", "nvtx_replay_tag": "[REPLAY]"}
         tg = TrainGraph(gexec, io, stream, plan=plan, graph_key=None, tags=tags)
 
-        # 7) 내부 핸들 보관
+        # 내부 핸들 보관
         self._tg = tg
         self._loss_buf = loss_buf
         self._stream = stream
@@ -484,7 +541,7 @@ class Sequential(Layer):
         x_arr = cp.asarray(X)
         y_arr = cp.asarray(y)
 
-        # 입출력 가드 (정적 그래프는 shape/dtype 불변이 원칙)
+        # 입출력 가드
         assert tuple(xb.shape) == tuple(x_arr.shape), f"X shape mismatch: {x_arr.shape} vs {xb.shape}"
         assert yb.shape == (xb.shape[0],), f"y shape must be (N,), got {yb.shape} vs N={xb.shape[0]}"
         assert yb.dtype == cp.int32, f"labels must be int32 for current CE kernel (got {yb.dtype})"
@@ -492,8 +549,8 @@ class Sequential(Layer):
         self._tg.set_batch(x_arr, y_arr)
         with nvtx_range("[REPLAY][static]"):
             self._tg.launch()
-        
-        self._tm["replay_count"] += 1  # === NEW ===
+
+        self._tm["replay_count"] += 1
         return float(self._loss_buf.get())
 
     @property
@@ -574,7 +631,7 @@ class Sequential(Layer):
         else:
             branch_id = ctx.get("branch", "default")
 
-        # === NEW === variant 구성 보정 (amp 문자열 반영 / variant 우선)
+        # variant 구성
         vdict = dict(ctx.get("variant", {}))  # variant 우선
         if "amp" not in vdict and "amp" in ctx:
             vdict["amp"] = ctx.get("amp")
@@ -584,6 +641,9 @@ class Sequential(Layer):
         vdict["training"] = bool(self.training)
         vdict["dtype"] = str(getattr(sig, "dtype", "fp32"))
         vdict["loss_kind"] = getattr(loss, "name", "softmax_ce")
+        # 🔒 모델 식별/구조 지문: 불변 캐시 사용
+        vdict["model_uid"] = self._model_uid
+        vdict["model_fp"]  = self._model_fp_static
 
         variant = tuple(sorted((str(k), self._freeze_value(v)) for k, v in vdict.items()))
         try:
@@ -695,6 +755,9 @@ class Sequential(Layer):
         stream: Optional[cp.cuda.Stream],
     ) -> Dict[str, Any]:
         """동적 경로의 핵심 진입점: 평탄화→패턴→키→캐시→(미스)캡처."""
+        # 0) RNG 컨텍스트 보장 (NEW)
+        self._init_rng_ctx(ctx)
+
         # 1) 경로 평탄화
         with nvtx_range("[DYN] path_linearize"):
             path_layers = self._linearize_path(X, ctx)
@@ -747,6 +810,13 @@ class Sequential(Layer):
             plan = make_plan_for_path(
                 path_layers, in_shape, loss_kind=getattr(loss, "name", "softmax_ce"), lt_bytes=lt_bytes
             )
+            # === NEW: RNG 메타 기록 (동적 경로) ===
+            try:
+                rng = ctx.get("rng", {}) or {}
+                setattr(plan, "seed", int(rng.get("seed", 2025)))
+                setattr(plan, "rng_step", int(rng.get("step", 0)))
+            except Exception:
+                pass
 
         # ---- 경로 전용 (param, grad) 트리플 수집: 정확 매핑 + 중복 방지 ----
         def _collect_triplets_from_path(plan, layers):
@@ -822,7 +892,7 @@ class Sequential(Layer):
                         pass
                 opt_for_path.rebind_grads(triplets)
 
-        # 5) 고정 I/O 버퍼 (현재 커널 제약상 fp32/int32가 안전)
+        # 5) 고정 I/O 버퍼
         X_buf = cp.zeros(in_shape, dtype=cp.float32)
         N = int(in_shape[0])
         y_buf = cp.zeros((N,), dtype=cp.int32)
@@ -847,7 +917,6 @@ class Sequential(Layer):
                     stream=stream,
                     loss_out=loss_buf,
                     layers_override=path_layers,
-                    # graph_key는 TrainGraph로 전달만 하고 record_step_graph 내부에선 사용하지 않아도 OK
                     graph_key=key,
                 )
             else:
@@ -867,7 +936,7 @@ class Sequential(Layer):
 
         io = {"X": X_buf, "y": y_buf, "logits": plan.per_layer[-1].y}
 
-        # ⬇️ 문서/테스트용 태그 전달
+        # 문서/테스트용 태그
         tags = {
             "nvtx_capture_tag": "[DYN][CAPTURE]",
             "nvtx_replay_tag": "[DYN][REPLAY]",
@@ -883,7 +952,7 @@ class Sequential(Layer):
             "optimizer": opt_for_path,
             "plan": plan,  # Dropout counter advance 등에 사용
         }
-        self._tm["capture_count"] += 1  # === NEW ===
+        self._tm["capture_count"] += 1
         self._pool_put(key, entry)
         return entry
 
@@ -899,7 +968,11 @@ class Sequential(Layer):
         stream: Optional[cp.cuda.Stream] = None,
     ) -> float:
         """동적(Graph) 경로: If/Repeat/EarlyExit 포함한 '현재 실행된 경로'를 캡처/재생."""
-        ctx = dict(ctx or {})
+        if ctx is None:
+            ctx = {}  
+        # RNG 컨텍스트 보장
+        self._init_rng_ctx(ctx)
+
         x_arr = cp.asarray(X)
         y_arr = cp.asarray(y)
 
@@ -912,7 +985,7 @@ class Sequential(Layer):
         loss_buf: cp.ndarray = entry["loss_buf"]
         plan = entry.get("plan", None)
 
-        # ✅ 현재 동적 경로 그래프 핸들을 모델 수준 핸들로 노출 (외부 사용 용이)
+        # 현재 동적 경로 그래프 핸들을 모델 수준 핸들로 노출
         self._tg = tg
         self._loss_buf = loss_buf
         self._stream = entry.get("stream", self._stream)
@@ -949,12 +1022,14 @@ class Sequential(Layer):
                         advance_dropout(plan, seed_bump=t)
                     tg.launch()
 
-        # 손실 스칼라 반환
-        self._tm["replay_count"] += max(1, int(ctx.get("repeat_steps", 1)))  # === NEW ===
+        # RNG step 증가 (Repeat 고려)
+        self._bump_rng_step(ctx, inc=max(1, T))
 
+        # 손실 스칼라 반환
+        self._tm["replay_count"] += max(1, int(ctx.get("repeat_steps", 1)))
         return float(loss_buf.get())
 
-    # ======== NEW: Frontend convenience APIs (fit/warmup/replay & pool tools) ========
+    # ======== Frontend convenience APIs (fit/warmup/replay & pool tools) ========
 
     def fit(
         self,
@@ -971,9 +1046,9 @@ class Sequential(Layer):
     ):
         """
         케라스/파이토치 느낌의 고수준 학습 루프.
-        - use_dynamic=True: one_step_dynamic 경로 사용(분기/반복 지원, on-demand capture)
-        - use_dynamic=False: 정적 compile/one_step 사용(입력 shape 고정 필요)
-        - prewarm_samples: [(X, y, ctx), ...] 형태로 미리 GraphKey를 캡처해 hit율↑
+        - use_dynamic=True: one_step_dynamic 경로 사용
+        - use_dynamic=False: 정적 compile/one_step 사용
+        - prewarm_samples: 미리 GraphKey를 캡처해 hit율↑
         """
         ctx = dict(ctx or {})
 
@@ -1023,7 +1098,6 @@ class Sequential(Layer):
         """
         이미 캡처된 self.tg(TrainGraph)로 핫루프 실행.
         - set_batch() + launch()만 수행 → Python 오버헤드 최소화
-        - 사전에 self.tg가 존재해야 함 (compile() 또는 warmup/one_step_dynamic()으로 생성)
         """
         assert self._tg is not None, "No captured graph. Call compile() or warmup/one_step_dynamic() first."
         n = 0
@@ -1057,17 +1131,49 @@ class Sequential(Layer):
             pass
 
         stats["local_tm"] = dict(self._tm)
-
         return stats
 
-    def get_graph_key_preview(self, X, *, ctx: Optional[Dict[str, Any]] = None, loss=None):
-        """
-        실제 캡처 없이 '현재 입력+컨텍스트'로 생성될 GraphKey를 미리 산출.
-        - 디버그/로깅/메트릭에 유용
-        """
+    def get_graph_key_preview(self, X, *, ctx=None, loss=None):
+        import cupy as cp
         ctx = dict(ctx or {})
+        v = dict(ctx.get("variant", {}) or {})
+
+        # 평탄화 경로(정적 포함 전체 구조를 클래스명으로 전개)
+        def _flat_names(node, out):
+            sub = getattr(node, "layers", None)
+            if isinstance(sub, (list, tuple)):
+                for lyr in sub: _flat_names(lyr, out)
+            else:
+                out.append(type(node).__name__)
+        names = []; _flat_names(self, names)
+        v["path_fp"] = tuple(names)
+
+        # 기본값 보강
+        v.setdefault("amp", "fp32")
+        v.setdefault("dtype", "float32")
+        v.setdefault("training", bool(getattr(self, "training", True)))
+        v.setdefault("unroll", 1)
+        # loss 객체가 kind/name 둘 중 무엇을 노출하는지 빌드마다 다를 수 있어 방어:
+        v.setdefault("loss_kind", getattr(loss, "kind", getattr(loss, "name", "softmax_ce")))
+        # 🔒 preview도 런타임 가변이 아닌 캐시된 지문 사용
+        v["model_uid"] = self._model_uid
+        v["model_fp"]  = self._model_fp_static
+        ctx["variant"] = v
+
         sig = self._infer_signature(cp.asarray(X), ctx)
-        return self._make_pool_key(sig, ctx, loss=loss)
+        key = self._make_pool_key(sig, ctx, loss=loss)
+
+        # 🔒 마지막 방어: 반환 직전 path_fp/모델 지문 덮어쓰기
+        try:
+            tag, shape, dtype, layout, branch, var = key
+            var_d = dict(var)
+            var_d["path_fp"] = tuple(names)
+            var_d["model_uid"] = v["model_uid"]
+            var_d["model_fp"]  = v["model_fp"]
+            key = (tag, shape, dtype, layout, branch, tuple(sorted(var_d.items())))
+        except Exception:
+            pass
+        return key
 
     def evict_pool(self, *, predicate=None, max_remove: Optional[int] = None):
         """
@@ -1083,7 +1189,7 @@ class Sequential(Layer):
                 if max_remove and removed >= max_remove:
                     break
         return removed
-    
+
     # === NEW ===
     def telemetry(self) -> Dict[str, int]:
         """로컬 Sequential 단위 텔레메트리 카운터 반환."""

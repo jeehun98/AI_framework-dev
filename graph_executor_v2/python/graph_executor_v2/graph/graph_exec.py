@@ -63,6 +63,7 @@ def record_step_graph(
     exec_plan: Optional[ExecPlan] = None,            # Execution Planner 결과
     # ---- 메타/디버그 ----
     graph_key: Optional[Any] = None,                 # GraphPool에서 만든 키(있으면 TrainGraph에 전달 가능)
+    ctx: Optional[dict] = None,                      # 🔥 NEW: RNG/브랜치 등 런타임 컨텍스트
 ):
     """fwd → loss → bwd → opt '한 스텝'을 CUDA Graph로 캡처하여 실행자 반환.
 
@@ -94,6 +95,16 @@ def record_step_graph(
 
     # 런타임 준비
     rt = GraphRuntime(stream=stream)
+
+    # 🔥 NEW: RNG 메타 주입(컨텍스트가 오면 plan에 고정)
+    try:
+        rng = (ctx or {}).get("rng", {}) or {}
+        if getattr(plan, "seed", None) is None and "seed" in rng:
+            setattr(plan, "seed", int(rng["seed"]))
+        if getattr(plan, "rng_step", None) is None and "step" in rng:
+            setattr(plan, "rng_step", int(rng["step"]))
+    except Exception:
+        pass
 
     # 레이어 시퀀스 선택(정적: model.layers / 동적: layers_override)
     layers_seq: Sequence[Any] = layers_override if layers_override is not None else list(getattr(model, "layers", []))
@@ -175,7 +186,18 @@ class TrainGraph:
         self._expose_debug = os.getenv("GEV2_EXPOSE_DEBUG", "0") == "1"
         self._plan = plan if self._expose_debug else None
         self._key = graph_key if self._expose_debug else None
-        self._tags = (tags or {}) if self._expose_debug else {}
+
+        # 🔎 RNG 메타를 태그에 복사해 타임라인에서 보기 쉽게(디버그 ON일 때만)
+        t = dict(tags or {})
+        try:
+            if self._plan is not None:
+                if getattr(self._plan, "seed", None) is not None:
+                    t.setdefault("rng_seed", int(getattr(self._plan, "seed")))
+                if getattr(self._plan, "rng_step", None) is not None:
+                    t.setdefault("rng_step", int(getattr(self._plan, "rng_step")))
+        except Exception:
+            pass
+        self._tags = t if self._expose_debug else {}
 
     # ---- 공개 표면(테스트/문서 호환) ----
     @property

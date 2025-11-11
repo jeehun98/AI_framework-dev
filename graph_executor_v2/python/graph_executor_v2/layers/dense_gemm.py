@@ -1,10 +1,10 @@
 # python/graph_executor_v2/layers/dense_gemm.py
 from __future__ import annotations
 from typing import Optional, Tuple, List
+from contextlib import nullcontext
 import cupy as cp
 
 from .base import Layer
-
 from graph_executor_v2.ops import gemm as gemm_ops
 
 try:
@@ -36,6 +36,7 @@ except Exception:
             gelu_grad = 0.5 * (1.0 + t) + 0.5 * z * dt
             return grad_output * gelu_grad
         raise ValueError(f"Unknown activation grad: {act}")
+
 
 class Dense(Layer):
     """
@@ -76,7 +77,7 @@ class Dense(Layer):
         self.dW: Optional[cp.ndarray] = None             # (in_dim, units)
         self.db: Optional[cp.ndarray] = None             # (1, units)
 
-        # 학습/추론 스위치(부모 Layer에 없을 수 있어 명시적으로 둠)
+        # 학습/추론 스위치
         self.training: bool = True
 
     # ---------------- init helpers ----------------
@@ -105,7 +106,6 @@ class Dense(Layer):
             raise ValueError(f"Unknown initializer: {self.initializer}")
 
         b = cp.random.uniform(-1e-3, 1e-3, (1, self.units)).astype(cp.float32)
-        # C-연속성 보장
         if not W.flags.c_contiguous:
             W = cp.ascontiguousarray(W)
         if not b.flags.c_contiguous:
@@ -119,89 +119,85 @@ class Dense(Layer):
             raise ValueError(f"Dense expects 2D input (batch, in_dim), got {input_shape}")
         _, in_dim = map(int, input_shape)
         self.W, self.b = self._init_weights(in_dim)
-        
-        # 🔧 grad 버퍼를 build 시점에 미리 준비 (0으로 초기화)
+
+        # grad 버퍼 사전 준비
         self.dW = cp.zeros_like(self.W)
-        self.db = cp.zeros_like(self.b)        
-        
+        self.db = cp.zeros_like(self.b)
+
         # 동적 배치
         self.output_shape = (None, self.units)
 
-
-    def call(self, x: cp.ndarray) -> cp.ndarray:
+    # ---------------- Forward (alloc) ----------------
+    def call(self, x: cp.ndarray, *, stream: Optional[int] = None) -> cp.ndarray:
         """
-        Forward (fused):
-        - 필요 시 pre-activation Z를 save_z로 저장
-        - self.last_linear = Z(pre), self.last_input = x
+        Allocating forward.
+        - 커널 경로와 수동(CuPy) 경로 모두 지정된 stream에서 실행되도록 강제.
         """
         if self.W is None or self.b is None:
             raise RuntimeError("Dense.call called before build")
 
         if x.dtype != cp.float32:
             x = x.astype(cp.float32, copy=False)
-        # 성능 민감 시:
-        # x = cp.ascontiguousarray(x)
 
-        # 학습 중 + 활성화가 있을 때만 Z 저장
         save_z = bool(self.training) and (self.activation != "none")
 
-        try:
-            if save_z:
-                # 커널 경로: (Y, Z) 반환
-                Y, Z = gemm_ops.forward(
-                    x, self.W, self.b,                    # b는 (1, units)
-                    act=self.activation, with_bias=True,
-                    leaky_slope=self.leaky_slope,
-                    save_z=True, return_z=True
-                )
-                out = Y
-                self.last_linear = Z
-            else:
-                # 커널 경로: Y만 반환
-                out = gemm_ops.forward(
-                    x, self.W, self.b,
-                    act=self.activation, with_bias=True,
-                    leaky_slope=self.leaky_slope,
-                    save_z=False, return_z=False
-                )
-                self.last_linear = None
-        except Exception:
-            # --- 안전 폴백 (순수 CuPy 연산) ---
-            z = x @ self.W + self.b  # (M,N) + (1,N)
-            if self.activation == "none":
-                out = z
-                self.last_linear = None
-            else:
-                self.last_linear = z
-                a = (self.activation or "none").lower()
-                if a == "relu":
-                    out = cp.maximum(z, 0)
-                elif a in ("leakyrelu", "leaky_relu", "lrelu"):
-                    out = cp.where(z > 0, z, self.leaky_slope * z)
-                elif a == "sigmoid":
-                    out = 1.0 / (1.0 + cp.exp(-z))
-                elif a == "tanh":
-                    out = cp.tanh(z)
-                elif a == "gelu":
-                    c = cp.sqrt(2.0 / cp.pi, dtype=cp.float32)
-                    t = cp.tanh(c * (z + 0.044715 * z * z * z))
-                    out = 0.5 * z * (1.0 + t)
+        # 지정 스트림 콘텍스트
+        ctx = cp.cuda.ExternalStream(stream) if stream is not None else nullcontext()
+        with ctx:
+            try:
+                if save_z:
+                    Y, Z = gemm_ops.forward(
+                        x, self.W, self.b,
+                        act=self.activation, with_bias=True,
+                        leaky_slope=self.leaky_slope,
+                        save_z=True, return_z=True,
+                        stream=stream,
+                    )
+                    out = Y
+                    self.last_linear = Z
                 else:
-                    raise ValueError(f"Unknown activation: {self.activation}")
+                    out = gemm_ops.forward(
+                        x, self.W, self.b,
+                        act=self.activation, with_bias=True,
+                        leaky_slope=self.leaky_slope,
+                        save_z=False, return_z=False,
+                        stream=stream,
+                    )
+                    self.last_linear = None
+            except Exception:
+                # --- 안전 폴백 (순수 CuPy 연산) ---
+                z = x @ self.W + self.b  # (M,N) + (1,N)
+                if self.activation == "none":
+                    out = z
+                    self.last_linear = None
+                else:
+                    self.last_linear = z
+                    a = (self.activation or "none").lower()
+                    if a == "relu":
+                        out = cp.maximum(z, 0)
+                    elif a in ("leakyrelu", "leaky_relu", "lrelu"):
+                        out = cp.where(z > 0, z, self.leaky_slope * z)
+                    elif a == "sigmoid":
+                        out = 1.0 / (1.0 + cp.exp(-z))
+                    elif a == "tanh":
+                        out = cp.tanh(z)
+                    elif a == "gelu":
+                        c = cp.sqrt(2.0 / cp.pi, dtype=cp.float32)
+                        t = cp.tanh(c * (z + 0.044715 * z * z * z))
+                        out = 0.5 * z * (1.0 + t)
+                    else:
+                        raise ValueError(f"Unknown activation: {self.activation}")
 
-        # 공통 마무리
         self.last_input = x
         if out is None:
             raise RuntimeError("[Dense.call] out is None; every branch must produce a tensor")
         return out
 
-
-
-    def backward(self, grad_output: cp.ndarray) -> cp.ndarray:
+    # ---------------- Backward (alloc) ----------------
+    def backward(self, grad_output: cp.ndarray, *, stream: Optional[int] = None) -> cp.ndarray:
         """
-        두 모드:
-          - use_native_bwd=True  : 네이티브 커널 backward 사용(Z 필요)
-          - use_native_bwd=False : 수동 미분 (CuPy 연산)
+        Allocating backward: native 커널 또는 수동(CuPy) 경로.
+        - 모든 경로 지정 스트림에서 실행.
         """
         if self.last_input is None or self.W is None or self.b is None:
             raise RuntimeError("Dense.backward called before forward/build")
@@ -209,26 +205,65 @@ class Dense(Layer):
         if grad_output.dtype != cp.float32:
             grad_output = grad_output.astype(cp.float32, copy=False)
 
-        # Z(pre)가 없으면 방어적으로 재계산 (act='none'으로 Z만)
-        if self.last_linear is None:
-            _, Z = gemm_ops.forward(
-                self.last_input, self.W, self.b,
-                act="none", with_bias=True, save_z=True, return_z=True
-            )
-            self.last_linear = Z
+        # 지정 스트림 콘텍스트
+        ctx = cp.cuda.ExternalStream(stream) if stream is not None else nullcontext()
+        with ctx:
+            # Z(pre)가 없으면 방어적으로 재계산 (act='none'으로 Z만)
+            if self.last_linear is None:
+                _, Z = gemm_ops.forward(
+                    self.last_input, self.W, self.b,
+                    act="none", with_bias=True, save_z=True, return_z=True,
+                    stream=stream,
+                )
+                self.last_linear = Z
 
-        if self.use_native_bwd:
-            outs = gemm_ops.backward(
-                self.last_input, self.W, grad_output, self.last_linear,
-                act=self.activation, with_bias=True, leaky_slope=self.leaky_slope,
-                C=None, want_gA=True, want_gB=True, want_gBias=True
-            )
-            
-            gW_new = outs.get("gB", None)        # (in_dim, units)
-            gB_new = outs.get("gBias", None)     # (1, units)
-            if gW_new is None or gB_new is None:
-                raise RuntimeError("native backward did not return all required grads")
-            # ✅ in-place 덮어쓰기 (기존 버퍼가 있으면 유지)
+            if self.use_native_bwd:
+                outs = gemm_ops.backward(
+                    self.last_input, self.W, grad_output, self.last_linear,
+                    act=self.activation, with_bias=True, leaky_slope=self.leaky_slope,
+                    C=None, want_gA=True, want_gB=True, want_gBias=True,
+                    stream=stream,
+                )
+                gW_new = outs.get("gB", None)        # (in_dim, units)
+                gB_new = outs.get("gBias", None)     # (1, units)
+                if gW_new is None or gB_new is None:
+                    raise RuntimeError("native backward did not return all required grads")
+                if self.dW is None or self.dW.shape != gW_new.shape:
+                    self.dW = gW_new
+                else:
+                    self.dW[...] = gW_new
+                if self.db is None or self.db.shape != gB_new.shape:
+                    self.db = gB_new
+                else:
+                    self.db[...] = gB_new
+
+                dx = outs.get("gA", None)            # (batch, in_dim)
+                if dx is None or self.dW is None or self.db is None:
+                    raise RuntimeError("native backward did not return all required grads")
+
+                # gBias 규약 확인(합 sum). 평균으로 온 경우 보정.
+                if self.activation != "none":
+                    go_chk = apply_activation_grad(grad_output, self.last_linear, self.activation, self.leaky_slope)
+                else:
+                    go_chk = grad_output
+                sum_go = go_chk.sum(axis=0, keepdims=True)        # 정답: 합(sum)
+                err = float(cp.max(cp.abs(self.db - sum_go)))
+                if err >= 1e-5:
+                    M = self.last_input.shape[0]
+                    err_scaled = float(cp.max(cp.abs(self.db * M - sum_go)))
+                    if err_scaled < 1e-5:
+                        self.db = self.db * M       # 평균으로 나온 경우 → 합으로 보정
+                    else:
+                        self.db = sum_go            # 축/방향 오류 등 → 정답으로 교체
+                return dx
+
+            # -------- 수동 미분 경로 --------
+            go = apply_activation_grad(grad_output, self.last_linear, self.activation, self.leaky_slope)
+            if not go.flags.c_contiguous:
+                go = cp.ascontiguousarray(go)
+
+            gW_new = self.last_input.T @ go
+            gB_new = go.sum(axis=0, keepdims=True)
             if self.dW is None or self.dW.shape != gW_new.shape:
                 self.dW = gW_new
             else:
@@ -238,47 +273,8 @@ class Dense(Layer):
             else:
                 self.db[...] = gB_new
 
-            dx = outs.get("gA", None)            # (batch, in_dim)
-            if dx is None or self.dW is None or self.db is None:
-                raise RuntimeError("native backward did not return all required grads")
-
-            # 안전장치: gBias 규약 확인(합 sum). 평균으로 온 경우 보정.
-            if self.activation != "none":
-                go_chk = apply_activation_grad(grad_output, self.last_linear, self.activation, self.leaky_slope)
-            else:
-                go_chk = grad_output
-            sum_go = go_chk.sum(axis=0, keepdims=True)        # 정답: 합(sum)
-            err = float(cp.max(cp.abs(self.db - sum_go)))
-            if err >= 1e-5:
-                M = self.last_input.shape[0]
-                err_scaled = float(cp.max(cp.abs(self.db * M - sum_go)))
-                if err_scaled < 1e-5:
-                    self.db = self.db * M       # 평균으로 나온 경우 → 합으로 보정
-                else:
-                    self.db = sum_go            # 축/방향 오류 등 → 정답으로 교체
-
+            dx = go @ self.W.T
             return dx
-
-        # -------- 수동 미분 경로 --------
-        go = apply_activation_grad(grad_output, self.last_linear, self.activation, self.leaky_slope)  # dAct(Z) * gY
-        # (contiguous 보장)
-        if not go.flags.c_contiguous:
-            go = cp.ascontiguousarray(go)
-
-        gW_new = self.last_input.T @ go
-        gB_new = go.sum(axis=0, keepdims=True)
-        if self.dW is None or self.dW.shape != gW_new.shape:
-            self.dW = gW_new
-        else:
-            self.dW[...] = gW_new
-        if self.db is None or self.db.shape != gB_new.shape:
-            self.db = gB_new
-        else:
-            self.db[...] = gB_new        
-
-
-        dx = go @ self.W.T                                      # (batch, in_dim)
-        return dx
 
     def compute_output_shape(self, input_shape: Tuple[int, ...]) -> Tuple[Optional[int], int]:
         if len(input_shape) != 2:
@@ -287,16 +283,11 @@ class Dense(Layer):
 
     # ---------------- Trainer-friendly helpers ----------------
     def parameters(self):
-        """
-        Optimizer/Sequential에서 바로 소비할 수 있도록 (param, grad, tag) 튜플을 yield.
-        grad 버퍼는 build/backward에서 항상 준비되므로 그대로 노출.
-        """
         lname = type(self).__name__
         if self.W is not None:
-            # dW는 build()/backward()/backward_into()에서 준비됨
             yield (self.W, self.dW, f"{lname}.W")
         if self.b is not None:
-            yield (self.b, self.db, f"{lname}.b")    
+            yield (self.b, self.db, f"{lname}.b")
 
     def grads(self) -> List[Optional[cp.ndarray]]:
         return [self.dW, self.db]
@@ -307,7 +298,7 @@ class Dense(Layer):
         if self.db is not None:
             self.db.fill(0)
 
-    # ---------------- (옵션) Capture-safe NO-alloc 경로 ----------------
+    # ---------------- Capture-safe, NO-alloc ----------------
     def forward_into(
         self,
         x: cp.ndarray,
@@ -315,10 +306,13 @@ class Dense(Layer):
         z_out: Optional[cp.ndarray] = None,
         *,
         stream: Optional[int] = None,
+        work: Optional[dict] = None,
+        **kwargs,
     ) -> None:
         """
         NO-alloc forward for CUDA Graph capture.
         - out, z_out(옵션)은 사전할당된 float32 C-contiguous 버퍼여야 함.
+        - save_z가 필요한 경우 z_out은 반드시 제공되어야 함(자동 할당 금지).
         """
         if self.W is None or self.b is None:
             raise RuntimeError("Dense.forward_into called before build")
@@ -328,14 +322,14 @@ class Dense(Layer):
             raise ValueError("[capture] inputs/params/out must be C-contiguous")
         M, in_dim = x.shape
         if out.shape != (M, self.units) or out.dtype != cp.float32:
-            raise ValueError("[capture] out must be float32[{M},{U}] with C-contiguous layout")
+            raise ValueError(f"[capture] out must be float32[{M},{U}] with C-contiguous layout")
 
         save_z = (self.activation != "none")
-        if save_z:
-            if z_out is None or z_out.shape != (M, self.units) or z_out.dtype != cp.float32 or not z_out.flags.c_contiguous:
-                raise ValueError("[capture] z_out must be C-contiguous float32[(M, units)] when activation is used")
 
-        # --- after ---
+        # ❗ NO-alloc 정책: save_z가 필요한데 z_out이 없으면 실패
+        if save_z and z_out is None:
+            raise ValueError("[capture] save_z=True requires z_out preallocated")
+
         gemm_ops.forward_into(
             x, self.W,
             out=out, bias=self.b,
@@ -343,11 +337,7 @@ class Dense(Layer):
             save_z=save_z, z_out=z_out, stream=stream
         )
         self.last_input = x
-        # ⭐ act='none'이면 Z==Y이므로 last_linear를 out으로 alias
-        if self.activation == "none":
-            self.last_linear = out
-        else:
-            self.last_linear = z_out if save_z else None
+        self.last_linear = (out if self.activation == "none" else (z_out if save_z else None))
 
     def backward_into(
         self,
@@ -356,14 +346,16 @@ class Dense(Layer):
         gW_out: cp.ndarray,
         gB_out: cp.ndarray,
         *,
-        work_dZ: cp.ndarray,
+        work_dZ: Optional[cp.ndarray],
         lt_workspace: Optional[cp.ndarray] = None,
         stream: Optional[int] = None,
+        work: Optional[dict] = None,
+        **kwargs,
     ) -> None:
         """
         NO-alloc backward for CUDA Graph capture.
         - 모든 출력/워크스페이스 버퍼는 사전할당 & C-contiguous float32 (lt_workspace만 uint8).
-        - gB_out: (in_dim, units), gB_out(=bias grad)는 (1, units)
+        - gW_out: (in_dim, units), gB_out(=bias grad)는 (1, units)
         """
         if self.last_input is None or self.last_linear is None:
             raise RuntimeError("[capture] need forward_into (with save_z) before backward_into")
@@ -379,6 +371,10 @@ class Dense(Layer):
             raise ValueError("[capture] gW_out must be C-contiguous float32[(in_dim,units)]")
         if gB_out.shape != (1, self.units) or gB_out.dtype != cp.float32 or not gB_out.flags.c_contiguous:
             raise ValueError("[capture] gB_out must be C-contiguous float32[(1,units)]")
+
+        # ❗ NO-alloc 정책: work_dZ 미제공 시 실패
+        if work_dZ is None:
+            raise ValueError("[capture] work_dZ must be provided (preallocated)")
 
         gemm_ops.backward_into(
             self.last_input, self.W, grad_output, self.last_linear,
