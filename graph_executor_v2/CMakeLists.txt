@@ -612,6 +612,8 @@ target_include_directories(_ops_rnn PRIVATE
   backends/cuda/ops/rnn
   backends/cuda/ops/epilogue
 )
+
+# ↓ regemm 오브젝트(안에 NVTX 호출 있음)를 가져오므로 NVTX 링크 필요
 target_sources(_ops_rnn PRIVATE
   $<TARGET_OBJECTS:ge2_regemm_standalone>
 )
@@ -619,19 +621,21 @@ target_link_libraries(_ops_rnn PRIVATE
   CUDA::cudart
   CUDA::cublas
 )
+
+# ★ 여기 추가
+if (USE_NVTX)
+  target_include_directories(_ops_rnn PRIVATE ${NVTX_INCLUDE_DIR})
+  target_link_libraries(_ops_rnn PRIVATE ${NVTOOLSEXT_LIB})
+endif()
+
 set_target_properties(_ops_rnn PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   PREFIX "" SUFFIX ".pyd"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
 )
-if (WIN32)
-  set_target_properties(_ops_rnn PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python/graph_executor_v2/ops"
-  )
-endif()
-apply_win_warnings(_ops_rnn)
+
+
 
 # =========================
 # Python 모듈 (_ops_optimizer)
