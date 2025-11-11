@@ -6,16 +6,17 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "../detail/config.h"
-#include "../detail/bias.h"
-#include "../detail/api.h"
-#include "../detail/activations.h"
-// 기존 traits.hpp 의 BiasMode/to_bias_mode는 에필로그 공용 어댑터로 대체
-#include "../detail/epilogue_adaptor.hpp"
-#include "backends/cuda/ops/_common/shim/nvtx.hpp"
+#include "backends/cuda/ops/gemm/api.hpp"                // REGEMM_* 매크로 + GemmBiasActBwdParams
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"    // 기본 shim 묶음
+#include "backends/cuda/ops/_common/shim/activations.hpp"
+#include "backends/cuda/ops/_common/shim/bias.hpp"
+#include "backends/cuda/ops/_common/shim/traits.hpp"     // BiasMode, to_bias_mode
+#include "backends/cuda/ops/_common/shim/ai_nvtx.hpp"
+
+#include "backends/cuda/ops/gemm/kernels/config.hpp"
 
 
-namespace regemm {
+namespace ai::cuda::shim {
 
 // ========== 에러 체크 유틸 ==========
 #ifndef REGEMM_CHECK
@@ -36,7 +37,7 @@ namespace regemm {
 } while(0)
 #endif
 
-// ======= cublas 핸들: 디바이스별 캐시 (capture-safe) =======
+// ======= cublas 핸들: 디바이스별 캐시 (capture-safe 생성은 상위에서 보장) =======
 static cublasHandle_t acquire_cublas_handle()
 {
   static std::mutex mtx;
@@ -51,7 +52,7 @@ static cublasHandle_t acquire_cublas_handle()
     if (it != handles.end() && it->second) {
       return it->second;
     }
-    // 최초 1회 생성: 반드시 캡처 밖(워밍업)에서 한 번 호출되도록 상위에서 보장
+    // 최초 1회 생성: 반드시 그래프 캡처 바깥에서 워밍업 호출 필요
     cublasHandle_t h = nullptr;
     CUBLAS_CHECK(cublasCreate(&h));
     handles[dev] = h;
@@ -59,7 +60,7 @@ static cublasHandle_t acquire_cublas_handle()
   }
 }
 
-// row-major 편의 SGEMM 래퍼
+// row-major 편의 SGEMM 래퍼 (cublas는 column-major 기준)
 static inline cublasStatus_t sgemm_rm(
     cublasHandle_t h,
     bool transA, bool transB,
@@ -70,7 +71,7 @@ static inline cublasStatus_t sgemm_rm(
     const float* beta,
     float* C, int ldc_rm)
 {
-  // row-major를 col-major로 부르는 트릭
+  // row-major를 col-major로 호출: (A,B) 순서/전치 뒤집기
   const cublasOperation_t opA_cm = transB ? CUBLAS_OP_T : CUBLAS_OP_N; // B op
   const cublasOperation_t opB_cm = transA ? CUBLAS_OP_T : CUBLAS_OP_N; // A op
   return cublasSgemm(
@@ -87,11 +88,6 @@ static inline cublasStatus_t sgemm_rm(
 // gZ = gY ⊙ act'(Z)
 // (옵션) gC = beta * gZ
 // (옵션) gBias 누적(Scalar/PerM/PerN)
-// 템플릿 파라미터:
-//   AK       : 활성화 종류
-//   FUSE_GC  : gC 동시 계산 여부
-//   BM       : BiasMode (None/PerM/PerN/Full=Scalar)
-//   HasBias  : gBias 버퍼 존재 여부
 template<ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias>
 __global__ void bwd_epilogue_kernel(
     const float* __restrict__ gY, int ldgY,
@@ -110,7 +106,8 @@ __global__ void bwd_epilogue_kernel(
   const float gy = gY[m * ldgY + n];
   const float z  = Z [m * ldZ  + n];
 
-  const float gz = apply_act_grad_runtime(z, gy, static_cast<ActKind>(AK), leaky_slope);
+  // 컴파일타임 활성화: 파생을 직접 곱해 오버헤드 줄임
+  const float gz = gy * act_deriv<AK>(z, leaky_slope);
 
   // 1) gZ 기록 (ld = N)
   gZ[m * N + n] = gz;
@@ -120,7 +117,7 @@ __global__ void bwd_epilogue_kernel(
     if (gC) gC[m * ldgC + n] = beta * gz;
   }
 
-  // 3) gBias 누적 (정책화로 런타임 분기 제거)
+  // 3) gBias 누적 (정책화)
   if constexpr (HasBias) {
     if constexpr (BM == BiasMode::PerM) {
       atomicAdd(&gBias[m], gz);
@@ -128,8 +125,6 @@ __global__ void bwd_epilogue_kernel(
       atomicAdd(&gBias[n], gz);
     } else if constexpr (BM == BiasMode::Full) { // Scalar
       atomicAdd(gBias, gz);
-    } else {
-      // BiasMode::None: do nothing
     }
   }
 }
@@ -155,7 +150,7 @@ static inline void launch_bwd_epilogue_cfg(
 // ============================ 메인 ============================
 void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 {
-  NVTX_RANGE("regemm::bwd", 0xFFAA66);
+  AI_NVTX_RANGE("regemm.bwd", nvtx::Color::Orange);
 
   const int M = p.M, N = p.N, K = p.K;
   const int ldgY = p.ldgY;
@@ -163,8 +158,8 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 
   // 기본 가드
   if (M <= 0 || N <= 0 || K <= 0) throw std::invalid_argument("invalid dims");
-  if (!p.gY || !p.Z) throw std::invalid_argument("gY/Z is null");
-  if (ldgY < N || ldZ < N) throw std::invalid_argument("ldgY/ldZ < N");
+  if (!p.gY || !p.Z)              throw std::invalid_argument("gY/Z is null");
+  if (ldgY < N || ldZ < N)        throw std::invalid_argument("ldgY/ldZ < N");
 
   // -------- gZ scratch 준비 (캡처-세이프 우선) --------
   float* gZ = nullptr;
@@ -185,9 +180,9 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     need_free = true;
   }
 
-  // -------- gC가 요청되었지만 C가 없거나 beta==0 → gC를 0으로 초기화 --------
+  // -------- gC 초기화 (요청됐지만 C가 없거나 beta==0) --------
   if (p.gC && (!p.C || p.beta == 0.f)) {
-    NVTX_RANGE("regemm::bwd::zero_gC", 0x6688FF);
+    AI_NVTX_RANGE("bwd.zero_gC", nvtx::Color::Cyan);
     const size_t bytes = sizeof(float) * static_cast<size_t>(M) * static_cast<size_t>(N);
     REGEMM_CHECK(cudaMemsetAsync(p.gC, 0, bytes, s));
   }
@@ -203,7 +198,7 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
 
   // -------- 에필로그 실행 (gZ, [옵션]gC, [옵션]gBias) --------
   {
-    NVTX_RANGE("regemm::bwd::epilogue", 0x66CC66);
+    AI_NVTX_RANGE("bwd.epilogue", nvtx::Color::Green);
 
     const bool     fuse_gC = (p.C && p.gC && p.beta != 0.f);
     const BiasMode bm      = to_bias_mode(p.bias_kind);
@@ -234,29 +229,29 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
     // ActKind × FUSE_GC 분기
     switch (p.act) {
       case ActKind::ReLU:
-        if (fuse_gC) { DISPATCH_BIAS(ActKind::ReLU,       true)  }
-        else          { DISPATCH_BIAS(ActKind::ReLU,       false) }
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::ReLU,      true)  }
+        else          { DISPATCH_BIAS(ActKind::ReLU,      false) }
         break;
       case ActKind::LeakyReLU:
-        if (fuse_gC) { DISPATCH_BIAS(ActKind::LeakyReLU,  true)  }
-        else          { DISPATCH_BIAS(ActKind::LeakyReLU,  false) }
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::LeakyReLU, true)  }
+        else          { DISPATCH_BIAS(ActKind::LeakyReLU, false) }
         break;
       case ActKind::GELU:
-        if (fuse_gC) { DISPATCH_BIAS(ActKind::GELU,       true)  }
-        else          { DISPATCH_BIAS(ActKind::GELU,       false) }
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::GELU,      true)  }
+        else          { DISPATCH_BIAS(ActKind::GELU,      false) }
         break;
       case ActKind::Sigmoid:
-        if (fuse_gC) { DISPATCH_BIAS(ActKind::Sigmoid,    true)  }
-        else          { DISPATCH_BIAS(ActKind::Sigmoid,    false) }
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::Sigmoid,   true)  }
+        else          { DISPATCH_BIAS(ActKind::Sigmoid,   false) }
         break;
       case ActKind::Tanh:
-        if (fuse_gC) { DISPATCH_BIAS(ActKind::Tanh,       true)  }
-        else          { DISPATCH_BIAS(ActKind::Tanh,       false) }
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::Tanh,      true)  }
+        else          { DISPATCH_BIAS(ActKind::Tanh,      false) }
         break;
       case ActKind::None:
       default:
-        if (fuse_gC) { DISPATCH_BIAS(ActKind::None,       true)  }
-        else          { DISPATCH_BIAS(ActKind::None,       false) }
+        if (fuse_gC) { DISPATCH_BIAS(ActKind::None,      true)  }
+        else          { DISPATCH_BIAS(ActKind::None,      false) }
         break;
     }
 
@@ -264,8 +259,9 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   }
 
   // -------- GEMMs (cuBLAS) --------
-  NVTX_RANGE("regemm::bwd::gemms", 0xCC6666);
-  // ✅ 디바이스별 캐시 핸들 획득 + 스트림 설정 (캡처 안전)
+  AI_NVTX_RANGE("bwd.gemms", nvtx::Color::Red);
+
+  // 디바이스별 캐시 핸들 획득 + 스트림 설정
   cublasHandle_t h = acquire_cublas_handle();
   CUBLAS_CHECK(cublasSetStream(h, s));
 
@@ -294,9 +290,6 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
       /*C=*/(float*)p.gB, /*ldc=*/p.ldgB));
   }
 
-  // 🔵 핸들 파괴 금지 (프로세스 종료 시 정리하거나 별도 shutdown API에서)
-  // CUBLAS_CHECK(cublasDestroy(h)); // 유지
-
   // -------- gZ 해제 (내부 할당시에만) --------
   if (need_free) {
 #if CUDART_VERSION >= 11020
@@ -307,4 +300,4 @@ void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s)
   }
 }
 
-} // namespace regemm
+} // namespace ai::cuda::shim

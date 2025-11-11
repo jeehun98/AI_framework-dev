@@ -1,33 +1,35 @@
 // backends/cuda/ops/_common/shim/tensor_layout.hpp
-
 #pragma once
-#include "ai_defs.hpp"
-#include "ai_tensor.hpp"
-#include "ai_validate.hpp"
-#include <limits>
 #include <cstdint>
+#include "ai_defs.hpp"      // AI_INLINE
+#include "ai_tensor.hpp"    // Tensor
+#include "ai_validate.hpp"  // is_cuda_f32_rowmajor()
+#include "numeric.hpp"      // fits_int32()
 
-namespace ai {
+namespace ai::cuda::shim {
 
-// RowMajor 2D의 유효 ld 추론 (stride[0] 우선, 없으면 N)
-[[nodiscard]] inline int64_t infer_ld_rowmajor_2d(const ai::Tensor& t) noexcept {
+// Row-major 2D: stride[0]가 양수면 LD로, 아니면 N 사용
+[[nodiscard]] AI_INLINE std::int64_t infer_ld_rowmajor_2d(const Tensor& t) noexcept {
   if (t.desc.shape.size() != 2) return 0;
   if (t.desc.stride.size() >= 2) {
-    const int64_t ld0 = t.desc.stride[0];
+    const std::int64_t ld0 = t.desc.stride[0];
     if (ld0 > 0) return ld0;
   }
-  return t.desc.shape[1];
+  return static_cast<std::int64_t>(t.desc.shape[1]);
 }
 
-// Z 버퍼 검증 (ldZ 함께 반환)
-[[nodiscard]] inline bool
-validate_z_buffer(const ai::Tensor* Z, int64_t M, int64_t N, int& out_ldZ) noexcept {
+// Z 버퍼 검증 + ldZ 산출 (true=유효)
+[[nodiscard]] AI_INLINE bool
+validate_z_buffer(const Tensor* Z, std::int64_t M, std::int64_t N, int& out_ldZ) noexcept {
   if (!Z) return false;
-  if (!ai::is_cuda_f32_rowmajor(*Z)) return false;
+  if (!is_cuda_f32_rowmajor(*Z)) return false;           // 디바이스/레이아웃/dtype/랭크 검사
+  if (Z->desc.shape.size() != 2) return false;
   if (Z->desc.shape[0] != M || Z->desc.shape[1] != N) return false;
-  const int64_t ldZ64 = infer_ld_rowmajor_2d(*Z);
-  if (ldZ64 < N) return false;
-  if (ldZ64 < 0 || ldZ64 > static_cast<int64_t>(std::numeric_limits<int>::max())) return false;
+
+  const std::int64_t ldZ64 = infer_ld_rowmajor_2d(*Z);
+  if (ldZ64 < N) return false;                           // Row-major 규칙 위반
+  if (!fits_int32(ldZ64)) return false;                  // int 변환 안전성
+
   out_ldZ = static_cast<int>(ldZ64);
   return true;
 }

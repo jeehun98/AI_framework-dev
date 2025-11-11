@@ -1,29 +1,42 @@
 // backends/cuda/ops/_common/shim/ai_shim.hpp
 #pragma once
-// 기존 단일 ai_shim을 완전히 대체하는 집계 헤더 (기능 추가 없음)
+//
+// 경량 공용 우산 헤더(ODR/빌드시간 최소화).
+// - heavy 헤더(activations/bias/traits/epilogue_functors)는 기본 미포함.
+// - 커널/런처에서 필요한 것만 개별 include 권장.
+//
 
-// ---- Core (항상 필요) ----
-#include "ai_status.hpp"
-#include "ai_device.hpp"
-#include "ai_stream.hpp"
-#include "ai_capture.hpp"
-#include "ai_memops.hpp"
-#include "ai_cuda_check.hpp"
-#include "ai_tensor.hpp"
-#include "ai_validate.hpp"
-#include "ai_nvtx.hpp"
-#include "ai_ops_base.hpp"
+// ----- Base (항상 먼저) -----
+#include "ai_defs.hpp"      // __host__/__device__/AI_RD 등
+#include "ai_status.hpp"    // Status
 
-// ---- New: 공용 enums/레이아웃/워크스페이스(가벼움) ----
-#include "enums.hpp"       // ActKind, BiasKind (ABI: enum class : int)
-#include "layout.hpp"      // valid_ld_rowmajor, resolve_ld
-#include "workspace.hpp"   // is_workspace_aligned
+// ----- Core Types/Enums -----
+#include "ai_device.hpp"    // Device/DType/Layout + dtype_size
+#include "enums.hpp"        // ActKind, BiasKind (단일 소스)
 
-// ---- 선택(무거움): 커널에서만 필요할 수 있음 ----
-// 필요시 이 파일에서 켜도 되지만, kernels.cu에서 직접 include 권장
-// #include "activations.hpp"    // apply_act_runtime, act_deriv 등
-// #include "bias.hpp"           // expected_bias_elems
-// #include "traits.hpp"         // vec_width, pack_t 등 (만들 예정이면)
-// #include "vector_io.hpp"      // ldg_vec/stg_vec
-// #include "broadcast.hpp"      // PerM/PerN 인덱싱
-// #include "epilogue_functors.hpp" // (α·acc+β·C+bias)→act→(dropout)
+// ----- Streams & Runtime Guards -----
+#include "ai_stream.hpp"    // StreamHandle, as_cuda_stream
+#include "ai_cuda_check.hpp"// AI_CUDA_CHECK/TRy/LAUNCH
+#include "ai_capture.hpp"   // 캡처 상태/가드
+#include "ai_memops.hpp"    // copy_{d2d,h2d,d2h}_async, set_d_async, alloc_d/free_d
+
+// ----- Tensor / Validation -----
+#include "numeric.hpp"         // fits_int32
+#include "layout.hpp"          // valid_ld_rowmajor, resolve_ld
+#include "tensor_layout.hpp"   // infer_ld_rowmajor_2d, validate_z_buffer
+#include "ai_tensor.hpp"       // Tensor/Descriptor
+#include "ai_validate.hpp"     // is_cuda_f32_rowmajor 등
+
+// ----- Tooling -----
+#include "ai_nvtx.hpp"      // NVTX Range/Mark
+#include "workspace.hpp"    // is_workspace_aligned
+
+// ----- Ops meta (경량) -----
+#include "ai_ops_base.hpp"  // GemmAttrs (ActKind은 enums.hpp 참조)
+
+// ----- Heavy (선택: 커널에서 직접 include 권장) -----
+// #include "math_compat.hpp"        // expf_compat/tanhf_compat 등
+// #include "activations.hpp"        // act_apply/apply_act_runtime
+// #include "bias.hpp"               // load_bias/expected_bias_elems
+// #include "traits.hpp"             // Epilogue<...> 정책 템플릿
+// #include "epilogue_functors.hpp"  // 실행 시 에필로그 조립

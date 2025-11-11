@@ -1,39 +1,32 @@
 // backends/cuda/ops/_common/shim/traits.hpp
 #pragma once
-#include "ai_defs.hpp"         // __host__/__device__ 가드
-#include "enums.hpp"           // ActKind, BiasKind
-#include "activations.hpp"     // act_apply<AK>(x, leaky)
-#include "bias.hpp"            // load_bias(p,m,n)
+#include "ai_defs.hpp"       // AI_RD
+#include "enums.hpp"         // ActKind, BiasKind
+#include "activations.hpp"   // act_apply<AK>(x, leaky)
+#include "bias.hpp"          // load_bias(p,m,n)
 
 namespace ai::cuda::shim {
 
-// ------------------------------------------------------------
-// 컴파일타임 Bias 모드 (런타임 BiasKind ↔ 컴파일타임 BiasMode 브릿지)
-// ------------------------------------------------------------
+  
+// 런타임 BiasKind → 컴파일타임 정책
+// Full: 좌표 독립(Scalar 1개) 바이어스
 enum class BiasMode : int { None = 0, PerM = 1, PerN = 2, Full = 3 };
 
-AI_RD inline BiasMode to_bias_mode(BiasKind k) {
+inline constexpr BiasMode to_bias_mode(BiasKind k) noexcept {
   switch (k) {
     case BiasKind::PerM:   return BiasMode::PerM;
     case BiasKind::PerN:   return BiasMode::PerN;
-    case BiasKind::Scalar: return BiasMode::Full; // 좌표 불필요
+    case BiasKind::Scalar: return BiasMode::Full;
     case BiasKind::None:
     default:               return BiasMode::None;
   }
 }
 
-// ------------------------------------------------------------
-// Epilogue 정책 (α·acc + β·C + bias) → act → [dropout은 외부 적용] → D
-// 템플릿 파라미터:
-//   AK    : 활성화 종류 (ActKind)
-//   BM    : Bias 모드   (BiasMode)
-//   HasC  : C(=addend) 사용 여부 (컴파일타임 포함/제외)
-//   SaveZ : pre-activation(Z) 저장 여부
-//
-// 요구사항(P 타입):
-//   p.alpha, p.beta, p.leaky_slope, p.bias, p.bias_kind
-//   (옵션) p.M, p.N  — PerM/PerN 디버그 또는 load_bias 템플릿에서 사용
-// ------------------------------------------------------------
+// Epilogue: (α·acc + β·C + bias) → act → [Z 저장 옵션]
+// AK    : 활성화 종류
+// BM    : Bias 정책
+// HasC  : C(addend) 사용 여부
+// SaveZ : pre-activation(Z) 저장 여부
 template<ActKind AK, BiasMode BM, bool HasC, bool SaveZ>
 struct Epilogue {
   template <typename P>
@@ -44,28 +37,31 @@ struct Epilogue {
       const P& p,
       int m, int n,
       float acc,
-      float bias_j = 0.f,   // PerN 프리패치 값 (선택)
-      float bias_m = 0.f    // PerM 캐시 값   (선택)
-  ) {
+      float bias_j = 0.f,   // PerN 프리패치
+      float bias_m = 0.f    // PerM 캐시
+  ) noexcept {
     // 1) α·acc
     float pre = (p.alpha == 1.f) ? acc : (p.alpha * acc);
 
-    // 2) + β·C (컴파일타임 제거 가능)
+    // 2) + β·C (beta==0이면 불필요한 로드 생략)
     if constexpr (HasC) {
-      const float cin = C[m * ldc + n];
-      pre = fmaf(p.beta, cin, pre); // p.beta==0이면 의미적으로 no-op
+      if (p.beta != 0.f) {
+        const float cin = C[m * ldc + n];
+        pre = fmaf(p.beta, cin, pre);
+      }
     }
 
-    // 3) + bias (컴파일타임 분기)
+    // 3) + bias (정책별)
     if constexpr (BM == BiasMode::PerN) {
       pre += bias_j;
     } else if constexpr (BM == BiasMode::PerM) {
       pre += bias_m;
     } else if constexpr (BM == BiasMode::Full) {
-      pre += load_bias(p, m, n);     // Scalar 1개 경로(좌표 무시)
+      // 스칼라(1) 기준: 좌표 독립
+      pre += load_bias(p, m, n);
     } // None → no-op
 
-    // 4) (옵션) Z 저장: ldZ==0 → ldd 사용
+    // 4) Z 저장 (옵션)
     if constexpr (SaveZ) {
       const int ldZ_eff = (ldZ == 0 ? ldd : ldZ);
       if (Z) Z[m * ldZ_eff + n] = pre;
