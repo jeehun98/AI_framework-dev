@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# File: graph_executor_v2/python/test/integration/smoke_capture_plan_and_static_graph.py
+# File: graph_executor_v2/python/test/integration/smoke_capture_plan_and_static_graph2.py
 
 from __future__ import annotations
 import os, sys, math, json

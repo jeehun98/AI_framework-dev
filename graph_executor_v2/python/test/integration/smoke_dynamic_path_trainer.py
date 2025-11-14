@@ -1,10 +1,12 @@
-# tests/smoke_dynamic_path_trainer.py
+# -*- coding: utf-8 -*-
+# File: tests/smoke_dynamic_path_trainer.py
+
 from __future__ import annotations
 import os, sys, math
 import cupy as cp
 
 THIS = os.path.abspath(os.path.dirname(__file__))
-ROOT = os.path.abspath(os.path.join(THIS, "..",".."))
+ROOT = os.path.abspath(os.path.join(THIS, "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
@@ -18,6 +20,35 @@ from graph_executor_v2.layers.conditional import If, Repeat, EarlyExit
 
 from graph_executor_v2.losses.softmax_ce import SoftmaxCrossEntropy
 from graph_executor_v2.optim.adamw import AdamWOpt
+
+
+# ------------------------
+# Helpers
+# ------------------------
+def _adamw(lr=1e-3, wd=1e-4):
+    opt = AdamWOpt([], lr=lr, wd=wd)
+    if hasattr(opt, "ensure_initialized"):
+        opt.ensure_initialized()
+    return opt
+
+
+def _ptr_of_logits(tg) -> int:
+    """
+    TrainGraph에서 logits 버퍼 ptr을 안정적으로 꺼내는 헬퍼.
+    - 우선 tg.io / tg._io 안의 "logits" 항목을 찾고,
+    - 없으면 tg.logits 속성을 fallback으로 사용.
+    """
+    io = getattr(tg, "io", None) or getattr(tg, "_io", None)
+    if io is not None and "logits" in io:
+        logits = io["logits"]
+        raw = getattr(logits, "data", logits)
+        return int(raw.ptr)
+
+    logits = getattr(tg, "logits", None)
+    if logits is None:
+        raise AssertionError("TrainGraph에서 logits 버퍼를 찾을 수 없습니다.")
+    raw = getattr(logits, "data", logits)
+    return int(raw.ptr)
 
 
 # ------------------------
@@ -102,6 +133,7 @@ def make_model_dynamic_earlyexit(
         Dense(hidden, activation="none", initializer="he", use_native_bwd=True),
         ActivationLayer(act="relu", save_y=False, name="EE1"),
     )
+
     def exit_fn(ctx):
         ctx["earlyexit_checked"] = True
         return False
@@ -115,16 +147,6 @@ def make_model_dynamic_earlyexit(
     model.build((N, T, I))
     model.train(True)
     return model
-
-
-# ------------------------
-# Helpers
-# ------------------------
-def _adamw(lr=1e-3, wd=1e-4):
-    opt = AdamWOpt([], lr=lr, wd=wd)
-    if hasattr(opt, "ensure_initialized"):
-        opt.ensure_initialized()
-    return opt
 
 
 # ------------------------
@@ -153,12 +175,12 @@ def run_smoke_dynamic_if(tag: str):
     L1 = model.one_step_dynamic(X_small, y_small, loss=loss, optimizer=opt, ctx=ctx)
     assert isinstance(L1, float) and math.isfinite(L1)
 
-    logits_ptr_else = int(model.tg.logits.data.ptr)
+    logits_ptr_else = _ptr_of_logits(model.tg)
 
     # 동일 분기 재사용 → 포인터 동일
     L2 = model.one_step_dynamic(X_small, y_small, loss=loss, optimizer=opt, ctx=ctx)
     assert isinstance(L2, float) and math.isfinite(L2)
-    assert int(model.tg.logits.data.ptr) == logits_ptr_else, \
+    assert _ptr_of_logits(model.tg) == logits_ptr_else, \
         "logits buffer ptr must be stable for cached else-branch graph"
 
     # then-branch (N=64 ≥ 32, 분기 변경 → 다른 그래프)
@@ -169,7 +191,7 @@ def run_smoke_dynamic_if(tag: str):
     L3 = model.one_step_dynamic(X_big, y_big, loss=loss, optimizer=opt,
                                 ctx={"variant": {"unroll": 1, "amp": "fp32"}})
     assert isinstance(L3, float) and math.isfinite(L3)
-    logits_ptr_then = int(model.tg.logits.data.ptr)
+    logits_ptr_then = _ptr_of_logits(model.tg)
     assert logits_ptr_then != logits_ptr_else, \
         "different branch should create/use different cached graph (different logits buffer)"
 
@@ -196,7 +218,7 @@ def run_smoke_dynamic_repeat(tag: str):
     ctx = {"variant": {"unroll": 1}}
     L1 = model.one_step_dynamic(X, y, loss=loss, optimizer=opt, ctx=ctx)
     assert isinstance(L1, float) and math.isfinite(L1)
-    logits_ptr_1 = int(model.tg.logits.data.ptr)
+    logits_ptr_1 = _ptr_of_logits(model.tg)
 
     # X를 이동시켜 steps_fn 반복 횟수 변화(1→2→3 등), shape/dtype 동일
     X2 = X + 0.5
@@ -204,7 +226,7 @@ def run_smoke_dynamic_repeat(tag: str):
     assert isinstance(L2, float) and math.isfinite(L2)
 
     # 동일 서명/variant → 같은 캡처 재사용 → 포인터 동일
-    assert int(model.tg.logits.data.ptr) == logits_ptr_1, \
+    assert _ptr_of_logits(model.tg) == logits_ptr_1, \
         "repeat with same signature/variant should reuse the same cached graph"
 
     # repeat_batches 사용 예: 서로 다른 배치를 T회 연속 적용
@@ -265,12 +287,12 @@ def run_dropout_rng_epoch_change(tag: str):
 
     ctx = {"variant": {"unroll": 1}, "rng_epoch": 0}
     L1 = model.one_step_dynamic(X, y, loss=loss, optimizer=opt, ctx=ctx)
-    ptr1 = int(model.tg.logits.data.ptr)
+    ptr1 = _ptr_of_logits(model.tg)
 
     # rng_epoch 같으면 같은 마스크 → 손실 같을 가능성 높음(결정적 구현 가정)
     ctx_same = {"variant": {"unroll": 1}, "rng_epoch": 0}
     L1b = model.one_step_dynamic(X, y, loss=loss, optimizer=opt, ctx=ctx_same)
-    ptr1b = int(model.tg.logits.data.ptr)
+    ptr1b = _ptr_of_logits(model.tg)
     assert ptr1b == ptr1, "same graph should be reused (logits ptr stable)"
     # 같으면 베스트, 혹시 다를 수도 있으니 완전 동일을 강제하진 않음
     # assert abs(L1b - L1) < 1e-7
@@ -278,7 +300,7 @@ def run_dropout_rng_epoch_change(tag: str):
     # rng_epoch 바꾸면 마스크 바뀜 → 같은 그래프 재사용이지만 손실이 달라질 확률 큼
     ctx_new = {"variant": {"unroll": 1}, "rng_epoch": 1}
     L2 = model.one_step_dynamic(X, y, loss=loss, optimizer=opt, ctx=ctx_new)
-    ptr2 = int(model.tg.logits.data.ptr)
+    ptr2 = _ptr_of_logits(model.tg)
     assert ptr2 == ptr1, "rng_epoch only should not change graph key (reuse same graph)"
     assert L1 != L2, "with different rng_epoch, dropout mask is expected to change loss"
 
@@ -328,6 +350,7 @@ def main():
     run_pool_lru_cap("case-lru-1")
     print("[ALL OK] dynamic path smoke completed.")
     print("Tip) Nsight 타임라인에서 [CAPTURE]/[DYN] replay 태그를 함께 확인하세요.")
+
 
 if __name__ == "__main__":
     main()

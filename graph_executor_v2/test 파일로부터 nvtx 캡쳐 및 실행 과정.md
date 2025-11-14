@@ -1,8 +1,7 @@
 좋아—아래 순서대로 하면 캡처 → 열기 → NVTX로 범위 해석 → 수치 요약까지 한 번에 정리됩니다. (Windows 기준)
 
 1) 기본 캡처 (당신이 쓴 명령어 그대로)
-nsys profile --trace=cuda,nvtx -o run_trace --force-overwrite=true `
-  python smoke_static_dynamic_optim_and_pool.py
+nsys profile --trace=cuda,nvtx -o run_trace --force-overwrite=true python smoke_static_dynamic_optim_and_pool.py
 
 
 생성물:
@@ -174,7 +173,7 @@ def train_step_ranges():
     with nvtx_range("forward"):   yield "forward"
     # 다음으로 loss, backward, optimizer 등은 호출부에서 각각 감싸도 OK
 
-# 사용 예시
+# 사용 예시 
 with nvtx_range("capture"):     # --capture-range=nvtx 를 쓸 계획이라면
     with nvtx_range("forward"):
         out = model(x)
