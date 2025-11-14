@@ -470,7 +470,7 @@ static inline void launch_ex_cfg_bm(const GemmBiasActParamsEx& p, BiasMode bm, c
   }
 }
 
-static inline void launch_gemm_bias_act_f32_smoke_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
+void launch_gemm_bias_act_f32_smoke_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
   dim3 block(16, 16);
   dim3 grid((p.N + block.x - 1) / block.x, (p.M + block.y - 1) / block.y);
   AI_NVTX_RANGE("regemm.smoke_ex", nvtx::Color::Teal);

@@ -5,13 +5,15 @@ from __future__ import annotations
 import os, sys, math, json
 import cupy as cp
 
-# 🔴 캡처 전에 디버그 표면 ON (plan/key/tags 노출)
-os.environ.setdefault("GEV2_EXPOSE_DEBUG", "1")
-
 THIS = os.path.abspath(os.path.dirname(__file__))
 ROOT = os.path.abspath(os.path.join(THIS, "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+
+
+# 🔴 캡처 전에 디버그 표면 ON (plan/key/tags 노출)
+os.environ.setdefault("GEV2_EXPOSE_DEBUG", "1")
+
 
 # ===== 프레임워크 import =====
 from graph_executor_v2.layers.sequential import Sequential
