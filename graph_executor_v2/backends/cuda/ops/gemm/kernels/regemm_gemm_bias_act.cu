@@ -1,20 +1,20 @@
-// backends/cuda/ops/gemm/kernels/regemm_gemm_bias_act.cu
 #include <cuda_runtime.h>
 #include <cstdint>
 
-#include "../detail/config.h"
-#include "../detail/api.h"
-#include "../detail/activations.h"
-#include "../detail/bias.h"
-// 기존 traits.hpp의 에필로그 구현 대신, 공통 모듈 래퍼를 포함
-#include "../detail/epilogue_adaptor.hpp"
-#include "backends/cuda/ops/_common/shim/nvtx.hpp"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#include "backends/cuda/ops/_common/shim/activations.hpp"
+#include "backends/cuda/ops/_common/shim/bias.hpp"
+#include "backends/cuda/ops/_common/shim/traits.hpp"
+#include "backends/cuda/ops/_common/shim/ai_nvtx.hpp"
+#include "backends/cuda/ops/gemm/api.hpp"
+
+#include "backends/cuda/ops/gemm/kernels/config.hpp"
 
 
-namespace regemm {
+namespace ai::cuda::shim {
 
 // ====================================================================
-// 공통 타일/스레드 파라미터
+// 타일/스레드 파라미터 (api.hpp에서 정의된 매크로 사용)
 // ====================================================================
 constexpr int BM  = REGEMM_TILE_M;
 constexpr int BN  = REGEMM_TILE_N;
@@ -42,7 +42,7 @@ static_assert(TDY * THR_M == BM, "BM must equal TDY*THR_M");
 #endif
 
 // ====================================================================
-// Smoke (소규모/비타일) — 런타임 분기 유지 (FWD 기본)
+// (1) Smoke 커널 — 작은 문제용 (FWD)
 // ====================================================================
 __global__ void gemm_bias_act_f32_smoke(GemmBiasActParams p) {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
@@ -62,25 +62,21 @@ __global__ void gemm_bias_act_f32_smoke(GemmBiasActParams p) {
   }
 
   float pre = p.alpha * acc;
-  if (p.beta != 0.f && C) {
-    pre = fmaf(p.beta, C[m * p.ldc + n], pre);
-  }
+  if (p.beta != 0.f && C) pre = fmaf(p.beta, C[m * p.ldc + n], pre);
   pre += load_bias(p, m, n);
 
   D[m * p.ldd + n] = apply_act_runtime(pre, p.act, p.leaky_slope);
 }
 
-void launch_gemm_bias_act_f32_smoke(const GemmBiasActParams& p, cudaStream_t s) {
+static inline void launch_gemm_bias_act_f32_smoke(const GemmBiasActParams& p, cudaStream_t s) {
   dim3 block(16, 16);
   dim3 grid((p.N + block.x - 1) / block.x, (p.M + block.y - 1) / block.y);
+  AI_NVTX_RANGE("regemm.smoke", nvtx::Color::Gray);
   gemm_bias_act_f32_smoke<<<grid, block, 0, s>>>(p);
 }
 
 // ====================================================================
-// Tiled kernel (고성능 경로, FWD) — Epilogue 정책화(HasC/BiasMode)
-//  * HasC: C(addend) 사용 여부 (FWD 일반적으로 false)
-//  * BMmode: Bias 모드 (None/PerM/PerN/Full=Scalar)
-//  * AK   : 활성화 종류
+// (2) Tiled 커널 (FWD) — Epilogue 정책화(HasC/BiasMode)
 // ====================================================================
 template<int BM_, int BN_, int BK_, ActKind AK, BiasMode BMmode, bool HasC>
 __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
@@ -225,7 +221,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams p) {
 }
 
 // ====================================================================
-// EX (Z stash) — Smoke + Tiled(정책화: HasC/BiasMode/SaveZ)
+// (3) EX 경로 (Z stash) — Smoke + Tiled(HasC=false, SaveZ 정책)
 // ====================================================================
 __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
   const int m = blockIdx.y * blockDim.y + threadIdx.y;
@@ -248,15 +244,10 @@ __global__ void gemm_bias_act_f32_smoke_ex(GemmBiasActParamsEx p) {
   }
 
   float pre = p.alpha * acc;
-  if (p.beta != 0.f && C) {
-    pre = fmaf(p.beta, C[m * p.ldc + n], pre);
-  }
+  if (p.beta != 0.f && C) pre = fmaf(p.beta, C[m * p.ldc + n], pre);
   pre += load_bias(p, m, n);
 
-  if (p.save_preact && Z) {
-    Z[m * ldZ + n] = pre;
-  }
-
+  if (p.save_preact && Z) Z[m * ldZ + n] = pre;
   D[m * p.ldd + n] = apply_act_runtime(pre, p.act, p.leaky_slope);
 }
 
@@ -371,7 +362,7 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
     bias_j[j] = (n < p.N) ? load_bias(p, 0, n) : 0.f;
   }
 
-  using EP = Epilogue<AK, BMmode, HasC, SaveZ>;
+  using EP = Epilogue<AK, BMmode, /*HasC*/false, SaveZ>;
   const int ldc = p.ldc, ldd = p.ldd;
 
   #pragma unroll
@@ -404,14 +395,13 @@ __global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p) {
 }
 
 // ====================================================================
-// 런처들 (비-EX / EX)
+// (4) 런처 (이 파일 내부에서 제공; 외부 TU에서도 호출 가능)
 // ====================================================================
-
-// ---- 비-EX tiled 런처 ------------------------------------------------
 template<ActKind AK, BiasMode BMmode, bool HasC>
 static inline void launch_fwd_cfg(const GemmBiasActParams& p, cudaStream_t s) {
   dim3 block(TDX, TDY);
   dim3 grid((p.N + BN - 1) / BN, (p.M + BM - 1) / BM);
+  AI_NVTX_RANGE("regemm.tiled", nvtx::Color::Blue);
   gemm_bias_act_f32_tiled_kernel<BM, BN, BK, AK, BMmode, HasC><<<grid, block, 0, s>>>(p);
 }
 
@@ -426,7 +416,7 @@ static inline void launch_fwd_cfg_bm(const GemmBiasActParams& p, BiasMode bm, cu
   }
 }
 
-void launch_gemm_bias_act_f32_tiled(const GemmBiasActParams& p, cudaStream_t s) {
+static inline void launch_gemm_bias_act_f32_tiled(const GemmBiasActParams& p, cudaStream_t s) {
   const BiasMode bm = to_bias_mode(p.bias_kind);
   const bool hasC = (p.beta != 0.f && p.C != nullptr);
 
@@ -459,24 +449,18 @@ void launch_gemm_bias_act_f32_tiled(const GemmBiasActParams& p, cudaStream_t s) 
   }
 }
 
-// ---- EX smoke 런처 ---------------------------------------------------
-void launch_gemm_bias_act_f32_smoke_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
-  dim3 block(16, 16);
-  dim3 grid((p.N + block.x - 1) / block.x, (p.M + block.y - 1) / block.y);
-  gemm_bias_act_f32_smoke_ex<<<grid, block, 0, s>>>(p);
-}
-
-// ---- EX tiled 런처 ---------------------------------------------------
+// ---- EX 런처 ----
 template<ActKind AK, BiasMode BMmode, bool HasC, bool SaveZ>
 static inline void launch_ex_cfg(const GemmBiasActParamsEx& p, cudaStream_t s) {
   dim3 block(TDX, TDY);
   dim3 grid((p.N + BN - 1) / BN, (p.M + BM - 1) / BM);
+  AI_NVTX_RANGE("regemm.tiled_ex", nvtx::Color::Cyan);
   gemm_bias_act_f32_tiled_kernel_ex<BM, BN, BK, AK, BMmode, HasC, SaveZ><<<grid, block, 0, s>>>(p);
 }
 
 template<ActKind AK, bool SaveZ>
 static inline void launch_ex_cfg_bm(const GemmBiasActParamsEx& p, BiasMode bm, cudaStream_t s) {
-  constexpr bool HasC = false; // EX FWD에서는 일반적으로 C 미사용
+  constexpr bool HasC = false;
   switch (bm) {
     case BiasMode::PerM: launch_ex_cfg<AK, BiasMode::PerM, HasC, SaveZ>(p, s); break;
     case BiasMode::PerN: launch_ex_cfg<AK, BiasMode::PerN, HasC, SaveZ>(p, s); break;
@@ -486,7 +470,14 @@ static inline void launch_ex_cfg_bm(const GemmBiasActParamsEx& p, BiasMode bm, c
   }
 }
 
-void launch_gemm_bias_act_f32_tiled_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
+void launch_gemm_bias_act_f32_smoke_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
+  dim3 block(16, 16);
+  dim3 grid((p.N + block.x - 1) / block.x, (p.M + block.y - 1) / block.y);
+  AI_NVTX_RANGE("regemm.smoke_ex", nvtx::Color::Teal);
+  gemm_bias_act_f32_smoke_ex<<<grid, block, 0, s>>>(p);
+}
+
+static inline void launch_gemm_bias_act_f32_tiled_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
   const BiasMode bm = to_bias_mode(p.bias_kind);
   const bool saveZ = (p.save_preact != 0);
 
@@ -520,7 +511,7 @@ void launch_gemm_bias_act_f32_tiled_ex(const GemmBiasActParamsEx& p, cudaStream_
 }
 
 // ====================================================================
-// 최상위 FWD 엔트리 (호환 유지)
+// (5) 최상위 엔트리 (이 파일 내부 제공; 외부에서 호출 가능)
 // ====================================================================
 void gemm_bias_act_f32(const GemmBiasActParams& p, cudaStream_t s) {
   const bool tiny = (p.M * p.N < 4096) || (p.K < 8);
@@ -533,63 +524,5 @@ void gemm_bias_act_f32_ex(const GemmBiasActParamsEx& p, cudaStream_t s) {
   if (tiny) launch_gemm_bias_act_f32_smoke_ex(p, s);
   else      launch_gemm_bias_act_f32_tiled_ex(p, s);
 }
-// ====================================================================
-// 명시적 인스턴스화 (링크 안정)
-//  - 필요 활성화만 열어 바이너리 크기 제어 가능
-// ====================================================================
-#ifdef __CUDACC__
 
-// 여기서는 **추가 네임스페이스 열지 않습니다** (이미 regemm 내부임)
-
-// 템플릿 선언(정의는 위에 있음)
-template<int,int,int,ActKind,BiasMode,bool>
-__global__ void gemm_bias_act_f32_tiled_kernel(GemmBiasActParams);
-
-template<int,int,int,ActKind,BiasMode,bool,bool>
-__global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx);
-
-// 현재 컴파일 유닛에서 사용하는 타일 값을 상수로 고정
-constexpr int kBM = BM;
-constexpr int kBN = BN;
-constexpr int kBK = BK;
-
-// ---------- FWD (non-EX) ----------
-#define INSTANTIATE_FWD_FOR_ACT(AK) \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::None, false>(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::None, true >(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerM, false>(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerM, true >(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerN, false>(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::PerN, true >(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::Full, false>(GemmBiasActParams); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel<kBM,kBN,kBK, AK, BiasMode::Full, true >(GemmBiasActParams);
-
-INSTANTIATE_FWD_FOR_ACT(ActKind::None)
-INSTANTIATE_FWD_FOR_ACT(ActKind::ReLU)
-INSTANTIATE_FWD_FOR_ACT(ActKind::LeakyReLU)
-INSTANTIATE_FWD_FOR_ACT(ActKind::GELU)
-INSTANTIATE_FWD_FOR_ACT(ActKind::Sigmoid)
-INSTANTIATE_FWD_FOR_ACT(ActKind::Tanh)
-#undef INSTANTIATE_FWD_FOR_ACT
-
-// ---------- FWD EX (Z-stash) ----------
-#define INSTANTIATE_EX_FOR_ACT(AK) \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::None, false, false>(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerM, false, false>(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerN, false, false>(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::Full, false, false>(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::None, false, true >(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerM, false, true >(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::PerN, false, true >(GemmBiasActParamsEx); \
-  template __global__ void gemm_bias_act_f32_tiled_kernel_ex<kBM,kBN,kBK, AK, BiasMode::Full, false, true >(GemmBiasActParamsEx);
-
-INSTANTIATE_EX_FOR_ACT(ActKind::None)
-INSTANTIATE_EX_FOR_ACT(ActKind::ReLU)
-INSTANTIATE_EX_FOR_ACT(ActKind::LeakyReLU)
-INSTANTIATE_EX_FOR_ACT(ActKind::GELU)
-INSTANTIATE_EX_FOR_ACT(ActKind::Sigmoid)
-INSTANTIATE_EX_FOR_ACT(ActKind::Tanh)
-#undef INSTANTIATE_EX_FOR_ACT
-#endif // __CUDACC__
-
-} // namespace regemm
+} // namespace ai::cuda::shim

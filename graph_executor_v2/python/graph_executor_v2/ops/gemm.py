@@ -31,7 +31,9 @@ class GemmWorkspaces:
         if self.lt_ws is not None and self.lt_ws.dtype != cp.uint8:
             raise ValueError("[capture] work.lt_ws must be uint8 or None")
 
-_WS_CACHE: Dict[Tuple[int,int,int], GemmWorkspaces] = {}
+
+_WS_CACHE: Dict[Tuple[int, int, int], GemmWorkspaces] = {}
+
 
 def ensure_workspaces(M: int, N: int, *, lt_bytes: int = 0) -> GemmWorkspaces:
     dev = int(cp.cuda.runtime.getDevice())
@@ -45,25 +47,36 @@ def ensure_workspaces(M: int, N: int, *, lt_bytes: int = 0) -> GemmWorkspaces:
     else:
         if ws.dZ is None or ws.dZ.shape != (M, N) or ws.dZ.dtype != cp.float32:
             ws.dZ = cp.empty((M, N), dtype=cp.float32)
-        if lt_bytes > 0 and (ws.lt_ws is None or ws.lt_ws.nbytes < lt_bytes or ws.lt_ws.dtype != cp.uint8):
+        if lt_bytes > 0 and (
+            ws.lt_ws is None or ws.lt_ws.nbytes < lt_bytes or ws.lt_ws.dtype != cp.uint8
+        ):
             ws.lt_ws = cp.empty(lt_bytes, dtype=cp.uint8)
     return ws
 
+
 def clear_ws_cache() -> None:
     _WS_CACHE.clear()
+
 
 # -------------------------------
 # Attr helpers
 # -------------------------------
 def _parse_act_to_kind(act: str) -> "g.ActKind":
     s = (act or "none").strip().lower().replace(" ", "").replace("-", "").replace("_", "")
-    if s == "none":    return getattr(g.ActKind, "None")
-    if s == "relu":    return g.ActKind.ReLU
-    if s in ("leakyrelu","lrelu"): return g.ActKind.LeakyReLU
-    if s == "gelu":    return g.ActKind.GELU
-    if s == "sigmoid": return g.ActKind.Sigmoid
-    if s == "tanh":    return g.ActKind.Tanh
+    if s == "none":
+        return getattr(g.ActKind, "None")
+    if s == "relu":
+        return g.ActKind.ReLU
+    if s in ("leakyrelu", "lrelu"):
+        return g.ActKind.LeakyReLU
+    if s == "gelu":
+        return g.ActKind.GELU
+    if s == "sigmoid":
+        return g.ActKind.Sigmoid
+    if s == "tanh":
+        return g.ActKind.Tanh
     raise ValueError(f"unknown act: {act}")
+
 
 def _mk_attrs(act: str, with_bias: bool, leaky_slope: float) -> "g.GemmAttrs":
     a = g.GemmAttrs()
@@ -75,8 +88,10 @@ def _mk_attrs(act: str, with_bias: bool, leaky_slope: float) -> "g.GemmAttrs":
     # save_z는 아래에서 tZ 유무로 일관 설정
     return a
 
+
 def _has(name: str) -> bool:
     return hasattr(g, name)
+
 
 # ============================================================
 # Forward (allocating)
@@ -104,7 +119,7 @@ def forward(
     if bias is not None and not with_bias:
         with_bias = True
     if bias is not None and with_bias is False:
-        raise ValueError("[capture] bias provided but with_bias=False ...")
+        raise ValueError("bias provided but with_bias=False")
 
     tBias = None
     if with_bias:
@@ -121,8 +136,14 @@ def forward(
                 bias = bias.reshape(1, N)
             elif bias.ndim == 2:
                 bm, bn = bias.shape
-                if not ((bm == 1 and bn == N) or (bm == M and bn == 1) or (bm == M and bn == N)):
-                    raise ValueError(f"unsupported bias shape {bias.shape}; expected (1,N)|(M,1)|(M,N)")
+                if not (
+                    (bm == 1 and bn == N)
+                    or (bm == M and bn == 1)
+                    or (bm == M and bn == N)
+                ):
+                    raise ValueError(
+                        f"unsupported bias shape {bias.shape}; expected (1,N)|(M,1)|(M,N)"
+                    )
             else:
                 raise ValueError(f"unsupported bias ndim={bias.ndim}")
         else:
@@ -136,9 +157,10 @@ def forward(
 
     act_is_none = (act or "none").strip().lower() in ("none",)
 
-    # ⬇ Z 버퍼 정책: (1) 호출자가 준 z_out 사용
-    #               (2) 없고 act==none이면 Y 버퍼를 Z로 alias해 항상 제공
-    #               (3) 둘 다 아니면 필요 시만 새로 만들기
+    # ⬇ Z 버퍼 정책:
+    #   (1) 호출자가 준 z_out 사용
+    #   (2) 없고 act==none이면 Y 버퍼를 Z로 alias해 항상 제공
+    #   (3) 둘 다 아니면 필요 시만 새로 할당
     if z_out is not None:
         if z_out.shape != (M, N) or z_out.dtype != cp.float32:
             raise ValueError(f"z_out must be float32[{M},{N}]")
@@ -166,9 +188,15 @@ def forward(
         g.forward_ex_attrs(tA, tB, tBias, tY, attrs, tZ, to_voidp_capsule(stream_ptr))
     else:
         g.forward_ex(
-            tA, tB, tBias, tY,
-            False, False,
-            act, bool(with_bias), float(leaky_slope),
+            tA,
+            tB,
+            tBias,
+            tY,
+            False,
+            False,
+            act,
+            bool(with_bias),
+            float(leaky_slope),
             bool(tZ is not None),
             tZ,
             to_voidp_capsule(stream_ptr),
@@ -177,9 +205,10 @@ def forward(
     if tZ is not None and (return_z or save_z):
         return out, tZ_np
     if return_z:
-        # 호환: 요청은 했지만 커널에서 Z를 만들지 않았다면 alias 반환
+        # 요청은 했지만 커널에서 Z를 만들지 않았다면 alias 반환
         return out, (tZ_np if tZ_np is not None else out)
     return out
+
 
 # ============================================================
 # Backward (allocating)
@@ -198,14 +227,14 @@ def backward(
     want_gB: bool = True,
     want_gBias: bool = False,
     stream: Optional[int] = None,
-    warn_mismatch: bool = False,
+    warn_mismatch: bool = False,  # TODO: 향후 편차 체크에 활용
 ) -> Dict[str, cp.ndarray]:
     M, K = assert_f32_2d(A, "A")
     K2, N = assert_f32_2d(B, "B")
     if K != K2:
         raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
     Mg, Ng = assert_f32_2d(gY, "gY")
-    Mz, Nz = assert_f32_2d(Z,  "Z")
+    Mz, Nz = assert_f32_2d(Z, "Z")
     if (Mg, Ng) != (M, N) or (Mz, Nz) != (M, N):
         raise ValueError(f"Shape mismatch: gY(Z) must be (M={M}, N={N})")
 
@@ -214,42 +243,59 @@ def backward(
     if with_bias is False and want_gBias:
         raise ValueError("want_gBias=True requires with_bias=True")
 
-    tA  = as_tensor_2d(A)
-    tB  = as_tensor_2d(B)
+    tA = as_tensor_2d(A)
+    tB = as_tensor_2d(B)
     tgY = as_tensor_2d(gY)
-    tZ  = as_tensor_2d(Z)
-    tC  = as_tensor_2d(C) if C is not None else None
+    tZ = as_tensor_2d(Z)
+    tC = as_tensor_2d(C) if C is not None else None
 
     gA_arr = empty_like_2d(A) if want_gA else None
     gB_arr = empty_like_2d(B) if want_gB else None
     gC_arr = empty_like_2d(Z) if (C is not None) else None
     gBias_arr = empty_2d(1, N) if (want_gBias and with_bias) else None
 
-    t_gA    = as_tensor_2d(gA_arr)    if gA_arr    is not None else None
-    t_gB    = as_tensor_2d(gB_arr)    if gB_arr    is not None else None
-    t_gC    = as_tensor_2d(gC_arr)    if gC_arr    is not None else None
+    t_gA = as_tensor_2d(gA_arr) if gA_arr is not None else None
+    t_gB = as_tensor_2d(gB_arr) if gB_arr is not None else None
+    t_gC = as_tensor_2d(gC_arr) if gC_arr is not None else None
     t_gBias = as_tensor_2d(gBias_arr) if gBias_arr is not None else None
 
     stream_ptr = get_stream_ptr(stream)
 
     if _has("backward_ex_attrs"):
         attrs = _mk_attrs(act, with_bias, leaky_slope)
-        g.backward_ex_attrs(tA, tB, tC, tgY, tZ, t_gA, t_gB, t_gC, t_gBias, attrs, to_voidp_capsule(stream_ptr))
+        g.backward_ex_attrs(
+            tA, tB, tC, tgY, tZ, t_gA, t_gB, t_gC, t_gBias, attrs, to_voidp_capsule(stream_ptr)
+        )
     else:
         g.backward_ex(
-            tA, tB, tC, tgY, tZ,
-            t_gA, t_gB, t_gC, t_gBias,
-            False, False,
-            act, bool(with_bias), float(leaky_slope),
+            tA,
+            tB,
+            tC,
+            tgY,
+            tZ,
+            t_gA,
+            t_gB,
+            t_gC,
+            t_gBias,
+            False,
+            False,
+            act,
+            bool(with_bias),
+            float(leaky_slope),
             to_voidp_capsule(stream_ptr),
         )
 
     out: Dict[str, cp.ndarray] = {}
-    if gA_arr is not None:    out["gA"]    = gA_arr
-    if gB_arr is not None:    out["gB"]    = gB_arr
-    if gC_arr is not None:    out["gC"]    = gC_arr
-    if gBias_arr is not None: out["gBias"] = gBias_arr
+    if gA_arr is not None:
+        out["gA"] = gA_arr
+    if gB_arr is not None:
+        out["gB"] = gB_arr
+    if gC_arr is not None:
+        out["gC"] = gC_arr
+    if gBias_arr is not None:
+        out["gBias"] = gBias_arr
     return out
+
 
 # ============================================================
 # Forward (capture-safe, NO allocations)
@@ -284,7 +330,13 @@ def forward_into(
     if with_bias:
         if bias is None:
             raise ValueError("[capture] with_bias=True but bias is None")
-        if not (isinstance(bias, cp.ndarray) and bias.dtype == cp.float32 and bias.ndim == 2 and bias.shape == (1, N) and bias.flags.c_contiguous):
+        if not (
+            isinstance(bias, cp.ndarray)
+            and bias.dtype == cp.float32
+            and bias.ndim == 2
+            and bias.shape == (1, N)
+            and bias.flags.c_contiguous
+        ):
             raise ValueError("[capture] bias must be C-contiguous float32[1,N] (PerN)")
         tBias = as_tensor_2d(bias)
 
@@ -292,7 +344,11 @@ def forward_into(
 
     # ⬇ capture-safe: z_out이 없고 act==none이면 Y 버퍼를 Z로 alias해서 항상 제공
     if z_out is not None:
-        if z_out.dtype != cp.float32 or z_out.shape != (M, N) or not z_out.flags.c_contiguous:
+        if (
+            z_out.dtype != cp.float32
+            or z_out.shape != (M, N)
+            or not z_out.flags.c_contiguous
+        ):
             raise ValueError(f"[capture] z_out must be C-contiguous float32[{M},{N}]")
         tZ_np = z_out
     elif act_is_none:
@@ -318,13 +374,20 @@ def forward_into(
         g.forward_ex_attrs(tA, tB, tBias, tY, attrs, tZ, to_voidp_capsule(stream_ptr))
     else:
         g.forward_ex(
-            tA, tB, tBias, tY,
-            False, False,
-            act, bool(with_bias), float(leaky_slope),
+            tA,
+            tB,
+            tBias,
+            tY,
+            False,
+            False,
+            act,
+            bool(with_bias),
+            float(leaky_slope),
             bool(tZ is not None),
             tZ,
             to_voidp_capsule(stream_ptr),
         )
+
 
 # ============================================================
 # Backward (capture-safe, NO allocations)
@@ -352,14 +415,29 @@ def backward_into(
     if K != K2:
         raise ValueError(f"K mismatch: A(K={K}) vs B(K={K2})")
     Mg, Ng = assert_f32_2d(gY, "gY")
-    Mz, Nz = assert_f32_2d(Z,  "Z")
+    Mz, Nz = assert_f32_2d(Z, "Z")
     if (Mg, Ng) != (M, N) or (Mz, Nz) != (M, N):
         raise ValueError(f"[capture] gY/Z must be (M={M}, N={N})")
 
+    # 입력/중간 텐서는 캡처-safe 경로에서 전부 C-contiguous 가정
+    if not (
+        A.flags.c_contiguous
+        and B.flags.c_contiguous
+        and gY.flags.c_contiguous
+        and Z.flags.c_contiguous
+    ):
+        raise ValueError("[capture] A, B, gY, Z must be C-contiguous")
+
     def _chk(arr, shape, name):
-        if arr is None: return
-        if arr.dtype != cp.float32 or tuple(arr.shape) != shape or not arr.flags.c_contiguous:
+        if arr is None:
+            return
+        if (
+            arr.dtype != cp.float32
+            or tuple(arr.shape) != shape
+            or not arr.flags.c_contiguous
+        ):
             raise ValueError(f"[capture] {name} must be C-contiguous float32{shape}")
+
     _chk(gA_out, (M, K), "gA_out")
     _chk(gB_out, (K, N), "gB_out")
 
@@ -378,37 +456,51 @@ def backward_into(
         if gBias_out is not None:
             raise ValueError("[capture] gBias_out must be None when with_bias=False")
 
-    if work_dZ is None or work_dZ.dtype != cp.float32 or work_dZ.size != M * N or not work_dZ.flags.c_contiguous:
+    if (
+        work_dZ is None
+        or work_dZ.dtype != cp.float32
+        or work_dZ.size != M * N
+        or not work_dZ.flags.c_contiguous
+    ):
         raise ValueError("[capture] work_dZ must be C-contiguous float32 with size M*N")
     dZ_ptr = int(work_dZ.data.ptr)
 
     if lt_workspace is not None:
         if lt_workspace.dtype != cp.uint8 or not lt_workspace.flags.c_contiguous:
             raise ValueError("[capture] lt_workspace must be C-contiguous uint8")
-        lt_ptr   = int(lt_workspace.data.ptr)
+        lt_ptr = int(lt_workspace.data.ptr)
         lt_bytes = int(lt_workspace.nbytes)
     else:
         lt_ptr, lt_bytes = 0, 0
 
-    tA  = as_tensor_2d(A)
-    tB  = as_tensor_2d(B)
+    tA = as_tensor_2d(A)
+    tB = as_tensor_2d(B)
     tgY = as_tensor_2d(gY)
-    tZ  = as_tensor_2d(Z)
-    tC  = as_tensor_2d(C) if C is not None else None
-    t_gA    = as_tensor_2d(gA_out)    if gA_out    is not None else None
-    t_gB    = as_tensor_2d(gB_out)    if gB_out    is not None else None
-    t_gC    = as_tensor_2d(gC_out)    if gC_out    is not None else None
+    tZ = as_tensor_2d(Z)
+    tC = as_tensor_2d(C) if C is not None else None
+    t_gA = as_tensor_2d(gA_out) if gA_out is not None else None
+    t_gB = as_tensor_2d(gB_out) if gB_out is not None else None
+    t_gC = as_tensor_2d(gC_out) if gC_out is not None else None
     t_gBias = as_tensor_2d(gBias_out) if gBias_out is not None else None
 
     attrs = _mk_attrs(act, with_bias, leaky_slope)
     stream_ptr = get_stream_ptr(stream)
 
     if not _has("backward_into"):
-        raise RuntimeError("g.backward_into entrypoint not found in bindings (capture-safe BWD unavailable)")
+        raise RuntimeError(
+            "g.backward_into entrypoint not found in bindings (capture-safe BWD unavailable)"
+        )
 
     g.backward_into(
-        tA, tB, tC, tgY, tZ,
-        t_gA, t_gB, t_gC, t_gBias,
+        tA,
+        tB,
+        tC,
+        tgY,
+        tZ,
+        t_gA,
+        t_gB,
+        t_gC,
+        t_gBias,
         attrs,
         to_voidp_capsule(stream_ptr),
         int(dZ_ptr),

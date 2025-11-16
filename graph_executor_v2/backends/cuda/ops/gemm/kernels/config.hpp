@@ -1,4 +1,4 @@
-// include/regemm/config.h
+// gemm/kernels/config.hpp
 #pragma once
 
 // --- 타일 크기 ---

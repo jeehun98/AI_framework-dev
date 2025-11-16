@@ -4,16 +4,14 @@
 // Output location  : python/graph_executor_v2/ops/_ops_gemm[.pyd|.so]
 //
 // Requirements:
-//   - ai::Status, ai::StreamHandle  : "ai/dispatch.hpp"
-//   - ai::Tensor, ai::GemmAttrs     : "ai/tensor.hpp", "ai/op_schema.hpp"
-//   - GEMM FWD/BWD API              : "backends/cuda/ops/gemm/api.hpp"
+//   - shim umbrella types: "backends/cuda/ops/_common/shim/ai_shim.hpp"
+//   - GEMM FWD/BWD API    : "backends/cuda/ops/gemm/api.hpp"
+//
 // Notes:
 //   - Status -> Python 예외 변환
 //   - 모든 출력/옵셔널 인자는 None 허용 (nullptr로 전달)
-//   - stream 인자는 void* (cudaStream_t reinterpret_cast)
-//   - Tensor/GemmAttrs를 직접 쓰거나, NumPy 친화 오버로드 사용 가능
+//   - stream 인자는 Capsule(void*)로 전달 (cudaStream_t reinterpret_cast)
 //   - 공용 타입은 graph_executor_v2.ops._ops_common 에서 1회 노출됨
-//   - B안: 여기서 _ops_common의 타입들을 re-export 하여 편의 제공
 
 #include <string>
 #include <stdexcept>
@@ -21,26 +19,22 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
-#include <cctype>        // <-- tolower 안전 사용
+#include <cctype>
+#include <vector>
 
 #include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
 
 #include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#include "backends/cuda/ops/_common/shim/ai_nvtx.hpp"
 #include "backends/cuda/ops/gemm/api.hpp"
 
-// NVTX shim: USE_NVTX가 켜지면 nvToolsExt를 통해 활성, 아니면 컴파일 타임 no-op
-#include "backends/cuda/ops/_common/shim/nvtx.hpp"
-#include "backends/cuda/ops/gemm/detail/nvtx_shim.h" // ← 추가 (NVTX_COLOR, NVTX_MARK 제공)
-
-
-
-namespace py = pybind11;
+namespace shim = ::ai::cuda::shim;
+namespace py   = pybind11;
 using namespace pybind11::literals;
 
 // -------- Status -> Python 예외 --------
-static void raise_if_not_ok(ai::Status st, const char* where) {
-    using S = ai::Status;
+static void raise_if_not_ok(shim::Status st, const char* where) {
+    using S = shim::Status;
     if (st == S::Ok) return;
 
     const char* msg = "GEMM op failed";
@@ -60,30 +54,59 @@ static void raise_if_not_ok(ai::Status st, const char* where) {
 }
 
 // -------- 문자열 -> ActKind 파서 --------
-static ai::ActKind parse_act(const std::string& s) {
+static shim::ActKind parse_act(const std::string& s) {
     std::string k(s);
     std::transform(k.begin(), k.end(), k.begin(),
                    [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-    if (k=="none")       return ai::ActKind::None;
-    if (k=="relu")       return ai::ActKind::ReLU;
+    if (k=="none")       return shim::ActKind::None;
+    if (k=="relu")       return shim::ActKind::ReLU;
     if (k=="leakyrelu" || k=="leaky_relu" || k=="lrelu")
-                         return ai::ActKind::LeakyReLU;
-    if (k=="gelu")       return ai::ActKind::GELU;
-    if (k=="sigmoid")    return ai::ActKind::Sigmoid;
-    if (k=="tanh")       return ai::ActKind::Tanh;
+                         return shim::ActKind::LeakyReLU;
+    if (k=="gelu")       return shim::ActKind::GELU;
+    if (k=="sigmoid")    return shim::ActKind::Sigmoid;
+    if (k=="tanh")       return shim::ActKind::Tanh;
     throw std::invalid_argument("unknown act: " + s);
 }
+
+// -------- py::object → Tensor* / Stream 변환 헬퍼 --------
+static const shim::Tensor* as_const_tensor_ptr(const py::object& obj) {
+    if (obj.is_none()) return nullptr;
+    return &obj.cast<const shim::Tensor&>();
+}
+
+static shim::Tensor* as_tensor_ptr(const py::object& obj) {
+    if (obj.is_none()) return nullptr;
+    return &obj.cast<shim::Tensor&>();
+}
+
+static shim::StreamHandle as_stream(const py::object& obj) {
+    if (obj.is_none()) return nullptr;
+    void* p = PyCapsule_GetPointer(obj.ptr(), nullptr);
+    return reinterpret_cast<shim::StreamHandle>(p);
+}
+
+// -------- raw pointer → shim::Tensor 헬퍼 (f32, row-major, CUDA) --------
+static shim::Tensor make_tensor_2d_raw(uintptr_t ptr, int64_t rows, int64_t cols) {
+    void* p = reinterpret_cast<void*>(ptr);
+    // ai_tensor.hpp 의 factory 사용
+    return shim::make_tensor2d(
+        p,
+        static_cast<std::int64_t>(rows),
+        static_cast<std::int64_t>(cols),
+        shim::DType::F32  // dtype 고정
+    );
+}
+
 
 PYBIND11_MODULE(_ops_gemm, m) {
     m.attr("__package__") = "graph_executor_v2.ops";
     m.doc() = R"(graph_executor_v2 GEMM bindings (regemm epilogue: bias+activation fused)
 - forward/backward: f32, row-major, no-transpose
 - bias broadcasting priority: Scalar > PerN(len==N) > PerM(len==M)
-- Supports saving pre-activation Z in forward (save_z).
-- NumPy helpers delegate to graph_executor_v2._core.)";
+- Supports saving pre-activation Z in forward (save_z).)";
 
     // ======================================================
-    // 공용 타입 모듈 import + re-export (B안)
+    // 공용 타입 모듈 import + re-export
     // ======================================================
     py::module_ common = py::module_::import("graph_executor_v2.ops._ops_common");
     m.attr("ActKind")        = common.attr("ActKind");
@@ -96,44 +119,46 @@ PYBIND11_MODULE(_ops_gemm, m) {
     m.attr("make_tensor_2d") = common.attr("make_tensor_2d");
 
     // =========================
-    // 1) 저수준 (ai::Tensor 기반)
+    // 1) 저수준 (shim::Tensor 기반)
     // =========================
 
     // forward: A:[M,K], B:[K,N], Bias:[1|M|N]|None -> Y:[M,N]
     // Optional: Z_saved:[M,N] to stash pre-activation (attrs.save_z True or implied)
     m.def(
         "forward",
-        [](const ai::Tensor& A,
-           const ai::Tensor& B,
-           const ai::Tensor* Bias,
-           ai::Tensor& Y,
-           ai::GemmAttrs attrs,
-           ai::Tensor* Z_saved,          // optional
-           void* stream /* = nullptr */) {
+        [](const shim::Tensor& A,
+           const shim::Tensor& B,
+           py::object bias_obj,
+           shim::Tensor& Y,
+           shim::GemmAttrs attrs,
+           py::object Z_saved_obj,
+           py::object stream_obj) {
             py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
-            // If Z_saved is provided but attrs.save_z is false, enable it implicitly
+
+            const shim::Tensor* Bias   = as_const_tensor_ptr(bias_obj);
+            shim::Tensor*       Z_saved = as_tensor_ptr(Z_saved_obj);
+            shim::StreamHandle  s       = as_stream(stream_obj);
+
             if (Z_saved && Z_saved->data && !attrs.save_z) {
                 attrs.save_z = true;
             }
-            // If attrs.save_z is true but Z_saved is null -> raise early for clearer error
             if (attrs.save_z && (!Z_saved || !Z_saved->data)) {
                 throw std::invalid_argument(
                     "[_ops_gemm::forward] save_z=True requires a valid Z_saved Tensor");
             }
-            NVTX_RANGE("gemm.forward", NVTX_COLOR::Orange);
-            
-            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
-            raise_if_not_ok(st, "forward");
 
-            
+            NVTX_RANGE("gemm.forward", shim::nvtx::Color::Orange);
+
+            auto st = shim::GemmCudaLaunch(A, B, Bias, Y, attrs, s, Z_saved);
+            raise_if_not_ok(st, "forward");
         },
-        py::arg("A"),
-        py::arg("B"),
-        py::arg("bias") = nullptr,
-        py::arg("Y"),
-        py::arg("attrs"),
-        py::arg("Z_saved") = nullptr,
-        py::arg("stream") = nullptr,
+        "A"_a,
+        "B"_a,
+        "bias"_a    = py::none(),
+        "Y"_a,
+        "attrs"_a,
+        "Z_saved"_a = py::none(),
+        "stream"_a  = py::none(),
         "Run fused GEMM(+bias+activation). Optionally saves pre-activation Z into Z_saved."
     );
 
@@ -142,52 +167,59 @@ PYBIND11_MODULE(_ops_gemm, m) {
     // Outputs: gA:[M,K]|None, gB:[K,N]|None, gC:[M,N]|None, gBias:[1|N]|None
     m.def(
         "backward",
-        [](const ai::Tensor& A,
-           const ai::Tensor& B,
-           const ai::Tensor* C,      // optional
-           const ai::Tensor& gY,
-           const ai::Tensor& Z,
-           ai::Tensor* gA,           // optional
-           ai::Tensor* gB,           // optional
-           ai::Tensor* gC,           // optional
-           ai::Tensor* gBias,        // optional
-           const ai::GemmAttrs& attrs,
-           void* stream /* = nullptr */) {
+        [](const shim::Tensor& A,
+           const shim::Tensor& B,
+           py::object C_obj,
+           const shim::Tensor& gY,
+           const shim::Tensor& Z,
+           py::object gA_obj,
+           py::object gB_obj,
+           py::object gC_obj,
+           py::object gBias_obj,
+           const shim::GemmAttrs& attrs,
+           py::object stream_obj) {
             py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
+
+            const shim::Tensor* C = as_const_tensor_ptr(C_obj);
+            shim::Tensor* gA      = as_tensor_ptr(gA_obj);
+            shim::Tensor* gB      = as_tensor_ptr(gB_obj);
+            shim::Tensor* gC      = as_tensor_ptr(gC_obj);
+            shim::Tensor* gBias   = as_tensor_ptr(gBias_obj);
+            shim::StreamHandle s  = as_stream(stream_obj);
+
             // ---- PerN 강제 세이프가드 ----
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
             if (gBias && gBias->data) {
-                const auto& s = gBias->desc.shape;
+                const auto& sh = gBias->desc.shape;
                 const bool bad_perm =
-                    (s.size()==1 && s[0]==M) ||
-                    (s.size()==2 && s[0]==M && s[1]==1);
+                    (sh.size()==1 && sh[0]==M) ||
+                    (sh.size()==2 && sh[0]==M && sh[1]==1);
                 if (bad_perm) {
                     throw std::invalid_argument(
                         "[_ops_gemm::backward] gBias shape suggests PerM (len==M). "
                         "Bias grad for Dense must be PerN; allocate gBias as (1,N) or (N,).");
                 }
             }
-            NVTX_RANGE("gemm.backward", NVTX_COLOR::Red);
-            
-            auto st = ai::GemmCudaBackward(
-                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream
+
+            NVTX_RANGE("gemm.backward", shim::nvtx::Color::Red);
+
+            auto st = shim::GemmCudaBackward(
+                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s
             );
             raise_if_not_ok(st, "backward");
-
-            
         },
-        py::arg("A"),
-        py::arg("B"),
-        py::arg("C")     = nullptr,
-        py::arg("gY"),
-        py::arg("Z"),
-        py::arg("gA")    = nullptr,
-        py::arg("gB")    = nullptr,
-        py::arg("gC")    = nullptr,
-        py::arg("gBias") = nullptr,
-        py::arg("attrs"),
-        py::arg("stream") = nullptr,
+        "A"_a,
+        "B"_a,
+        "C"_a      = py::none(),
+        "gY"_a,
+        "Z"_a,
+        "gA"_a     = py::none(),
+        "gB"_a     = py::none(),
+        "gC"_a     = py::none(),
+        "gBias"_a  = py::none(),
+        "attrs"_a,
+        "stream"_a = py::none(),
         "Compute gradients for fused GEMM(+bias+activation) using pre-activation Z."
     );
 
@@ -196,25 +228,30 @@ PYBIND11_MODULE(_ops_gemm, m) {
     // =========================
     m.def(
         "forward_ex",
-        [](const ai::Tensor& A,
-           const ai::Tensor& B,
-           const ai::Tensor* Bias,
-           ai::Tensor& Y,
+        [](const shim::Tensor& A,
+           const shim::Tensor& B,
+           py::object bias_obj,
+           shim::Tensor& Y,
            bool trans_a,
            bool trans_b,
            std::string act,
            bool with_bias,
-           float leaky_slope,
-           bool save_z,               // NEW
-           ai::Tensor* Z_saved,       // NEW
-           void* stream /*=nullptr*/) {
-            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
-            ai::GemmAttrs attrs{};
+           double leaky_slope,
+           bool save_z,
+           py::object Z_saved_obj,
+           py::object stream_obj) {
+            py::gil_scoped_release release; // 🔓 GIL off
+
+            const shim::Tensor* Bias   = as_const_tensor_ptr(bias_obj);
+            shim::Tensor*       Z_saved = as_tensor_ptr(Z_saved_obj);
+            shim::StreamHandle  s       = as_stream(stream_obj);
+
+            shim::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
             attrs.trans_b     = trans_b;
             attrs.act         = parse_act(act);
             attrs.with_bias   = with_bias;
-            attrs.leaky_slope = leaky_slope;
+            attrs.leaky_slope = static_cast<float>(leaky_slope);
             attrs.save_z      = save_z;
 
             if (attrs.with_bias && Bias == nullptr) {
@@ -225,66 +262,71 @@ PYBIND11_MODULE(_ops_gemm, m) {
                     throw std::invalid_argument("save_z=True requires Z_saved Tensor");
                 }
             } else if (Z_saved && Z_saved->data) {
-                // User passed Z_saved without setting save_z -> enable implicitly
                 attrs.save_z = true;
             }
 
-            NVTX_RANGE("gemm.forward_ex", NVTX_COLOR::Teal);
-            
-            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
-            raise_if_not_ok(st, "forward_ex");
+            NVTX_RANGE("gemm.forward_ex", shim::nvtx::Color::Teal);
 
-            
+            auto st = shim::GemmCudaLaunch(A, B, Bias, Y, attrs, s, Z_saved);
+            raise_if_not_ok(st, "forward_ex");
         },
-        py::arg("A"),
-        py::arg("B"),
-        py::arg("bias") = nullptr,
-        py::arg("Y"),
-        py::arg("trans_a") = false,
-        py::arg("trans_b") = false,
-        py::arg("act") = "none",
-        py::arg("with_bias") = false,
-        py::arg("leaky_slope") = 0.01f,
-        py::arg("save_z") = false,
-        py::arg("Z_saved") = nullptr,
-        py::arg("stream") = nullptr,
+        "A"_a,
+        "B"_a,
+        "bias"_a        = py::none(),
+        "Y"_a,
+        "trans_a"_a     = false,
+        "trans_b"_a     = false,
+        "act"_a         = "none",
+        "with_bias"_a   = false,
+        "leaky_slope"_a = 0.01,
+        "save_z"_a      = false,
+        "Z_saved"_a     = py::none(),
+        "stream"_a      = py::none(),
         "Run fused GEMM with epilogue params provided as Python primitives. "
         "Optionally save pre-activation into Z_saved when save_z=True."
     );
 
     m.def(
         "backward_ex",
-        [](const ai::Tensor& A,
-           const ai::Tensor& B,
-           const ai::Tensor* C,
-           const ai::Tensor& gY,
-           const ai::Tensor& Z,
-           ai::Tensor* gA,
-           ai::Tensor* gB,
-           ai::Tensor* gC,
-           ai::Tensor* gBias,
+        [](const shim::Tensor& A,
+           const shim::Tensor& B,
+           py::object C_obj,
+           const shim::Tensor& gY,
+           const shim::Tensor& Z,
+           py::object gA_obj,
+           py::object gB_obj,
+           py::object gC_obj,
+           py::object gBias_obj,
            bool trans_a,
            bool trans_b,
            std::string act,
            bool with_bias,
-           float leaky_slope,
-           void* stream /*=nullptr*/) {
-            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
-            ai::GemmAttrs attrs{};
+           double leaky_slope,
+           py::object stream_obj) {
+            py::gil_scoped_release release; // 🔓 GIL off
+
+            const shim::Tensor* C = as_const_tensor_ptr(C_obj);
+            shim::Tensor* gA      = as_tensor_ptr(gA_obj);
+            shim::Tensor* gB      = as_tensor_ptr(gB_obj);
+            shim::Tensor* gC      = as_tensor_ptr(gC_obj);
+            shim::Tensor* gBias   = as_tensor_ptr(gBias_obj);
+            shim::StreamHandle s  = as_stream(stream_obj);
+
+            shim::GemmAttrs attrs{};
             attrs.trans_a     = trans_a;
             attrs.trans_b     = trans_b;
             attrs.act         = parse_act(act);
             attrs.with_bias   = with_bias;
-            attrs.leaky_slope = leaky_slope;
+            attrs.leaky_slope = static_cast<float>(leaky_slope);
 
             // ---- PerN 강제 세이프가드 ----
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
             if (gBias && gBias->data) {
-                const auto& s = gBias->desc.shape;
+                const auto& sh = gBias->desc.shape;
                 const bool bad_perm =
-                    (s.size()==1 && s[0]==M) ||
-                    (s.size()==2 && s[0]==M && s[1]==1);
+                    (sh.size()==1 && sh[0]==M) ||
+                    (sh.size()==2 && sh[0]==M && sh[1]==1);
                 if (bad_perm) {
                     throw std::invalid_argument(
                         "[_ops_gemm::backward_ex] gBias shape suggests PerM (len==M). "
@@ -292,82 +334,27 @@ PYBIND11_MODULE(_ops_gemm, m) {
                 }
             }
 
-            NVTX_RANGE("gemm.backward_ex", NVTX_COLOR::Magenta);
-            
-            auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
+            NVTX_RANGE("gemm.backward_ex", shim::nvtx::Color::Magenta);
+
+            auto st = shim::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s);
             raise_if_not_ok(st, "backward_ex");
-
-            
         },
-        py::arg("A"),
-        py::arg("B"),
-        py::arg("C")     = nullptr,
-        py::arg("gY"),
-        py::arg("Z"),
-        py::arg("gA")    = nullptr,
-        py::arg("gB")    = nullptr,
-        py::arg("gC")    = nullptr,
-        py::arg("gBias") = nullptr,
-        py::arg("trans_a") = false,
-        py::arg("trans_b") = false,
-        py::arg("act") = "none",
-        py::arg("with_bias") = false,
-        py::arg("leaky_slope") = 0.01f,
-        py::arg("stream") = nullptr,
+        "A"_a,
+        "B"_a,
+        "C"_a         = py::none(),
+        "gY"_a,
+        "Z"_a,
+        "gA"_a        = py::none(),
+        "gB"_a        = py::none(),
+        "gC"_a        = py::none(),
+        "gBias"_a     = py::none(),
+        "trans_a"_a   = false,
+        "trans_b"_a   = false,
+        "act"_a       = "none",
+        "with_bias"_a = false,
+        "leaky_slope"_a = 0.01,
+        "stream"_a    = py::none(),
         "Backward for fused GEMM with epilogue params provided as Python primitives."
-    );
-
-    // ===========================================
-    // 2) NumPy 친화 오버로드 (상위 _core 위임) — GIL 유지!
-    // ===========================================
-    m.def(
-        "forward_numpy",
-        [](py::array_t<float, py::array::c_style | py::array::forcecast> A,
-           py::array_t<float, py::array::c_style | py::array::forcecast> B,
-           py::object bias, // None or 1D float array
-           std::string act,
-           float leaky_slope) {
-            // GIL 필요: 순수 파이썬 호출
-            py::module_ core = py::module_::import("graph_executor_v2._core");
-            py::object fn = core.attr("gemm_bias_act");
-            py::object bias_arg = bias.is_none() ? py::none() : bias;
-            py::object Y = fn(A, B, bias_arg, "act"_a = act, "leaky_slope"_a = leaky_slope);
-            return Y; // py::array
-        },
-        py::arg("A"),
-        py::arg("B"),
-        py::arg("bias") = py::none(),
-        py::arg("act") = "none",
-        py::arg("leaky_slope") = 0.01f,
-        R"(Convenience wrapper that accepts NumPy arrays and delegates to graph_executor_v2._core.gemm_bias_act.)"
-    );
-
-    m.def(
-        "backward_numpy",
-        [](py::array_t<float, py::array::c_style | py::array::forcecast> A,
-           py::array_t<float, py::array::c_style | py::array::forcecast> B,
-           py::array_t<float, py::array::c_style | py::array::forcecast> gY,
-           py::array_t<float, py::array::c_style | py::array::forcecast> Z,
-           std::string act,
-           std::string bias_kind,
-           float leaky_slope) {
-            // GIL 필요: 순수 파이썬 호출
-            py::module_ core = py::module_::import("graph_executor_v2._core");
-            py::object fn = core.attr("gemm_bias_act_bwd");
-            py::dict out = fn(A, B, gY, Z,
-                              "act"_a = act,
-                              "bias_kind"_a = bias_kind,
-                              "leaky_slope"_a = leaky_slope).cast<py::dict>();
-            return out; // dict with gA,gB,(gBias)
-        },
-        py::arg("A"),
-        py::arg("B"),
-        py::arg("gY"),
-        py::arg("Z"),
-        py::arg("act") = "none",
-        py::arg("bias_kind") = "none",
-        py::arg("leaky_slope") = 0.01f,
-        R"(Convenience wrapper that accepts NumPy arrays and delegates to graph_executor_v2._core.gemm_bias_act_bwd.)"
     );
 
     // ===========================================
@@ -375,29 +362,38 @@ PYBIND11_MODULE(_ops_gemm, m) {
     // ===========================================
     m.def(
         "backward_into",
-        [](const ai::Tensor& A,
-           const ai::Tensor& B,
-           const ai::Tensor* C,      // optional
-           const ai::Tensor& gY,
-           const ai::Tensor& Z,
-           ai::Tensor* gA,           // optional
-           ai::Tensor* gB,           // optional
-           ai::Tensor* gC,           // optional
-           ai::Tensor* gBias,        // optional (PerN: (1,N) 권장)
-           const ai::GemmAttrs& attrs,
-           void* stream,
+        [](const shim::Tensor& A,
+           const shim::Tensor& B,
+           py::object C_obj,
+           const shim::Tensor& gY,
+           const shim::Tensor& Z,
+           py::object gA_obj,
+           py::object gB_obj,
+           py::object gC_obj,
+           py::object gBias_obj,
+           const shim::GemmAttrs& attrs,
+           py::object stream_obj,
            // --- workspaces ---
-           uintptr_t dZ_ptr,         // required: float[M*N]
-           uintptr_t lt_ws_ptr,      // optional: cublasLt workspace
+           uintptr_t dZ_ptr,
+           uintptr_t lt_ws_ptr,
            size_t    lt_ws_bytes) {
-            py::gil_scoped_release release; // 🔓 GIL off (네이티브 CUDA 실행)
+            py::gil_scoped_release release; // 🔓 GIL off
 
-            // PerN shape 가드 (그대로 유지)
+            const shim::Tensor* C = as_const_tensor_ptr(C_obj);
+            shim::Tensor* gA      = as_tensor_ptr(gA_obj);
+            shim::Tensor* gB      = as_tensor_ptr(gB_obj);
+            shim::Tensor* gC      = as_tensor_ptr(gC_obj);
+            shim::Tensor* gBias   = as_tensor_ptr(gBias_obj);
+            shim::StreamHandle s  = as_stream(stream_obj);
+
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
+
             if (gBias && gBias->data) {
-                const auto& s = gBias->desc.shape;
-                const bool bad_perm = (s.size()==1 && s[0]==M) || (s.size()==2 && s[0]==M && s[1]==1);
+                const auto& sh = gBias->desc.shape;
+                const bool bad_perm =
+                    (sh.size()==1 && sh[0]==M) ||
+                    (sh.size()==2 && sh[0]==M && sh[1]==1);
                 if (bad_perm) {
                     throw std::invalid_argument(
                         "[_ops_gemm::backward_into] gBias must be PerN (shape (1,N) or (N,))");
@@ -409,78 +405,270 @@ PYBIND11_MODULE(_ops_gemm, m) {
                     "[_ops_gemm::backward_into] dZ_ptr is required for capture-safe path");
             }
 
-            // lt workspace ptr/bytes 짝 검증
             if ((lt_ws_ptr == 0) != (lt_ws_bytes == 0)) {
                 throw std::invalid_argument(
                     "[_ops_gemm::backward_into] lt_workspace ptr/bytes must be both zero or both non-zero");
             }
 
-            // 통합 워크스페이스 사용
-            ai::GemmWorkspace ws{};
-            ws.scratch            = reinterpret_cast<void*>(dZ_ptr);     // dZ buffer
-            ws.scratch_bytes      = static_cast<size_t>(M * N * sizeof(float)); // 정확히 기입
+            shim::GemmWorkspace ws{};
+            ws.scratch            = reinterpret_cast<void*>(dZ_ptr);     // dZ buffer (ld=N 가정)
+            ws.scratch_bytes      = static_cast<size_t>(M * N * sizeof(float));
             ws.lt_workspace       = reinterpret_cast<void*>(lt_ws_ptr);
             ws.lt_workspace_bytes = lt_ws_bytes;
 
-            NVTX_RANGE("gemm.backward_into", NVTX_COLOR::Yellow);
-            
-            auto st = ai::GemmCudaBackward(
-                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream, &ws
+            NVTX_RANGE("gemm.backward_into", shim::nvtx::Color::Yellow);
+
+            auto st = shim::GemmCudaBackward(
+                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s, &ws
             );
             raise_if_not_ok(st, "backward_into");
-
-            
         },
-        py::arg("A"), py::arg("B"),
-        py::arg("C") = nullptr,
-        py::arg("gY"), py::arg("Z"),
-        py::arg("gA") = nullptr, py::arg("gB") = nullptr, py::arg("gC") = nullptr, py::arg("gBias") = nullptr,
-        py::arg("attrs"),
-        py::arg("stream") = nullptr,
-        py::arg("dZ_ptr"),
-        py::arg("lt_ws_ptr") = static_cast<uintptr_t>(0),
-        py::arg("lt_ws_bytes") = static_cast<size_t>(0),
+        "A"_a, "B"_a,
+        "C"_a      = py::none(),
+        "gY"_a, "Z"_a,
+        "gA"_a     = py::none(),
+        "gB"_a     = py::none(),
+        "gC"_a     = py::none(),
+        "gBias"_a  = py::none(),
+        "attrs"_a,
+        "stream"_a = py::none(),
+        "dZ_ptr"_a,
+        "lt_ws_ptr"_a   = static_cast<uintptr_t>(0),
+        "lt_ws_bytes"_a = static_cast<size_t>(0),
         "Capture-safe GEMM backward that uses preallocated workspaces (no malloc during capture)."
     );
 
     // === 별칭 (attrs 버전 유지용) ===
     m.def(
         "forward_ex_attrs",
-        [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* Bias,
-           ai::Tensor& Y, ai::GemmAttrs attrs, ai::Tensor* Z_saved, void* stream) {
+        [](const shim::Tensor& A, const shim::Tensor& B, py::object bias_obj,
+           shim::Tensor& Y, shim::GemmAttrs attrs, py::object Z_saved_obj, py::object stream_obj) {
             py::gil_scoped_release release;
+
+            const shim::Tensor* Bias   = as_const_tensor_ptr(bias_obj);
+            shim::Tensor*       Z_saved = as_tensor_ptr(Z_saved_obj);
+            shim::StreamHandle  s       = as_stream(stream_obj);
+
             if (Z_saved && Z_saved->data && !attrs.save_z) attrs.save_z = true;
             if (attrs.save_z && (!Z_saved || !Z_saved->data))
                 throw std::invalid_argument("[_ops_gemm::forward_ex_attrs] save_z=True requires Z_saved");
-            auto st = ai::GemmCudaLaunch(A, B, Bias, Y, attrs, stream, Z_saved);
+
+            auto st = shim::GemmCudaLaunch(A, B, Bias, Y, attrs, s, Z_saved);
             raise_if_not_ok(st, "forward_ex_attrs");
         },
-        "A"_a, "B"_a, "bias"_a = nullptr, "Y"_a,
-        "attrs"_a, "Z_saved"_a = nullptr, "stream"_a = nullptr,
+        "A"_a, "B"_a, "bias"_a = py::none(), "Y"_a,
+        "attrs"_a, "Z_saved"_a = py::none(), "stream"_a = py::none(),
         "Alias to `forward` that accepts GemmAttrs (kept for Python compatibility)."
     );
 
     m.def(
         "backward_ex_attrs",
-        [](const ai::Tensor& A, const ai::Tensor& B, const ai::Tensor* C,
-           const ai::Tensor& gY, const ai::Tensor& Z,
-           ai::Tensor* gA, ai::Tensor* gB, ai::Tensor* gC, ai::Tensor* gBias,
-           const ai::GemmAttrs& attrs, void* stream) {
+        [](const shim::Tensor& A, const shim::Tensor& B, py::object C_obj,
+           const shim::Tensor& gY, const shim::Tensor& Z,
+           py::object gA_obj, py::object gB_obj, py::object gC_obj, py::object gBias_obj,
+           const shim::GemmAttrs& attrs, py::object stream_obj) {
             py::gil_scoped_release release;
+
+            const shim::Tensor* C = as_const_tensor_ptr(C_obj);
+            shim::Tensor* gA      = as_tensor_ptr(gA_obj);
+            shim::Tensor* gB      = as_tensor_ptr(gB_obj);
+            shim::Tensor* gC      = as_tensor_ptr(gC_obj);
+            shim::Tensor* gBias   = as_tensor_ptr(gBias_obj);
+            shim::StreamHandle s  = as_stream(stream_obj);
+
             const int64_t M = A.desc.shape.at(0);
             const int64_t N = B.desc.shape.at(1);
             if (gBias && gBias->data) {
-                const auto& s = gBias->desc.shape;
-                if ((s.size()==1 && s[0]==M) || (s.size()==2 && s[0]==M && s[1]==1))
+                const auto& sh = gBias->desc.shape;
+                if ((sh.size()==1 && sh[0]==M) || (sh.size()==2 && sh[0]==M && sh[1]==1))
                     throw std::invalid_argument("[_ops_gemm::backward_ex_attrs] gBias must be PerN (1,N) or (N,)");
             }
-            auto st = ai::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream);
+            auto st = shim::GemmCudaBackward(A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s);
             raise_if_not_ok(st, "backward_ex_attrs");
         },
-        "A"_a, "B"_a, "C"_a = nullptr, "gY"_a, "Z"_a,
-        "gA"_a = nullptr, "gB"_a = nullptr, "gC"_a = nullptr, "gBias"_a = nullptr,
-        "attrs"_a, "stream"_a = nullptr,
+        "A"_a, "B"_a, "C"_a = py::none(), "gY"_a, "Z"_a,
+        "gA"_a = py::none(), "gB"_a = py::none(), "gC"_a = py::none(), "gBias"_a = py::none(),
+        "attrs"_a, "stream"_a = py::none(),
         "Alias to `backward` that accepts GemmAttrs (kept for Python compatibility)."
+    );
+
+    // ===========================================
+    // 4) Raw pointer 기반 API (Tensor/GemmAttrs 독립)
+    // ===========================================
+    m.def(
+        "forward_raw",
+        [](uintptr_t A_ptr,
+           uintptr_t B_ptr,
+           uintptr_t Bias_ptr,
+           uintptr_t Y_ptr,
+           int64_t M,
+           int64_t K,
+           int64_t N,
+           bool trans_a,
+           bool trans_b,
+           std::string act,
+           bool with_bias,
+           double leaky_slope,
+           bool save_z,
+           uintptr_t Z_ptr,
+           py::object stream_obj) {
+            py::gil_scoped_release release;
+
+            shim::StreamHandle s = as_stream(stream_obj);
+
+            shim::Tensor A = make_tensor_2d_raw(A_ptr, M, K);
+            shim::Tensor B = make_tensor_2d_raw(B_ptr, K, N);
+            shim::Tensor Y = make_tensor_2d_raw(Y_ptr, M, N);
+
+            shim::Tensor* Bias = nullptr;
+            shim::Tensor  Bias_tensor{};
+            if (with_bias) {
+                if (!Bias_ptr) {
+                    throw std::invalid_argument("[_ops_gemm::forward_raw] with_bias=True but Bias_ptr==0");
+                }
+                Bias_tensor = make_tensor_2d_raw(Bias_ptr, 1, N); // PerN: (1,N)
+                Bias = &Bias_tensor;
+            }
+
+            shim::Tensor* Z_saved = nullptr;
+            shim::Tensor  Z_tensor{};
+            if (save_z) {
+                if (!Z_ptr) {
+                    throw std::invalid_argument("[_ops_gemm::forward_raw] save_z=True but Z_ptr==0");
+                }
+                Z_tensor = make_tensor_2d_raw(Z_ptr, M, N);
+                Z_saved  = &Z_tensor;
+            }
+
+            shim::GemmAttrs attrs{};
+            attrs.trans_a     = trans_a;
+            attrs.trans_b     = trans_b;
+            attrs.act         = parse_act(act);
+            attrs.with_bias   = with_bias;
+            attrs.leaky_slope = static_cast<float>(leaky_slope);
+            attrs.save_z      = save_z;
+
+            NVTX_RANGE("gemm.forward_raw", shim::nvtx::Color::Teal);
+
+            auto st = shim::GemmCudaLaunch(A, B, Bias, Y, attrs, s, Z_saved);
+            raise_if_not_ok(st, "forward_raw");
+        },
+        "A_ptr"_a,
+        "B_ptr"_a,
+        "Bias_ptr"_a,
+        "Y_ptr"_a,
+        "M"_a,
+        "K"_a,
+        "N"_a,
+        "trans_a"_a     = false,
+        "trans_b"_a     = false,
+        "act"_a         = "none",
+        "with_bias"_a   = false,
+        "leaky_slope"_a = 0.01,
+        "save_z"_a      = false,
+        "Z_ptr"_a       = static_cast<uintptr_t>(0),
+        "stream"_a      = py::none(),
+        "Raw-pointer based fused GEMM(+bias+activation) for CUDA f32 row-major."
+    );
+
+    m.def(
+        "backward_raw",
+        [](uintptr_t A_ptr,
+           uintptr_t B_ptr,
+           uintptr_t C_ptr,
+           uintptr_t gY_ptr,
+           uintptr_t Z_ptr,
+           uintptr_t gA_ptr,
+           uintptr_t gB_ptr,
+           uintptr_t gC_ptr,
+           uintptr_t gBias_ptr,
+           int64_t M,
+           int64_t K,
+           int64_t N,
+           bool trans_a,
+           bool trans_b,
+           std::string act,
+           bool with_bias,
+           double leaky_slope,
+           py::object stream_obj) {
+            py::gil_scoped_release release;
+
+            shim::StreamHandle s = as_stream(stream_obj);
+
+            shim::Tensor A  = make_tensor_2d_raw(A_ptr,  M, K);
+            shim::Tensor B  = make_tensor_2d_raw(B_ptr,  K, N);
+            shim::Tensor gY = make_tensor_2d_raw(gY_ptr, M, N);
+            shim::Tensor Z  = make_tensor_2d_raw(Z_ptr,  M, N);
+
+            shim::Tensor* C = nullptr;
+            shim::Tensor  C_tensor{};
+            if (C_ptr) {
+                C_tensor = make_tensor_2d_raw(C_ptr, M, N);
+                C = &C_tensor;
+            }
+
+            shim::Tensor* gA = nullptr;
+            shim::Tensor  gA_tensor{};
+            if (gA_ptr) {
+                gA_tensor = make_tensor_2d_raw(gA_ptr, M, K);
+                gA = &gA_tensor;
+            }
+
+            shim::Tensor* gB = nullptr;
+            shim::Tensor  gB_tensor{};
+            if (gB_ptr) {
+                gB_tensor = make_tensor_2d_raw(gB_ptr, K, N);
+                gB = &gB_tensor;
+            }
+
+            shim::Tensor* gC = nullptr;
+            shim::Tensor  gC_tensor{};
+            if (gC_ptr) {
+                gC_tensor = make_tensor_2d_raw(gC_ptr, M, N);
+                gC = &gC_tensor;
+            }
+
+            shim::Tensor* gBias = nullptr;
+            shim::Tensor  gBias_tensor{};
+            if (gBias_ptr) {
+                gBias_tensor = make_tensor_2d_raw(gBias_ptr, 1, N); // PerN
+                gBias = &gBias_tensor;
+            }
+
+            shim::GemmAttrs attrs{};
+            attrs.trans_a     = trans_a;
+            attrs.trans_b     = trans_b;
+            attrs.act         = parse_act(act);
+            attrs.with_bias   = with_bias;
+            attrs.leaky_slope = static_cast<float>(leaky_slope);
+            attrs.save_z      = false; // bwd에서 save_z 의미 없음
+
+            NVTX_RANGE("gemm.backward_raw", shim::nvtx::Color::Magenta);
+
+            auto st = shim::GemmCudaBackward(
+                A, B, C, gY, Z, gA, gB, gC, gBias, attrs, s
+            );
+            raise_if_not_ok(st, "backward_raw");
+        },
+        "A_ptr"_a,
+        "B_ptr"_a,
+        "C_ptr"_a      = static_cast<uintptr_t>(0),
+        "gY_ptr"_a,
+        "Z_ptr"_a,
+        "gA_ptr"_a     = static_cast<uintptr_t>(0),
+        "gB_ptr"_a     = static_cast<uintptr_t>(0),
+        "gC_ptr"_a     = static_cast<uintptr_t>(0),
+        "gBias_ptr"_a  = static_cast<uintptr_t>(0),
+        "M"_a,
+        "K"_a,
+        "N"_a,
+        "trans_a"_a    = false,
+        "trans_b"_a    = false,
+        "act"_a        = "none",
+        "with_bias"_a  = false,
+        "leaky_slope"_a= 0.01,
+        "stream"_a     = py::none(),
+        "Raw-pointer based backward for fused GEMM(+bias+activation)."
     );
 
     // 메타
@@ -492,8 +680,9 @@ PYBIND11_MODULE(_ops_gemm, m) {
         // 바인딩 함수들
         "forward", "backward",
         "forward_ex", "backward_ex",
-        "forward_numpy", "backward_numpy",
         "backward_into",
-        "forward_ex_attrs", "backward_ex_attrs"
+        "forward_ex_attrs", "backward_ex_attrs",
+        // raw API
+        "forward_raw", "backward_raw"
     );
 }

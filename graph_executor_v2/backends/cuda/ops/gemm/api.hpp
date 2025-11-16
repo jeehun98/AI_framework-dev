@@ -1,134 +1,210 @@
-// backends/cuda/ops/gemm/api.hpp
 #pragma once
 /**
  * @file api.hpp
  * @brief GEMM (CUDA) forward/backward API — Z(pre-activation) 저장 + capture-safe workspace 지원
- *
- * 규약 요약:
- *  - 모든 텐서는 row-major 2D.
- *  - Forward:
- *      Y = act( A @ B + bias )   // (현재 C는 경로상 미사용)
- *      attrs.save_z==true 이고 Z_saved!=nullptr 이면,
- *      Z_saved <- pre-activation Z (= A@B + bias) 을 한 패스에서 저장.
- *      Z_saved 가 Y와 같은 버퍼(alias)여도 허용되며 이때 ldZ는 내부적으로 ldd 사용.
- *  - Backward:
- *      gZ = gY ⊙ act'(Z)
- *      gA = gZ @ B^T,  gB = A^T @ gZ
- *      (옵션) gC = beta * gZ  (C,gC가 주어지고 beta!=0일 때)
- *      (옵션) gBias: Scalar/PerM/PerN 형태로 원자적 누적
- *
- * 워크스페이스:
- *  - lt_workspace: (선택) cublasLt용, 256B 정렬 권장
- *  - scratch: (선택) backward의 gZ 임시 버퍼. 크기 >= M*N*sizeof(float).
  */
 
-#include "backends/cuda/ops/_common/shim/ai_shim.hpp"
+#include "backends/cuda/ops/_common/shim/ai_shim.hpp"  // Tensor/GemmAttrs/Status/Stream 등
+#include "backends/cuda/ops/_common/shim/enums.hpp"     // (안전) ActKind 등
+#include "backends/cuda/ops/_common/shim/traits.hpp"    // ★ BiasMode, to_bias_mode 등
+
 #include <cstddef>
 #include <cstdint>
-#include <type_traits>
 
-namespace ai {
+namespace ai::cuda::shim {
 
-// ---- Workspace ----
-// Lt workspace는 256B 정렬 권장. 편의상 구조체 자체를 256 정렬로 둠.
-struct alignas(256) GemmWorkspace {
-  void*  lt_workspace       = nullptr;
-  size_t lt_workspace_bytes = 0;
+// =====================================================================
+//  ▷ 커널 파라미터 (FWD)
+// =====================================================================
+struct GemmBiasActParams {
+  int M, N, K;
+  const void* A; int lda;
+  const void* B; int ldb;
+  const void* C; int ldc;   // optional (HasC 경로)
+  void*       D; int ldd;
 
-  // backward용 gZ scratch (row-major, ld = N 가정)
-  void*  scratch            = nullptr;
-  size_t scratch_bytes      = 0;
+  float alpha;              // D = act( alpha * (A@B) + beta * C + bias )
+  float beta;
+
+  const void* bias;         // nullptr이면 BiasKind::None
+  BiasKind    bias_kind;
+
+  ActKind act;
+  float   leaky_slope;
 };
 
-// ------------ 작은 헬퍼들(권장) ------------
+struct GemmBiasActParamsEx {
+  int M, N, K;
+  const void* A; int lda;
+  const void* B; int ldb;
+  const void* C; int ldc;   // optional (HasC 경로)
+  void*       D; int ldd;
 
-// backward gZ scratch에 필요한 최소 바이트 수
-inline constexpr size_t GemmRequiredBackwardScratchBytes(int64_t M, int64_t N) {
-  return (M <= 0 || N <= 0) ? 0ull
-                            : static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(float);
+  float alpha, beta;
+
+  const void* bias;
+  BiasKind    bias_kind;
+
+  ActKind act;
+  float   leaky_slope;
+
+  // Z(pre-activation) 저장 옵션
+  void* Z; int ldZ;         // ldZ==0이면 ldd 사용
+  int   save_preact;        // 0/1
+
+  // (선택) cuBLASLt 등 외부 워크스페이스 전달
+  void*       lt_workspace{nullptr};
+  std::size_t lt_workspace_bytes{0};
+};
+
+// =====================================================================
+//  ▷ 커널 파라미터 (BWD)
+// =====================================================================
+struct GemmBiasActBwdParams {
+  int M, N, K;
+
+  // --- FWD 입력 ---
+  const void* A;  int lda;
+  const void* B;  int ldb;
+  const void* C;  int ldc;     // optional
+  const void* Z;  int ldZ;     // pre-activation
+  const void* gY; int ldgY;    // dLoss/dY (outgrad)
+
+  // --- 출력 ---
+  void* gA; int ldgA;          // dLoss/dA (nullable)
+  void* gB; int ldgB;          // dLoss/dB (nullable)
+  void* gC; int ldgC;          // dLoss/dC (nullable)
+  void* gBias;                 // dLoss/dbias (nullable)
+
+  // --- 임시 버퍼 ---
+  float* gZ_scratch; int ldgZ; // gZ 저장(dLoss/dZ), ld = N 가정 (nullable)
+
+  // --- 스칼라 파라미터 ---
+  float    alpha{1.f};
+  float    beta{0.f};          // gC 계산 시 사용
+  BiasKind bias_kind{BiasKind::None};
+  ActKind  act{ActKind::None};
+  float    leaky_slope{0.01f};
+
+  // --- (선택) 외부 워크스페이스 전달 ---
+  void*       lt_workspace{nullptr};
+  std::size_t lt_workspace_bytes{0};
+};
+
+// =====================================================================
+//  ▷ 공용 워크스페이스/헬퍼
+// =====================================================================
+struct alignas(256) GemmWorkspace {
+  void*       lt_workspace       = nullptr;
+  std::size_t lt_workspace_bytes = 0;
+
+  // Backward용 임시 gZ 버퍼 (row-major, ld = N 가정)
+  void*       scratch            = nullptr;
+  std::size_t scratch_bytes      = 0;
+};
+
+[[nodiscard]] constexpr std::size_t
+GemmRequiredBackwardScratchBytes(std::int64_t M, std::int64_t N) noexcept {
+  return (M <= 0 || N <= 0)
+           ? 0ull
+           : static_cast<std::size_t>(M) * static_cast<std::size_t>(N) * sizeof(float);
 }
 
-// Lt workspace 정렬 체크(256B 권장)
-inline bool GemmIsLtWorkspaceAligned(const void* p, size_t alignment = 256) {
-  if (!p) return true;
-  return (reinterpret_cast<uintptr_t>(p) % alignment) == 0;
+[[nodiscard]] inline bool
+GemmIsLtWorkspaceAligned(const void* p, std::size_t alignment = 256) noexcept {
+  return is_workspace_aligned(p, alignment);
 }
 
-// Z_saved 규칙 요약(문서용): alias 허용/stride 규칙
-// - Z_saved가 Y와 같은 버퍼면 ldZ는 내부적으로 ldd가 사용됨.
+// =====================================================================
+//  ▷ API (FWD/BWD)
+// =====================================================================
 
-
-// ------------ Forward API ------------
-
-// 정식 선언: 기본인자는 맨 끝 2개만 허용
-ai::Status GemmCudaLaunch(
-    const Tensor&    A,
-    const Tensor&    B,
-    const Tensor*    Bias,          // ← 기본값 주지 마세요!
-    Tensor&          Y,
-    const GemmAttrs& attrs,
-    StreamHandle     stream,
-    Tensor*          Z_saved = nullptr,
+// Forward: A[M,K] @ B[K,N] + bias -> Y[M,N]
+//  - attrs.save_z==true 이면 Z_saved에 pre-activation 저장
+Status GemmCudaLaunch(
+    const Tensor&     A,
+    const Tensor&     B,
+    const Tensor*     Bias,
+    Tensor&           Y,
+    const GemmAttrs&  attrs,
+    StreamHandle      stream,
+    Tensor*           Z_saved = nullptr,
     const GemmWorkspace* ws = nullptr
 );
 
-// 편의 오버로드: Bias 생략 시 nullptr 사용
-inline ai::Status GemmCudaLaunch(
-    const Tensor&    A,
-    const Tensor&    B,
-    Tensor&          Y,
-    const GemmAttrs& attrs,
-    StreamHandle     stream,
-    Tensor*          Z_saved = nullptr,
+// Bias 인자가 없는 편의 오버로드
+inline Status GemmCudaLaunch(
+    const Tensor&     A,
+    const Tensor&     B,
+    Tensor&           Y,
+    const GemmAttrs&  attrs,
+    StreamHandle      stream,
+    Tensor*           Z_saved = nullptr,
     const GemmWorkspace* ws = nullptr
 ) {
   return GemmCudaLaunch(A, B, /*Bias=*/nullptr, Y, attrs, stream, Z_saved, ws);
 }
 
-
-// ------------ Backward API ------------
-
-ai::Status GemmCudaBackward(
-    const Tensor&    A,
-    const Tensor&    B,
-    const Tensor*    C,              // 기본값 X
-    const Tensor&    gY,
-    const Tensor&    Z,
-    Tensor*          gA,             // 기본값 X (포인터는 호출부에서 nullptr 전달)
-    Tensor*          gB,
-    Tensor*          gC,
-    Tensor*          gBias,
-    const GemmAttrs& attrs,
-    StreamHandle     stream,
+// Backward: (A,B,C,gY,Z) -> (gA,gB,gC,gBias)
+//  - ws가 주어지면 capture-safe 경로 (내부 malloc 없음)
+Status GemmCudaBackward(
+    const Tensor&     A,
+    const Tensor&     B,
+    const Tensor*     C,
+    const Tensor&     gY,
+    const Tensor&     Z,
+    Tensor*           gA,
+    Tensor*           gB,
+    Tensor*           gC,
+    Tensor*           gBias,
+    const GemmAttrs&  attrs,
+    StreamHandle      stream,
     const GemmWorkspace* ws = nullptr
 );
 
-// 하위호환 편의 래퍼(원하시면 유지)
-inline ai::Status GemmCudaBackwardInto(
-    const Tensor&    A,
-    const Tensor&    B,
-    const Tensor*    C,
-    const Tensor&    gY,
-    const Tensor&    Z,
-    Tensor*          gA,
-    Tensor*          gB,
-    Tensor*          gC,
-    Tensor*          gBias,
-    const GemmAttrs& attrs,
-    StreamHandle     stream,
-    float*           dZ,
-    void*            lt_ws       = nullptr,
-    size_t           lt_ws_bytes = 0)
+// Capture-safe 편의 래퍼(dZ/gZ_scratch 직접 전달)
+inline Status GemmCudaBackwardInto(
+    const Tensor&     A,
+    const Tensor&     B,
+    const Tensor*     C,
+    const Tensor&     gY,
+    const Tensor&     Z,
+    Tensor*           gA,
+    Tensor*           gB,
+    Tensor*           gC,
+    Tensor*           gBias,
+    const GemmAttrs&  attrs,
+    StreamHandle      stream,
+    float*            dZ,
+    void*             lt_ws       = nullptr,
+    std::size_t       lt_ws_bytes = 0)
 {
-    GemmWorkspace ws{};
-    ws.scratch            = static_cast<void*>(dZ);
-    ws.scratch_bytes      = 0;                // 크기 체크는 내부에서 수행
-    ws.lt_workspace       = lt_ws;
-    ws.lt_workspace_bytes = lt_ws_bytes;
-
-    return GemmCudaBackward(
-        A, B, C, gY, Z, gA, gB, gC, gBias, attrs, stream, &ws
-    );
+  GemmWorkspace ws{};
+  ws.scratch            = static_cast<void*>(dZ);
+  ws.scratch_bytes      = 0; // 내부에서 필요 크기 검증
+  ws.lt_workspace       = lt_ws;
+  ws.lt_workspace_bytes = lt_ws_bytes;
+  return GemmCudaBackward(A,B,C,gY,Z,gA,gB,gC,gBias,attrs,stream,&ws);
 }
 
-} // namespace ai
+} // namespace ai::cuda::shim
+
+
+// =====================================================================
+//  ▷ 커널/런처 선언 (config.h는 포함하지 않음; 구현부에서 include)
+//     시그니처는 launcher.cu 호출부와 반드시 동일해야 함
+// =====================================================================
+namespace ai::cuda::shim {
+
+// (FWD) 타일드 EX 커널 — 단일 packed params 인자
+template<int BM_, int BN_, int BK_,
+         ActKind AK, BiasMode BM, bool HasC, bool SaveZ>
+__global__ void gemm_bias_act_f32_tiled_kernel_ex(GemmBiasActParamsEx p);
+
+// (FWD) 작은 문제용 스모크 런처
+void launch_gemm_bias_act_f32_smoke_ex(const GemmBiasActParamsEx& p, cudaStream_t s);
+
+// (BWD) 메인 백워드 런처
+void gemm_bias_act_bwd_f32(const GemmBiasActBwdParams& p, cudaStream_t s);
+
+} // namespace ai::cuda::shim

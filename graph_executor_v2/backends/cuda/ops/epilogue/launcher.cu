@@ -2,109 +2,102 @@
 #include <stdexcept>
 
 #include "backends/cuda/ops/epilogue/api.hpp"
-#include "backends/cuda/ops/gemm/detail/epilogue_adaptor.hpp"
+#include "backends/cuda/ops/_common/shim/traits.hpp" // BiasMode, to_bias_mode
 
-namespace {
+namespace ai::cuda::shim {
 
-inline regemm::BiasMode to_bias_mode(ai::BiasLayout bl) {
-  using BM = regemm::BiasMode;
-  switch (bl) {
-    case ai::BiasLayout::PerM:   return BM::PerM;
-    case ai::BiasLayout::PerN:   return BM::PerN;
-    case ai::BiasLayout::Scalar: return BM::Full;
-    default:                     return BM::None;
-  }
-}
-
-inline const void* pick_mask_ptr(const ai::EpilogueFwdParams& p, bool& isFloat){
+// ------------------------------------------------------------
+// helpers
+// ------------------------------------------------------------
+static inline const void* pick_mask_ptr(const EpilogueFwdParams& p, bool& isFloat) {
   if (p.DropMaskF32) { isFloat = true;  return p.DropMaskF32; }
-  if (p.DropMaskU8 ) { isFloat = false; return p.DropMaskU8; }
+  if (p.DropMaskU8 ) { isFloat = false; return p.DropMaskU8;  }
   isFloat = false; return nullptr;
 }
 
-inline const void* pick_mask_ptr(const ai::EpilogueBwdParams& p, bool& isFloat){
+static inline const void* pick_mask_ptr(const EpilogueBwdParams& p, bool& isFloat) {
   if (p.DropMaskF32) { isFloat = true;  return p.DropMaskF32; }
-  if (p.DropMaskU8 ) { isFloat = false; return p.DropMaskU8; }
+  if (p.DropMaskU8 ) { isFloat = false; return p.DropMaskU8;  }
   isFloat = false; return nullptr;
 }
 
-inline bool validate_dropout(const ai::EpilogueAttrs& a) {
-  if (a.dmode == ai::DropoutMode::None) return true;
+static inline bool validate_dropout(const EpilogueAttrs& a) {
+  if (a.dmode == DropoutMode::None) return true;
   if (a.drop_p < 0.f || a.drop_p >= 1.f) return false;
   if (a.drop_scale <= 0.f) return false;
   return true;
 }
 
-} // anon
-
-
-namespace ai {
-
-// ---- FWD ----
+// ------------------------------------------------------------
+// FWD
+// ------------------------------------------------------------
 Status EpilogueFwdLaunch(const EpilogueFwdParams& p,
                          const EpilogueAttrs& a,
                          StreamHandle stream)
 {
   if (p.M <= 0 || p.N <= 0) return Status::Invalid;
-  if (!p.X || !p.Y) return Status::MissingInput;
+  if (!p.X || !p.Y)         return Status::MissingInput;
   if (p.ldX < p.N || p.ldY < p.N) return Status::StrideMismatch;
   if (a.save_z) {
-    if (!p.Z) return Status::MissingOutput;
+    if (!p.Z)        return Status::MissingOutput;
     if (p.ldZ < p.N) return Status::StrideMismatch;
   }
   if (!validate_dropout(a)) return Status::Invalid;
 
-  bool mask_is_float = false;
+  bool        mask_is_float = false;
   const void* mask_ptr = nullptr;
   if (a.dmode == DropoutMode::MaskInput) {
     mask_ptr = pick_mask_ptr(p, mask_is_float);
     if (!mask_ptr) return Status::MissingInput;
   }
 
-  const cudaStream_t s = reinterpret_cast<cudaStream_t>(stream);
-  const regemm::BiasMode bm = to_bias_mode(p.bias_layout);
+  const cudaStream_t s  = reinterpret_cast<cudaStream_t>(stream);
+  const BiasMode     bm = to_bias_mode(p.bias_layout); // BiasKind → BiasMode
 
   auto launch = [&](auto AK_tag, auto DM_tag){
-    constexpr ActKind AK = decltype(AK_tag)::value;
+    constexpr ActKind     AK = decltype(AK_tag)::value;
     constexpr DropoutMode DM = decltype(DM_tag)::value;
 
     switch (bm) {
-      case regemm::BiasMode::PerM:
-        if (a.save_z) epilogue_fwd_launch<AK, regemm::BiasMode::PerM, true,  DM>(
+      case BiasMode::PerM:
+        if (a.save_z) epilogue_fwd_launch<AK, BiasMode::PerM, true,  DM>(
             p.X, p.ldX, p.Bias, p.Y, p.ldY, p.Z, p.ldZ, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
-        else          epilogue_fwd_launch<AK, regemm::BiasMode::PerM, false, DM>(
+        else          epilogue_fwd_launch<AK, BiasMode::PerM, false, DM>(
             p.X, p.ldX, p.Bias, p.Y, p.ldY, nullptr, 0, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
         break;
-      case regemm::BiasMode::PerN:
-        if (a.save_z) epilogue_fwd_launch<AK, regemm::BiasMode::PerN, true,  DM>(
+
+      case BiasMode::PerN:
+        if (a.save_z) epilogue_fwd_launch<AK, BiasMode::PerN, true,  DM>(
             p.X, p.ldX, p.Bias, p.Y, p.ldY, p.Z, p.ldZ, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
-        else          epilogue_fwd_launch<AK, regemm::BiasMode::PerN, false, DM>(
+        else          epilogue_fwd_launch<AK, BiasMode::PerN, false, DM>(
             p.X, p.ldX, p.Bias, p.Y, p.ldY, nullptr, 0, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
         break;
-      case regemm::BiasMode::Full:
-        if (a.save_z) epilogue_fwd_launch<AK, regemm::BiasMode::Full, true,  DM>(
+
+      case BiasMode::Full:
+        if (a.save_z) epilogue_fwd_launch<AK, BiasMode::Full, true,  DM>(
             p.X, p.ldX, p.Bias, p.Y, p.ldY, p.Z, p.ldZ, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
-        else          epilogue_fwd_launch<AK, regemm::BiasMode::Full, false, DM>(
+        else          epilogue_fwd_launch<AK, BiasMode::Full, false, DM>(
             p.X, p.ldX, p.Bias, p.Y, p.ldY, nullptr, 0, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
         break;
-      default:
-        if (a.save_z) epilogue_fwd_launch<AK, regemm::BiasMode::None, true,  DM>(
+
+      default: // None
+        if (a.save_z) epilogue_fwd_launch<AK, BiasMode::None, true,  DM>(
             p.X, p.ldX, nullptr, p.Y, p.ldY, p.Z, p.ldZ, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
-        else          epilogue_fwd_launch<AK, regemm::BiasMode::None, false, DM>(
+        else          epilogue_fwd_launch<AK, BiasMode::None, false, DM>(
             p.X, p.ldX, nullptr, p.Y, p.ldY, nullptr, 0, p.M, p.N, a.leaky_slope,
             a.drop_p, a.drop_scale, mask_ptr, mask_is_float,
             a.rng_seed, a.rng_subseq, a.rng_offset, s);
@@ -112,7 +105,6 @@ Status EpilogueFwdLaunch(const EpilogueFwdParams& p,
     }
   };
 
-  // Act × Dropout dispatch
   auto call_by_act = [&](auto DM_tag){
     switch (a.act) {
       case ActKind::ReLU:      launch(std::integral_constant<ActKind, ActKind::ReLU>{},      DM_tag); break;
@@ -132,8 +124,9 @@ Status EpilogueFwdLaunch(const EpilogueFwdParams& p,
   return Status::Ok;
 }
 
-
-// ---- BWD ----
+// ------------------------------------------------------------
+// BWD
+// ------------------------------------------------------------
 Status EpilogueBwdLaunch(const EpilogueBwdParams& p,
                          const EpilogueAttrs& a,
                          StreamHandle stream)
@@ -144,20 +137,20 @@ Status EpilogueBwdLaunch(const EpilogueBwdParams& p,
   if (p.gC && p.ldgC < p.N) return Status::StrideMismatch;
   if (!validate_dropout(a)) return Status::Invalid;
 
-  bool mask_is_float = false;
+  bool        mask_is_float = false;
   const void* mask_ptr = nullptr;
   if (a.dmode == DropoutMode::MaskInput) {
     mask_ptr = pick_mask_ptr(p, mask_is_float);
     if (!mask_ptr) return Status::MissingInput;
   }
 
-  const bool fuse_gC = (p.gC != nullptr) && (p.beta_for_gC != 0.f);
-  const bool hasBias = (p.gBias != nullptr) && (p.bias_layout != BiasLayout::None);
-  const regemm::BiasMode bm = to_bias_mode(p.bias_layout);
-  const cudaStream_t s = reinterpret_cast<cudaStream_t>(stream);
+  const bool     fuse_gC = (p.gC != nullptr) && (p.beta_for_gC != 0.f);
+  const bool     hasBias = (p.gBias != nullptr) && (p.bias_layout != BiasKind::None);
+  const BiasMode bm      = to_bias_mode(p.bias_layout); // BiasKind → BiasMode
+  const cudaStream_t s   = reinterpret_cast<cudaStream_t>(stream);
 
   auto launch = [&](auto AK_tag, auto DM_tag){
-    constexpr ActKind AK = decltype(AK_tag)::value;
+    constexpr ActKind     AK = decltype(AK_tag)::value;
     constexpr DropoutMode DM = decltype(DM_tag)::value;
 
     #define CALL(FUSE, BMODE, HASB) \
@@ -168,29 +161,32 @@ Status EpilogueBwdLaunch(const EpilogueBwdParams& p,
         a.rng_seed, a.rng_subseq, a.rng_offset, s)
 
     switch (bm) {
-      case regemm::BiasMode::PerM:
-        if (fuse_gC) { if (hasBias) CALL(true,  regemm::BiasMode::PerM, true);
-                       else          CALL(true,  regemm::BiasMode::PerM, false); }
-        else         { if (hasBias) CALL(false, regemm::BiasMode::PerM, true);
-                       else          CALL(false, regemm::BiasMode::PerM, false); }
+      case BiasMode::PerM:
+        if (fuse_gC) { if (hasBias) CALL(true,  BiasMode::PerM, true);
+                       else          CALL(true,  BiasMode::PerM, false); }
+        else         { if (hasBias) CALL(false, BiasMode::PerM, true);
+                       else          CALL(false, BiasMode::PerM, false); }
         break;
-      case regemm::BiasMode::PerN:
-        if (fuse_gC) { if (hasBias) CALL(true,  regemm::BiasMode::PerN, true);
-                       else          CALL(true,  regemm::BiasMode::PerN, false); }
-        else         { if (hasBias) CALL(false, regemm::BiasMode::PerN, true);
-                       else          CALL(false, regemm::BiasMode::PerN, false); }
+
+      case BiasMode::PerN:
+        if (fuse_gC) { if (hasBias) CALL(true,  BiasMode::PerN, true);
+                       else          CALL(true,  BiasMode::PerN, false); }
+        else         { if (hasBias) CALL(false, BiasMode::PerN, true);
+                       else          CALL(false, BiasMode::PerN, false); }
         break;
-      case regemm::BiasMode::Full:
-        if (fuse_gC) { if (hasBias) CALL(true,  regemm::BiasMode::Full, true);
-                       else          CALL(true,  regemm::BiasMode::Full, false); }
-        else         { if (hasBias) CALL(false, regemm::BiasMode::Full, true);
-                       else          CALL(false, regemm::BiasMode::Full, false); }
+
+      case BiasMode::Full:
+        if (fuse_gC) { if (hasBias) CALL(true,  BiasMode::Full, true);
+                       else          CALL(true,  BiasMode::Full, false); }
+        else         { if (hasBias) CALL(false, BiasMode::Full, true);
+                       else          CALL(false, BiasMode::Full, false); }
         break;
-      default:
-        if (fuse_gC) { if (hasBias) CALL(true,  regemm::BiasMode::None, true);
-                       else          CALL(true,  regemm::BiasMode::None, false); }
-        else         { if (hasBias) CALL(false, regemm::BiasMode::None, true);
-                       else          CALL(false, regemm::BiasMode::None, false); }
+
+      default: // None
+        if (fuse_gC) { if (hasBias) CALL(true,  BiasMode::None, true);
+                       else          CALL(true,  BiasMode::None, false); }
+        else         { if (hasBias) CALL(false, BiasMode::None, true);
+                       else          CALL(false, BiasMode::None, false); }
         break;
     }
     #undef CALL
@@ -215,4 +211,4 @@ Status EpilogueBwdLaunch(const EpilogueBwdParams& p,
   return Status::Ok;
 }
 
-} // namespace ai
+} // namespace ai::cuda::shim

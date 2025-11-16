@@ -1,15 +1,13 @@
+// backends/cuda/ops/epilogue/kernels.cu
+
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include <math_constants.h>
 #include <math_functions.h>
 
-#include "backends/cuda/ops/gemm/detail/activations.h"
-#include "backends/cuda/ops/gemm/detail/epilogue_adaptor.hpp"
-#include "backends/cuda/ops/epilogue/api.hpp"
+#include "backends/cuda/ops/epilogue/api.hpp" // 이 파일에서 ActKind/DropoutMode/BiasMode/선언을 가져옴
 
-using regemm::BiasMode;
-
-namespace {
+namespace ai::cuda::shim {
 
 // --- Philox 1 샘플(0/1 마스크)
 __device__ __forceinline__
@@ -18,29 +16,23 @@ uint8_t philox_mask(uint64_t seed, uint64_t subseq, uint64_t offset,
   if (p <= 0.f) return 1;
   if (p >= 1.f) return 0;
   curandStatePhilox4_32_10_t st;
-  // 각 요소를 다른 오프셋으로
   curand_init(seed, subseq, offset + linear_idx, &st);
   float r = curand_uniform(&st); // (0,1]
   return (r > p) ? 1 : 0;
 }
 
 // --- 활성화 전방
-template<ai::ActKind AK>
+template<ActKind AK>
 __device__ __forceinline__ float apply_fwd(float x, float slope) {
-  if constexpr (AK == ai::ActKind::None) {
-    return x;
-  } else if constexpr (AK == ai::ActKind::ReLU) {
-    return x > 0.f ? x : 0.f;
-  } else if constexpr (AK == ai::ActKind::LeakyReLU) {
-    return x > 0.f ? x : slope * x;
-  } else if constexpr (AK == ai::ActKind::Sigmoid) {
-    // 간단한 안정성 보정
+  if constexpr (AK == ActKind::None)       { return x; }
+  else if constexpr (AK == ActKind::ReLU)  { return x > 0.f ? x : 0.f; }
+  else if constexpr (AK == ActKind::LeakyReLU) { return x > 0.f ? x : slope * x; }
+  else if constexpr (AK == ActKind::Sigmoid) {
     float t = fminf(fmaxf(-x, -20.f), 20.f);
     return 1.f / (1.f + __expf(t));
-  } else if constexpr (AK == ai::ActKind::Tanh) {
+  } else if constexpr (AK == ActKind::Tanh) {
     return tanhf(x);
-  } else if constexpr (AK == ai::ActKind::GELU) {
-    // tanh 근사
+  } else if constexpr (AK == ActKind::GELU) {
     const float k0 = 0.7978845608028654f;   // sqrt(2/pi)
     const float k1 = 0.044715f;
     float x3 = x * x * x;
@@ -52,22 +44,19 @@ __device__ __forceinline__ float apply_fwd(float x, float slope) {
 }
 
 // --- 활성화 역방
-template<ai::ActKind AK>
+template<ActKind AK>
 __device__ __forceinline__ float apply_bwd(float z, float gy, float slope) {
-  if constexpr (AK == ai::ActKind::None) {
-    return gy;
-  } else if constexpr (AK == ai::ActKind::ReLU) {
-    return (z > 0.f ? 1.f : 0.f) * gy;
-  } else if constexpr (AK == ai::ActKind::LeakyReLU) {
-    return (z > 0.f ? 1.f : slope) * gy;
-  } else if constexpr (AK == ai::ActKind::Sigmoid) {
+  if constexpr (AK == ActKind::None)       { return gy; }
+  else if constexpr (AK == ActKind::ReLU)  { return (z > 0.f ? 1.f : 0.f) * gy; }
+  else if constexpr (AK == ActKind::LeakyReLU) { return (z > 0.f ? 1.f : slope) * gy; }
+  else if constexpr (AK == ActKind::Sigmoid) {
     float t = fminf(fmaxf(-z, -20.f), 20.f);
     float s = 1.f / (1.f + __expf(t));
     return (s * (1.f - s)) * gy;
-  } else if constexpr (AK == ai::ActKind::Tanh) {
+  } else if constexpr (AK == ActKind::Tanh) {
     float th = tanhf(z);
     return (1.f - th * th) * gy;
-  } else if constexpr (AK == ai::ActKind::GELU) {
+  } else if constexpr (AK == ActKind::GELU) {
     const float k0 = 0.7978845608028654f;   // sqrt(2/pi)
     const float k1 = 0.044715f;
     float x  = z;
@@ -83,18 +72,14 @@ __device__ __forceinline__ float apply_bwd(float z, float gy, float slope) {
   }
 }
 
-} // anon
-
-
 // ===== 공통 launch cfg =====
 void epilogue_get_launch_cfg(int M, int N, dim3& grid, dim3& block) {
   block = dim3(16,16);
   grid  = dim3((N + block.x - 1)/block.x, (M + block.y - 1)/block.y);
 }
 
-
 // ===== FWD kernel =====
-template<ai::ActKind AK, BiasMode BM, bool SaveZ, ai::DropoutMode DM>
+template<ActKind AK, BiasMode BM, bool SaveZ, DropoutMode DM>
 __global__ void epilogue_fwd_kernel(const float* __restrict__ X, int ldX,
                                     const float* __restrict__ Bias,
                                     float* __restrict__ Y, int ldY,
@@ -120,9 +105,9 @@ __global__ void epilogue_fwd_kernel(const float* __restrict__ X, int ldX,
 
   float y = apply_fwd<AK>(x, slope);
 
-  if constexpr (DM != ai::DropoutMode::None) {
+  if constexpr (DM != DropoutMode::None) {
     uint8_t mk = 1;
-    if constexpr (DM == ai::DropoutMode::MaskInput) {
+    if constexpr (DM == DropoutMode::MaskInput) {
       if (mask_is_float) {
         const float* F = static_cast<const float*>(DropMask);
         mk = (F[idxX] != 0.f);
@@ -140,9 +125,8 @@ __global__ void epilogue_fwd_kernel(const float* __restrict__ X, int ldX,
   Y[m * ldY + n] = y;
 }
 
-
 // ===== BWD kernel =====
-template<ai::ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias, ai::DropoutMode DM>
+template<ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias, DropoutMode DM>
 __global__ void epilogue_bwd_kernel(
     const float* __restrict__ gY, int ldgY,
     const float* __restrict__ Z,  int ldZ,
@@ -167,9 +151,9 @@ __global__ void epilogue_bwd_kernel(
   float gy = gY[idxY];
 
   // Dropout 역전파: gy *= (mask * scale)
-  if constexpr (DM != ai::DropoutMode::None) {
+  if constexpr (DM != DropoutMode::None) {
     uint8_t mk = 1;
-    if constexpr (DM == ai::DropoutMode::MaskInput) {
+    if constexpr (DM == DropoutMode::MaskInput) {
       if (mask_is_float) {
         const float* F = static_cast<const float*>(DropMask);
         mk = (F[idxY] != 0.f);
@@ -199,9 +183,8 @@ __global__ void epilogue_bwd_kernel(
   }
 }
 
-
 // ===== host wrappers =====
-template<ai::ActKind AK, BiasMode BM, bool SaveZ, ai::DropoutMode DM>
+template<ActKind AK, BiasMode BM, bool SaveZ, DropoutMode DM>
 void epilogue_fwd_launch(const float* X, int ldX,
                          const float* Bias,
                          float* Y, int ldY,
@@ -220,7 +203,7 @@ void epilogue_fwd_launch(const float* X, int ldX,
                               seed, subseq, offset);
 }
 
-template<ai::ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias, ai::DropoutMode DM>
+template<ActKind AK, bool FUSE_GC, BiasMode BM, bool HasBias, DropoutMode DM>
 void epilogue_bwd_launch(const float* gY, int ldgY,
                          const float* Z,  int ldZ,
                          float* gZ,       int ldgZ,
@@ -243,21 +226,17 @@ void epilogue_bwd_launch(const float* gY, int ldgY,
                               seed, subseq, offset);
 }
 
-
-// ===== explicit instantiation (Act × Bias × SaveZ × DropoutMode) =====
-// Mask dtype은 런타임 분기이므로 템플릿에서 제외 → 인스턴스 수 제한
-
+// ===== explicit instantiation =====
 #define INST_FWD(AK, BM, SAVEZ, DM) \
-  template void epilogue_fwd_launch<ai::ActKind::AK, regemm::BiasMode::BM, SAVEZ, ai::DropoutMode::DM>( \
+  template void epilogue_fwd_launch<ActKind::AK, BiasMode::BM, SAVEZ, DropoutMode::DM>( \
     const float*, int, const float*, float*, int, float*, int, int, int, float, \
     float, float, const void*, bool, uint64_t, uint64_t, uint64_t, cudaStream_t);
 
 #define INST_BWD(AK, FUSE, BM, HASB, DM) \
-  template void epilogue_bwd_launch<ai::ActKind::AK, FUSE, regemm::BiasMode::BM, HASB, ai::DropoutMode::DM>( \
+  template void epilogue_bwd_launch<ActKind::AK, FUSE, BiasMode::BM, HASB, DropoutMode::DM>( \
     const float*, int, const float*, int, float*, int, int, int, float, float*, int, float*, float, \
     float, float, const void*, bool, uint64_t, uint64_t, uint64_t, cudaStream_t);
 
-// 헬퍼
 #define INST_FWD_ALL_DM(AK, BM, SAVEZ) \
   INST_FWD(AK, BM, SAVEZ, None) \
   INST_FWD(AK, BM, SAVEZ, MaskInput) \
@@ -268,13 +247,13 @@ void epilogue_bwd_launch(const float* gY, int ldgY,
   INST_BWD(AK, FUSE, BM, HASB, MaskInput) \
   INST_BWD(AK, FUSE, BM, HASB, Philox)
 
-// 액티베이션별 인스턴스
 #define INST_FOR_ACT(AK) \
+  /* FWD */ \
   INST_FWD_ALL_DM(AK, None, false) INST_FWD_ALL_DM(AK, None, true) \
   INST_FWD_ALL_DM(AK, PerM, false) INST_FWD_ALL_DM(AK, PerM, true) \
   INST_FWD_ALL_DM(AK, PerN, false) INST_FWD_ALL_DM(AK, PerN, true) \
   INST_FWD_ALL_DM(AK, Full, false) INST_FWD_ALL_DM(AK, Full, true) \
-  /* BWD: FUSE_GC=false/true × HasBias=false/true */ \
+  /* BWD */ \
   INST_BWD_ALL_DM(AK, false, None, false) INST_BWD_ALL_DM(AK, false, None, true) \
   INST_BWD_ALL_DM(AK, false, PerM, false) INST_BWD_ALL_DM(AK, false, PerM, true) \
   INST_BWD_ALL_DM(AK, false, PerN, false) INST_BWD_ALL_DM(AK, false, PerN, true) \
@@ -296,3 +275,5 @@ INST_FOR_ACT(Tanh)
 #undef INST_FWD_ALL_DM
 #undef INST_BWD
 #undef INST_FWD
+
+} // namespace ai::cuda::shim
