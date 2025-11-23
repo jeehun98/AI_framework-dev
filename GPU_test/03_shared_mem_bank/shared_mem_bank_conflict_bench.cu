@@ -29,6 +29,7 @@ __global__ void shared_bank_kernel(float* out, int iters, int stride)
     __shared__ volatile float sh[32 * 32];   // 1024 floats
 
     int tid = threadIdx.x;
+    // 단일 워프만 (32개 스레드)
     if (tid >= 32) return;
 
     sh[tid] = tid;
@@ -50,6 +51,7 @@ __global__ void shared_bank_kernel(float* out, int iters, int stride)
 // -----------------------------------------------------------------------------
 float run_bank_test(float* d_out, int iters, int stride)
 {
+    // 단일 블록 256 스레드
     const int block_size = 256;
     const int grid_size  = 1;
 

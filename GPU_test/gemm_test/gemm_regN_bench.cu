@@ -39,8 +39,8 @@ __global__ void gemm_tiled_regN_kernel(
 {
     static_assert(TILE % TN == 0, "TILE must be divisible by TN");
 
-    __shared__ T As[TILE][TILE+1]; // [row][k_tile]
-    __shared__ T Bs[TILE][TILE+1]; // [k_tile][col]
+    __shared__ T As[TILE][TILE]; // [row][k_tile]
+    __shared__ T Bs[TILE][TILE]; // [k_tile][col]
 
     int tx = threadIdx.x;              // 0 .. (TILE/TN - 1)
     int ty = threadIdx.y;              // 0 .. TILE-1
@@ -273,11 +273,12 @@ int main(int argc, char** argv)
     // ------------------------------------------------------------
     // 2) CPU ref + diff 체크 (한 번만)
     //    (원하면 주석 처리해서 profiling에 영향 없게 해도 됨)
+    //        printf("\n[Check] CPU reference vs GPU\n");
+    //    gemm_cpu_ref(M, N, K, hA, hB, hC_ref);
+    //    double max_diff = max_abs_diff(hC_ref, hC_out, M, N);
+    //    printf("  max |diff| = %e\n", max_diff);
+
     // ------------------------------------------------------------
-    printf("\n[Check] CPU reference vs GPU\n");
-    gemm_cpu_ref(M, N, K, hA, hB, hC_ref);
-    double max_diff = max_abs_diff(hC_ref, hC_out, M, N);
-    printf("  max |diff| = %e\n", max_diff);
 
     // ------------------------------------------------------------
     // 3) Nsight용 프로파일 실행
@@ -288,7 +289,10 @@ int main(int argc, char** argv)
         printf("\n[Profile] running kernel %d time(s) for Nsight...\n",
                iters_profile);
 
+        // (8, 32)
         dim3 block(TILE / TN, TILE);
+
+        // (1024 + 32 - 1) / 32 = (32, 32)
         dim3 grid((N + TILE - 1) / TILE,
                   (M + TILE - 1) / TILE);
 
@@ -311,6 +315,9 @@ int main(int argc, char** argv)
 
     return 0;
 }
+
+// 각 block 에서 256 * 256 의 스레드 실행, 각 thread, 혹은 block 이 담당하고 있는 영역의 크기 계산 필요 
+
 
 /*
 빌드 예시 (sm_86 기준):
