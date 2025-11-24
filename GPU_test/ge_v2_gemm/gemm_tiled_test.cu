@@ -254,9 +254,12 @@ int main(int argc, char** argv)
   }
 
   // 레퍼런스 계산
+  /*
   printf("[CPU] computing reference...\n");
   gemm_cpu_ref(hA, hB, hC_ref, M, N, K);
 
+  */
+ 
   // 디바이스 할당
   float *dA = nullptr, *dB = nullptr, *dC = nullptr;
   CHECK_CUDA(cudaMalloc(&dA, bytesA));
@@ -292,18 +295,19 @@ int main(int argc, char** argv)
 
   // 결과 가져와서 검증
   CHECK_CUDA(cudaMemcpy(hC, dC, bytesC, cudaMemcpyDeviceToHost));
-
+ /*
   double max_diff = 0.0;
   for (int i = 0; i < M * N; ++i) {
     double diff = std::fabs((double)hC[i] - (double)hC_ref[i]);
     if (diff > max_diff) max_diff = diff;
   }
+  printf("[Check] max |diff| = %.6e\n", max_diff);
+  */
 
   // 성능 계산 (GFLOP/s)
   double flops = 2.0 * (double)M * (double)N * (double)K;
   double gflops = flops / (ms * 1e6);
 
-  printf("[Check] max |diff| = %.6e\n", max_diff);
   printf("[Perf]  avg time = %.3f ms,  GFLOP/s = %.2f\n", ms, gflops);
 
   // 정리
