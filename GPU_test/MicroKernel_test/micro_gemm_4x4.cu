@@ -25,6 +25,7 @@ __global__ void micro_gemm_4x4(const float* __restrict__ A,
         float b3 = B[k*4 + 3];
 
         // Micro-kernel FMAs (4×4)
+        // outer-product 연산을 하는구나... 믿힌
         c00 += a0*b0; c01 += a0*b1; c02 += a0*b2; c03 += a0*b3;
         c10 += a1*b0; c11 += a1*b1; c12 += a1*b2; c13 += a1*b3;
         c20 += a2*b0; c21 += a2*b1; c22 += a2*b2; c23 += a2*b3;
@@ -32,6 +33,7 @@ __global__ void micro_gemm_4x4(const float* __restrict__ A,
     }
 
     // single thread writes C
+    // 이전까지 C 의 값들은 register 내부에서만 존재
     C[0] = c00; C[1] = c01; C[2] = c02; C[3] = c03;
     C[4] = c10; C[5] = c11; C[6] = c12; C[7] = c13;
     C[8] = c20; C[9] = c21; C[10]= c22; C[11]= c23;
@@ -57,3 +59,6 @@ int main() {
 
     cudaFree(A); cudaFree(B); cudaFree(C);
 }
+
+// nvcc micro_gemm_4x4.cu -o micro_gemm_4x4.exe
+// .\micro_gemm_4x4.exe
