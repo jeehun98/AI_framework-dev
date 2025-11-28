@@ -279,20 +279,5 @@ nvcc -O3 -arch=sm_86 -lineinfo -o gemm_register_occupancy_test.exe gemm_register
 
 
 # TN=1
-ncu --kernel-name regex:gemm_reg_tiling_TN_kernel\<1\>.* --metrics sm__warps_active.avg,sm__throughput,smsp__pipe_fma_cycles_active.avg.pct_of_peak_sustained_elapsed ./gemm_register_occupancy_test.exe
-
 ncu --kernel-name regex:gemm_reg_tiling_TN_kernel.* --metrics sm__warps_active.avg,smsp__pipe_fma_cycles_active.avg.pct_of_peak_sustained_elapsed C:\Users\owner\Desktop\AI_framework-dev\GPU_test\02_Optimization_Principles\2_2_register_tiling\gemm_register_occupancy_test.exe
-
-
-# TN=8
-ncu ^
-  --kernel-name regex:gemm_reg_tiling_TN_kernel<8>.* ^
-  --metrics \
-sm__warps_active.avg,\
-sm__throughput,\
-smsp__pipe_fma_cycles_active.avg.pct_of_peak_sustained_elapsed \
-  ./gemm_register_occupancy_test.exe
-
-# TN=12 / TN=16 도 같은 식으로
-
 */
