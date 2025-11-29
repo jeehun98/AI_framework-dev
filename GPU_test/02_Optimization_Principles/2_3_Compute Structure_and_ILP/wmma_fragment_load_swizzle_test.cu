@@ -85,7 +85,7 @@ __global__ void mma_fragment_swizzled_load_kernel(const half* __restrict__ A,
     int lane_id = threadIdx.x; // 0..31
 
     // padding 추가: row stride를 16 -> 18 elements로 변경
-    constexpr int PAD = 2;
+    constexpr int PAD = 8;
     constexpr int STRIDE_A = TILE_K + PAD; // 18
     constexpr int STRIDE_B = TILE_N + PAD; // 18
 
