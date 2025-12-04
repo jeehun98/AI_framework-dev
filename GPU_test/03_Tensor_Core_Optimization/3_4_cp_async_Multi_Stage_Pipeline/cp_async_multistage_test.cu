@@ -1,5 +1,4 @@
 // cp_async_multistage_test.cu
-// nvcc -arch=sm_80 -O3 cp_async_multistage_test.cu -o cp_async_multistage_test.exe
 
 #include <cstdio>
 #include <cstdlib>
@@ -290,6 +289,9 @@ int main() {
 }
 
 /*
+nvcc -arch=sm_80 -O3 cp_async_multistage_test.cu -o cp_async_multistage_test.exe
+
+
 ncu --kernel-name regex:.*wmma_cp_async_multistage_kernel.*     --metrics smsp__pipe_tensor_cycles_active,smsp__warp_issue_stalled_lg_throttle_per_warp_active.avg,dram__bytes_read.sum,lts__t_sectors_aperture_device_hit_rate.pct  --set full --launch-skip 0 --launch-count 1    ./cp_async_multistage_test.exe
 
 */
